@@ -175,7 +175,7 @@ public unsafe partial class World
 {
     public Body GetBodyFullID(BodyID bodyID)
     {
-        Debug.Assert(API.BodyAPI.Body_IsValid(bodyID));
+        Debug.Assert(API.BodyAPI.IsValid(bodyID));
         return bodies[bodyID.index1 - 1];
     }
     public Transform GetBodyTransformQuick(Body body) => solverSets[body.setIndex].bodySims[body.localIndex].transform;

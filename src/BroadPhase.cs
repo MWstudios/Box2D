@@ -126,7 +126,7 @@ public class BroadPhase
     }
     public void ValidateNoEnlarged()
     {
-        //for (int j = 0; j < 3; j++) trees[j].ValidateNoEnlarged(); //???
+        for (int j = 0; j < 3; j++) trees[j].ValidateNoEnlarged();
     }
 }
 public partial class World

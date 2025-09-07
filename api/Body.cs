@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Diagnostics;
+using _SetType = Box2D.SetType;
 
 namespace Box2D.API;
 
@@ -26,9 +27,9 @@ public unsafe static class BodyAPI
         World world = worldId.index1; Debug.Assert(!world.locked); if (world.locked) return new();
         bool isAwake = (def.isAwake || !def.enableSleep) && def.isEnabled;
         int setId;
-        if (!def.isEnabled) setId = (int)SetType.Disabled;
-        else if (def.type == BodyType.Static) setId = (int)SetType.Static;
-        else if (isAwake) setId = (int)SetType.Awake;
+        if (!def.isEnabled) setId = (int)_SetType.Disabled;
+        else if (def.type == BodyType.Static) setId = (int)_SetType.Static;
+        else if (isAwake) setId = (int)_SetType.Awake;
         else
         {
             setId = world.solverSetIdPool.AllocId();
@@ -61,7 +62,7 @@ public unsafe static class BodyAPI
             | (def.type == BodyType.Dynamic ? BodyFlags.Dynamic : 0),
         };
         set.bodySims.Add(bodySim);
-        if (setId == (int)SetType.Awake)
+        if (setId == (int)_SetType.Awake)
         {
             set.bodyStates.Add(new()
             {
@@ -98,7 +99,7 @@ public unsafe static class BodyAPI
         body.type = def.type;
         body.flags = bodySim.flags;
         body.enableSleep = def.enableSleep;
-        if (setId >= (int)SetType.Awake) world.CreateIslandForBody(setId, body);
+        if (setId >= (int)_SetType.Awake) world.CreateIslandForBody(setId, body);
         world.ValidateSolverSets();
         return new() { index1 = bodyId + 1, world0 = world, generation = body.generation };
     }
@@ -147,12 +148,12 @@ public unsafe static class BodyAPI
             Debug.Assert(movedBody.localIndex == movedIndex);
             movedBody.localIndex = body.localIndex;
         }
-        if (body.setIndex == (int)SetType.Awake)
+        if (body.setIndex == (int)_SetType.Awake)
         {
             int result = set.bodyStates.RemoveSwap(body.localIndex);
             Debug.Assert(result == movedIndex);
         }
-        else if (set.setIndex >= (int)SetType.FirstSleeping && set.bodySims.Count == 0)
+        else if (set.setIndex >= (int)_SetType.FirstSleeping && set.bodySims.Count == 0)
             world.DestroySolverSet(set.setIndex);
         world.bodyIdPool.FreeId(body.id);
         body.setIndex = -1;
@@ -185,7 +186,7 @@ public unsafe static class BodyAPI
         World world = bodyId.world0; Body body = world.GetBodyFullID(bodyId);
         BodyType originalType = body.type;
         if (originalType == type) return;
-        if (body.setIndex == (int)SetType.Disabled)
+        if (body.setIndex == (int)_SetType.Disabled)
         {
             body.type = type;
             if (type == BodyType.Dynamic) body.flags |= BodyFlags.Dynamic;
@@ -195,7 +196,7 @@ public unsafe static class BodyAPI
         }
         world.DestroyBodyContacts(body, false);
         world.WakeBody(body);
-        SolverSet staticSet = world.solverSets[(int)SetType.Static];
+        SolverSet staticSet = world.solverSets[(int)_SetType.Static];
         int jointKey = body.headJointKey;
         while (jointKey != -1)
         {
@@ -203,7 +204,7 @@ public unsafe static class BodyAPI
             int edgeIndex = jointKey & 1;
             Joint joint = world.joints[jointId];
             jointKey = edgeIndex == 1 ? joint.edge1.nextKey : joint.edge0.nextKey;
-            if (joint.setIndex == (int)SetType.Disabled) continue;
+            if (joint.setIndex == (int)_SetType.Disabled) continue;
             Body bodyA = world.bodies[joint.edge0.bodyId], bodyB = world.bodies[joint.edge1.bodyId];
             world.WakeBody(bodyA);
             world.WakeBody(bodyB);
@@ -214,11 +215,11 @@ public unsafe static class BodyAPI
         body.type = type;
         if (type == BodyType.Dynamic) body.flags |= BodyFlags.Dynamic;
         else body.flags &= ~BodyFlags.Dynamic;
-        SolverSet awakeSet = world.solverSets[(int)SetType.Awake];
+        SolverSet awakeSet = world.solverSets[(int)_SetType.Awake];
         SolverSet sourceSet = world.solverSets[body.setIndex];
         SolverSet targetSet = type == BodyType.Static ? staticSet : awakeSet;
         world.TransferBody(targetSet, sourceSet, body);
-        if (originalType == BodyType.Static) world.CreateIslandForBody((int)SetType.Awake, body);
+        if (originalType == BodyType.Static) world.CreateIslandForBody((int)_SetType.Awake, body);
         else if (type == BodyType.Static) world.RemoveBodyFromIsland(body);
         jointKey = body.headJointKey;
         while (jointKey != -1)
@@ -227,11 +228,11 @@ public unsafe static class BodyAPI
             int edgeIndex = jointKey & 1;
             Joint joint = world.joints[jointId];
             jointKey = edgeIndex == 1 ? joint.edge1.nextKey : joint.edge0.nextKey;
-            if (joint.setIndex == (int)SetType.Disabled) continue;
-            Debug.Assert(joint.setIndex == (int)SetType.Static);
+            if (joint.setIndex == (int)_SetType.Disabled) continue;
+            Debug.Assert(joint.setIndex == (int)_SetType.Static);
             Body bodyA = world.bodies[joint.edge0.bodyId], bodyB = world.bodies[joint.edge1.bodyId];
-            Debug.Assert(bodyA.setIndex == (int)SetType.Static || bodyA.setIndex == (int)SetType.Awake);
-            Debug.Assert(bodyB.setIndex == (int)SetType.Static || bodyB.setIndex == (int)SetType.Awake);
+            Debug.Assert(bodyA.setIndex == (int)_SetType.Static || bodyA.setIndex == (int)_SetType.Awake);
+            Debug.Assert(bodyB.setIndex == (int)_SetType.Static || bodyB.setIndex == (int)_SetType.Awake);
             if (bodyA.type == BodyType.Dynamic || bodyB.type == BodyType.Dynamic)
                 world.TransferJoint(awakeSet, staticSet, joint);
         }
@@ -253,7 +254,7 @@ public unsafe static class BodyAPI
             jointKey = edgeIndex == 1 ? joint.edge1.nextKey : joint.edge0.nextKey;
             int otherEdgeIndex = edgeIndex ^ 1;
             Body otherBody = world.bodies[otherEdgeIndex == 1 ? joint.edge1.bodyId : joint.edge0.bodyId];
-            if (otherBody.setIndex == (int)SetType.Disabled) continue;
+            if (otherBody.setIndex == (int)_SetType.Disabled) continue;
             if (body.type != BodyType.Dynamic && otherBody.type != BodyType.Dynamic) continue;
             world.LinkJoint(joint);
         }
@@ -380,8 +381,8 @@ public unsafe static class BodyAPI
     public static void SetTargetTransform(BodyID bodyId, Transform target, float timeStep)
     {
         World world = bodyId.world0; Body body = world.GetBodyFullID(bodyId);
-        if (body.setIndex == (int)SetType.Disabled) return;
-        if (body.type == (int)SetType.Static || timeStep <= 0) return;
+        if (body.setIndex == (int)_SetType.Disabled) return;
+        if (body.type == (int)_SetType.Static || timeStep <= 0) return;
         BodySim sim = world.GetBodySim(body);
         Vector2 center1 = sim.center, center2 = target.TransformPoint(sim.localCenter);
         float invTimeStep = 1 / timeStep;
@@ -389,13 +390,13 @@ public unsafe static class BodyAPI
         Rotation q1 = sim.transform.q, q2 = target.q;
         float deltaAngle = Rotation.RelativeAngle(q1, q2);
         float angularVelocity = invTimeStep * deltaAngle;
-        if (body.setIndex != (int)SetType.Awake)
+        if (body.setIndex != (int)_SetType.Awake)
         {
             float maxVelocity = linearVelocity.Length() + Math.Abs(angularVelocity) * sim.maxExtent;
             if (maxVelocity < body.sleepThreshold) return;
             world.WakeBody(body);
         }
-        Debug.Assert(body.setIndex == (int)SetType.Awake);
+        Debug.Assert(body.setIndex == (int)_SetType.Awake);
         BodyState* state = world.GetBodyState(body);
         if (state != null)
         {
@@ -437,9 +438,9 @@ public unsafe static class BodyAPI
     public static void ApplyForce(BodyID bodyId, Vector2 force, Vector2 point, bool wake)
     {
         World world = bodyId.world0; Body body = world.GetBodyFullID(bodyId);
-        if (body.type != BodyType.Dynamic || body.setIndex == (int)SetType.Disabled) return;
-        if (wake && body.setIndex >= (int)SetType.FirstSleeping) world.WakeBody(body);
-        if (body.setIndex == (int)SetType.Awake)
+        if (body.type != BodyType.Dynamic || body.setIndex == (int)_SetType.Disabled) return;
+        if (wake && body.setIndex >= (int)_SetType.FirstSleeping) world.WakeBody(body);
+        if (body.setIndex == (int)_SetType.Awake)
         {
             BodySim bodySim = world.GetBodySim(body);
             bodySim.force += force;
@@ -455,9 +456,9 @@ public unsafe static class BodyAPI
     public static void ApplyForceToCenter(BodyID bodyId, Vector2 force, bool wake)
     {
         World world = bodyId.world0; Body body = world.GetBodyFullID(bodyId);
-        if (body.type != BodyType.Dynamic || body.setIndex == (int)SetType.Disabled) return;
-        if (wake && body.setIndex >= (int)SetType.FirstSleeping) world.WakeBody(body);
-        if (body.setIndex == (int)SetType.Awake)
+        if (body.type != BodyType.Dynamic || body.setIndex == (int)_SetType.Disabled) return;
+        if (wake && body.setIndex >= (int)_SetType.FirstSleeping) world.WakeBody(body);
+        if (body.setIndex == (int)_SetType.Awake)
         {
             BodySim bodySim = world.GetBodySim(body);
             bodySim.force += force;
@@ -472,9 +473,9 @@ public unsafe static class BodyAPI
     public static void ApplyTorque(BodyID bodyId, float torque, bool wake)
     {
         World world = bodyId.world0; Body body = world.GetBodyFullID(bodyId);
-        if (body.type != BodyType.Dynamic || body.setIndex == (int)SetType.Disabled) return;
-        if (wake && body.setIndex >= (int)SetType.FirstSleeping) world.WakeBody(body);
-        if (body.setIndex == (int)SetType.Awake)
+        if (body.type != BodyType.Dynamic || body.setIndex == (int)_SetType.Disabled) return;
+        if (wake && body.setIndex >= (int)_SetType.FirstSleeping) world.WakeBody(body);
+        if (body.setIndex == (int)_SetType.Awake)
         {
             BodySim bodySim = world.GetBodySim(body);
             bodySim.torque = torque;
@@ -494,12 +495,12 @@ public unsafe static class BodyAPI
     public static void ApplyLinearImpulse(BodyID bodyId, Vector2 impulse, Vector2 point, bool wake)
     {
         World world = bodyId.world0; Body body = world.GetBodyFullID(bodyId);
-        if (body.type != BodyType.Dynamic || body.setIndex == (int)SetType.Disabled) return;
-        if (wake && body.setIndex >= (int)SetType.FirstSleeping) world.WakeBody(body);
-        if (body.setIndex == (int)SetType.Awake)
+        if (body.type != BodyType.Dynamic || body.setIndex == (int)_SetType.Disabled) return;
+        if (wake && body.setIndex >= (int)_SetType.FirstSleeping) world.WakeBody(body);
+        if (body.setIndex == (int)_SetType.Awake)
         {
             int localIndex = body.localIndex;
-            SolverSet set = world.solverSets[(int)SetType.Awake];
+            SolverSet set = world.solverSets[(int)_SetType.Awake];
             BodyState* state = set.bodyStates.Data + localIndex;
             BodySim bodySim = set.bodySims[localIndex];
             state->linearVelocity = Vector2.MulAdd(state->linearVelocity, bodySim.invMass, impulse);
@@ -518,12 +519,12 @@ public unsafe static class BodyAPI
     public static void ApplyLinearImpulseToCenter(BodyID bodyId, Vector2 impulse, bool wake)
     {
         World world = bodyId.world0; Body body = world.GetBodyFullID(bodyId);
-        if (body.type != BodyType.Dynamic || body.setIndex == (int)SetType.Disabled) return;
-        if (wake && body.setIndex >= (int)SetType.FirstSleeping) world.WakeBody(body);
-        if (body.setIndex == (int)SetType.Awake)
+        if (body.type != BodyType.Dynamic || body.setIndex == (int)_SetType.Disabled) return;
+        if (wake && body.setIndex >= (int)_SetType.FirstSleeping) world.WakeBody(body);
+        if (body.setIndex == (int)_SetType.Awake)
         {
             int localIndex = body.localIndex;
-            SolverSet set = world.solverSets[(int)SetType.Awake];
+            SolverSet set = world.solverSets[(int)_SetType.Awake];
             BodyState* state = set.bodyStates.Data + localIndex;
             BodySim bodySim = set.bodySims[localIndex];
             state->linearVelocity = Vector2.MulAdd(state->linearVelocity, bodySim.invMass, impulse);
@@ -542,12 +543,12 @@ public unsafe static class BodyAPI
     {
         Debug.Assert(IsValid(bodyId));
         World world = bodyId.world0; Body body = world.GetBodyFullID(bodyId);
-        if (body.type != BodyType.Dynamic || body.setIndex == (int)SetType.Disabled) return;
-        if (wake && body.setIndex >= (int)SetType.FirstSleeping) world.WakeBody(body);
-        if (body.setIndex == (int)SetType.Awake)
+        if (body.type != BodyType.Dynamic || body.setIndex == (int)_SetType.Disabled) return;
+        if (wake && body.setIndex >= (int)_SetType.FirstSleeping) world.WakeBody(body);
+        if (body.setIndex == (int)_SetType.Awake)
         {
             int localIndex = body.localIndex;
-            SolverSet set = world.solverSets[(int)SetType.Awake];
+            SolverSet set = world.solverSets[(int)_SetType.Awake];
             BodyState* state = set.bodyStates.Data + localIndex;
             BodySim bodySim = set.bodySims[localIndex];
             state->angularVelocity += bodySim.invInertia * impulse;
@@ -647,7 +648,7 @@ public unsafe static class BodyAPI
     }
 
     ///<summary> <returns>true if this body is awake</returns></summary>
-    public static bool IsAwake(BodyID bodyId) => bodyId.world0.GetBodyFullID(bodyId).setIndex == (int)SetType.Awake;
+    public static bool IsAwake(BodyID bodyId) => bodyId.world0.GetBodyFullID(bodyId).setIndex == (int)_SetType.Awake;
 
     ///<summary>Wake a body from sleep. This wakes the entire island the body is touching.</summary>
     ///<remarks> Putting a body to sleep will put the entire island of bodies touching this body to sleep,
@@ -656,8 +657,8 @@ public unsafe static class BodyAPI
     {
         World world = World.GetWorldLocked(bodyId.world0); if (world == null) return;
         Body body = world.GetBodyFullID(bodyId);
-        if (awake && body.setIndex >= (int)SetType.FirstSleeping) world.WakeBody(body);
-        else if (!awake && body.setIndex == (int)SetType.Awake)
+        if (awake && body.setIndex >= (int)_SetType.FirstSleeping) world.WakeBody(body);
+        else if (!awake && body.setIndex == (int)_SetType.Awake)
         {
             Island island = world.islands[body.islandId];
             if (island.constraintRemoveCount > 0) world.SplitIsland(body.islandId);
@@ -684,17 +685,17 @@ public unsafe static class BodyAPI
     public static float GetSleepThreshold(BodyID bodyId) => bodyId.world0.GetBodyFullID(bodyId).sleepThreshold;
 
     ///<summary> Returns true if this body is enabled</summary>
-    public static bool IsEnabled(BodyID bodyId) => bodyId.world0.GetBodyFullID(bodyId).setIndex != (int)SetType.Disabled;
+    public static bool IsEnabled(BodyID bodyId) => bodyId.world0.GetBodyFullID(bodyId).setIndex != (int)_SetType.Disabled;
 
     ///<summary> Disable a body by removing it completely from the simulation. This is expensive.</summary>
     public static void Disable(BodyID bodyId)
     {
         World world = World.GetWorldLocked(bodyId.world0); if (world == null) return;
         Body body = world.GetBodyFullID(bodyId);
-        if (body.setIndex == (int)SetType.Disabled) return;
+        if (body.setIndex == (int)_SetType.Disabled) return;
         world.DestroyBodyContacts(body, true);
         SolverSet set = world.solverSets[body.setIndex];
-        SolverSet disabledSet = world.solverSets[(int)SetType.Disabled];
+        SolverSet disabledSet = world.solverSets[(int)_SetType.Disabled];
         int jointKey = body.headJointKey;
         while (jointKey != -1)
         {
@@ -702,8 +703,8 @@ public unsafe static class BodyAPI
             int edgeIndex = jointKey & 1;
             Joint joint = world.joints[jointId];
             jointKey = edgeIndex == 1 ? joint.edge1.nextKey : joint.edge0.nextKey;
-            if (joint.setIndex == (int)SetType.Disabled) continue;
-            Debug.Assert(joint.setIndex == set.setIndex || set.setIndex == (int)SetType.Static);
+            if (joint.setIndex == (int)_SetType.Disabled) continue;
+            Debug.Assert(joint.setIndex == set.setIndex || set.setIndex == (int)_SetType.Static);
             world.UnlinkJoint(joint);
             SolverSet jointSet = world.solverSets[joint.setIndex];
             world.TransferJoint(disabledSet, jointSet, joint);
@@ -724,9 +725,9 @@ public unsafe static class BodyAPI
     {
         World world = World.GetWorldLocked(bodyId.world0); if (world == null) return;
         Body body = world.GetBodyFullID(bodyId);
-        if (body.setIndex != (int)SetType.Disabled) return;
-        SolverSet disabledSet = world.solverSets[(int)SetType.Disabled];
-        int setId = body.type == BodyType.Static ? (int)SetType.Static : (int)SetType.Awake;
+        if (body.setIndex != (int)_SetType.Disabled) return;
+        SolverSet disabledSet = world.solverSets[(int)_SetType.Disabled];
+        int setId = body.type == BodyType.Static ? (int)_SetType.Static : (int)_SetType.Awake;
         SolverSet targetSet = world.solverSets[setId];
         world.TransferBody(targetSet, disabledSet, body);
         Transform transform = world.GetBodyTransformQuick(body);
@@ -737,26 +738,26 @@ public unsafe static class BodyAPI
             shapeId = shape.nextShapeId;
             shape.CreateProxy(world.broadPhase, body.type, transform, true);
         }
-        if (setId != (int)SetType.Static) world.CreateIslandForBody(setId, body);
+        if (setId != (int)_SetType.Static) world.CreateIslandForBody(setId, body);
         int jointKey = body.headJointKey;
         while (jointKey != -1)
         {
             int jointId = jointKey >> 1;
             int edgeIndex = jointKey & 1;
             Joint joint = world.joints[jointId];
-            Debug.Assert(joint.setIndex == (int)SetType.Disabled);
+            Debug.Assert(joint.setIndex == (int)_SetType.Disabled);
             Debug.Assert(joint.islandId == -1);
             jointKey = edgeIndex == 1 ? joint.edge1.nextKey : joint.edge0.nextKey;
             Body bodyA = world.bodies[joint.edge0.bodyId], bodyB = world.bodies[joint.edge1.bodyId];
-            if (bodyA.setIndex == (int)SetType.Disabled || bodyB.setIndex == (int)SetType.Disabled) continue;
+            if (bodyA.setIndex == (int)_SetType.Disabled || bodyB.setIndex == (int)_SetType.Disabled) continue;
             int jointSetId;
-            if (bodyA.setIndex == (int)SetType.Static && bodyB.setIndex == (int)SetType.Static)
-                jointSetId = (int)SetType.Static;
-            else if (bodyA.setIndex == (int)SetType.Static) jointSetId = bodyB.setIndex;
+            if (bodyA.setIndex == (int)_SetType.Static && bodyB.setIndex == (int)_SetType.Static)
+                jointSetId = (int)_SetType.Static;
+            else if (bodyA.setIndex == (int)_SetType.Static) jointSetId = bodyB.setIndex;
             else jointSetId = bodyA.setIndex;
             SolverSet jointSet = world.solverSets[jointSetId];
             world.TransferJoint(jointSet, disabledSet, joint);
-            if (jointSetId != (int)SetType.Static) world.LinkJoint(joint);
+            if (jointSetId != (int)_SetType.Static) world.LinkJoint(joint);
         }
         world.ValidateSolverSets();
     }
