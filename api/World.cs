@@ -18,7 +18,7 @@ public static class WorldAPI
     public static void DestroyWorld(WorldID worldId) => worldId.index1.Destroy();
 
     ///<summary> World id validation. Provides validation for up to 64K allocations.</summary>
-    public static bool World_IsValid(WorldID id)
+    public static bool IsValid(WorldID id)
     {
         if (id.index1 == null) return false;
         return id.generation == id.index1.generation;
@@ -28,7 +28,7 @@ public static class WorldAPI
     /// <param name="worldID">The world to simulate</param>
     /// <param name="timeStep">The amount of time to simulate, this should be a fixed number. Usually 1/60.</param>
     /// <param name="subStepCount">The number of sub-steps, increasing the sub-step count can increase accuracy. Usually 4.</param>
-    public static void World_Step(WorldID worldId, float timeStep, int subStepCount)
+    public static void Step(WorldID worldId, float timeStep, int subStepCount)
     {
         Debug.Assert(float.IsFinite(timeStep));
         Debug.Assert(0 < subStepCount);
@@ -112,7 +112,7 @@ public static class WorldAPI
     }
 
     ///<summary> Call this to draw shapes and other debug draw data</summary>
-    public static void World_Draw(WorldID worldId, DebugDraw draw)
+    public static void Draw(WorldID worldId, DebugDraw draw)
     {
         World world = worldId.index1; //Debug.Assert(!world.locked); if (world.locked) return;
         Debug.Assert(draw.drawingBounds.IsValid());
@@ -277,14 +277,14 @@ public static class WorldAPI
     }
 
     ///<summary> Get the body events for the current time step. The event data is transient. Do not store a reference to this data.</summary>
-    public static BodyEvents World_GetBodyEvents(WorldID worldId)
+    public static BodyEvents GetBodyEvents(WorldID worldId)
     {
         World world = worldId.index1; Debug.Assert(!world.locked); if (world.locked) return new();
         return new() { moveEvents = world.bodyMoveEvents };
     }
 
     ///<summary> Get sensor events for the current time step. The event data is transient. Do not store a reference to this data.</summary>
-    public static SensorEvents World_GetSensorEvents(WorldID worldId)
+    public static SensorEvents GetSensorEvents(WorldID worldId)
     {
         World world = worldId.index1; Debug.Assert(!world.locked); if (world.locked) return new();
         int endEventArrayIndex = 1 - world.endEventArrayIndex;
@@ -296,7 +296,7 @@ public static class WorldAPI
     }
 
     ///<summary> Get contact events for this current time step. The event data is transient. Do not store a reference to this data.</summary>
-    public static ContactEvents World_GetContactEvents(WorldID worldId)
+    public static ContactEvents GetContactEvents(WorldID worldId)
     {
         World world = worldId.index1; Debug.Assert(!world.locked); if (world.locked) return new();
         int endEventArrayIndex = 1 - world.endEventArrayIndex;
@@ -308,7 +308,7 @@ public static class WorldAPI
     }
 
     ///<summary> Get the joint events for the current time step. The event data is transient. Do not store a reference to this data.</summary>
-    public static JointEvents World_GetJointEvents(WorldID worldId)
+    public static JointEvents GetJointEvents(WorldID worldId)
     {
         World world = worldId.index1; Debug.Assert(!world.locked); if (world.locked) return new();
         return new() { jointEvents = world.jointEvents };
@@ -332,7 +332,7 @@ public static class WorldAPI
         return worldContext.fcn(id, worldContext.userContext);
     }
     ///<summary> Overlap test for all shapes that ref *potentially overlap the provided AABB</summary>
-    public static TreeStats World_OverlapAABB(WorldID worldId, AABB aabb, QueryFilter filter, OverlapResultFcn fcn, object context, ParticleQueryCallback callback = null)
+    public static TreeStats OverlapAABB(WorldID worldId, AABB aabb, QueryFilter filter, OverlapResultFcn fcn, object context, ParticleQueryCallback callback = null)
     {
         TreeStats treeStats = new();
         World world = worldId.index1; //Debug.Assert(!world.locked); if (world.locked) return treeStats;
@@ -383,7 +383,7 @@ public static class WorldAPI
         return worldContext.fcn(id, worldContext.userContext);
     }
     ///<summary> Overlap test for all shapes that overlap the provided shape proxy.</summary>
-    public static TreeStats World_OverlapShape(WorldID worldId, ShapeProxy proxy, QueryFilter filter, OverlapResultFcn fcn, object context)
+    public static TreeStats OverlapShape(WorldID worldId, ShapeProxy proxy, QueryFilter filter, OverlapResultFcn fcn, object context)
     {
         TreeStats treeStats = new();
         World world = worldId.index1; Debug.Assert(!world.locked); if (world.locked) return treeStats;
@@ -435,7 +435,7 @@ public static class WorldAPI
     /// <param name="fcn">A user implemented callback function</param>
     /// <param name="context">A user context that is passed along to the callback function</param>
     ///	<returns>traversal performance counters</returns>
-    public static TreeStats World_CastRay(WorldID worldId, Vector2 origin, Vector2 translation, QueryFilter filter,
+    public static TreeStats CastRay(WorldID worldId, Vector2 origin, Vector2 translation, QueryFilter filter,
                                         ref CastResultFcn fcn, object context, ParticleRayCastCallback callback = null)
     {
         TreeStats treeStats = new();
@@ -471,8 +471,8 @@ public static class WorldAPI
         return fraction;
     }
     ///<summary>Cast a ray into the world to collect the closest hit. This is a convenience function. Ignores initial overlap.
-    /// This is less general than World_CastRay() and does not allow for custom filtering.</summary>
-    public static RayResult World_CastRayClosest(WorldID worldId, Vector2 origin, Vector2 translation, QueryFilter filter)
+    /// This is less general than CastRay() and does not allow for custom filtering.</summary>
+    public static RayResult CastRayClosest(WorldID worldId, Vector2 origin, Vector2 translation, QueryFilter filter)
     {
         RayResult result = new();
         World world = worldId.index1; Debug.Assert(!world.locked); if (world.locked) return result;
@@ -511,8 +511,8 @@ public static class WorldAPI
         return input.maxFraction;
     }
     ///<summary>Cast a shape through the world. Similar to a cast ray except that a shape is cast instead of a point.
-    ///	@see World_CastRay</summary>
-    public static TreeStats World_CastShape(WorldID worldId, ref ShapeProxy proxy, Vector2 translation, QueryFilter filter,
+    ///	@see CastRay</summary>
+    public static TreeStats CastShape(WorldID worldId, ref ShapeProxy proxy, Vector2 translation, QueryFilter filter,
                                           ref CastResultFcn fcn, object context)
     {
         TreeStats treeStats = new();
@@ -561,7 +561,7 @@ public static class WorldAPI
     }
     ///<summary>Cast a capsule mover through the world. This is a special shape cast that handles sliding along other shapes while reducing
     /// clipping.</summary>
-    public static float World_CastMover(WorldID worldId, ref Capsule mover, Vector2 translation, QueryFilter filter)
+    public static float CastMover(WorldID worldId, ref Capsule mover, Vector2 translation, QueryFilter filter)
     {
         Debug.Assert(translation.IsValid());
         Debug.Assert(mover.radius > 2 * Box2D.LinearSlop);
@@ -610,7 +610,7 @@ public static class WorldAPI
     }
     ///<summary>Collide a capsule mover with the world, gathering collision planes that can be fed to SolvePlanes. Useful for
     /// kinematic character movement.</summary>
-    public static void World_CollideMover(WorldID worldId, ref Capsule mover, QueryFilter filter, PlaneResultFcn fcn,
+    public static void CollideMover(WorldID worldId, ref Capsule mover, QueryFilter filter, PlaneResultFcn fcn,
                                   object context)
     {
         World world = worldId.index1; Debug.Assert(!world.locked); if (world.locked) return;
@@ -624,7 +624,7 @@ public static class WorldAPI
     ///<summary>Enable/disable sleep. If your application does not need sleeping, you can gain some performance
     /// by disabling sleep completely at the world level.
     /// @see WorldDef</summary>
-    public static void World_EnableSleeping(WorldID worldId, bool flag)
+    public static void EnableSleeping(WorldID worldId, bool flag)
     {
         World world = worldId.index1; Debug.Assert(!world.locked); if (world.locked) return;
         if (flag == world.enableSleep) return;
@@ -641,60 +641,60 @@ public static class WorldAPI
     }
 
     ///<summary> Is body sleeping enabled?</summary>
-    public static bool World_IsSleepingEnabled(WorldID worldId) => worldId.index1.enableSleep;
+    public static bool IsSleepingEnabled(WorldID worldId) => worldId.index1.enableSleep;
 
     ///<summary>Enable/disable continuous collision between dynamic and static bodies. Generally you should keep continuous
     /// collision enabled to prevent fast moving objects from going through static objects. The performance gain from
     /// disabling continuous collision is minor.
     /// @see WorldDef</summary>
-    public static void World_EnableContinuous(WorldID worldId, bool flag)
+    public static void EnableContinuous(WorldID worldId, bool flag)
     {
         World world = worldId.index1; Debug.Assert(!world.locked); if (world.locked) return;
         world.enableContinuous = flag;
     }
 
     ///<summary> Is continuous collision enabled?</summary>
-    public static bool World_IsContinuousEnabled(WorldID worldId) => worldId.index1.enableContinuous;
+    public static bool IsContinuousEnabled(WorldID worldId) => worldId.index1.enableContinuous;
 
     ///<summary>Adjust the restitution threshold. It is recommended not to make this value very small
     /// because it will prevent bodies from sleeping. Usually in meters per second.
     /// @see WorldDef</summary>
-    public static void World_SetRestitutionThreshold(WorldID worldId, float value)
+    public static void SetRestitutionThreshold(WorldID worldId, float value)
     {
         World world = worldId.index1; Debug.Assert(!world.locked); if (world.locked) return;
         world.restitutionThreshold = Math.Clamp(value, 0, float.MaxValue);
     }
 
     ///<summary> Get the the restitution speed threshold. Usually in meters per second.</summary>
-    public static float World_GetRestitutionThreshold(WorldID worldId) => worldId.index1.restitutionThreshold;
+    public static float GetRestitutionThreshold(WorldID worldId) => worldId.index1.restitutionThreshold;
 
     ///<summary>Adjust the hit event threshold. This controls the collision speed needed to generate a ContactHitEvent.
     /// Usually in meters per second.
     /// @see WorldDef::hitEventThreshold</summary>
-    public static void World_SetHitEventThreshold(WorldID worldId, float value)
+    public static void SetHitEventThreshold(WorldID worldId, float value)
     {
         World world = worldId.index1; Debug.Assert(!world.locked); if (world.locked) return;
         world.hitEventThreshold = Math.Clamp(value, 0, float.MaxValue);
     }
 
     ///<summary> Get the the hit event speed threshold. Usually in meters per second.</summary>
-    public static float World_GetHitEventThreshold(WorldID worldId) => worldId.index1.hitEventThreshold;
+    public static float GetHitEventThreshold(WorldID worldId) => worldId.index1.hitEventThreshold;
 
     ///<summary> Register the custom filter callback. This is optional.</summary>
-    public static void World_SetCustomFilterCallback(WorldID worldId, ref CustomFilterFcn fcn, object context)
+    public static void SetCustomFilterCallback(WorldID worldId, ref CustomFilterFcn fcn, object context)
     { worldId.index1.customFilterFcn = fcn; worldId.index1.customFilterContext = context; }
 
     ///<summary> Register the pre-solve callback. This is optional.</summary>
-    public static void World_SetPreSolveCallback(WorldID worldId, ref PreSolveFcn fcn, object context)
+    public static void SetPreSolveCallback(WorldID worldId, ref PreSolveFcn fcn, object context)
     { worldId.index1.preSolveFcn = fcn; worldId.index1.preSolveContext = context; }
 
     ///<summary>Set the gravity vector for the entire world. Box2D has no concept of an up direction and this
     /// is left as a decision for the application. Usually in m/s^2.
     /// @see WorldDef</summary>
-    public static void World_SetGravity(WorldID worldId, Vector2 gravity) => worldId.index1.gravity = gravity;
+    public static void SetGravity(WorldID worldId, Vector2 gravity) => worldId.index1.gravity = gravity;
 
     ///<summary> Get the gravity vector</summary>
-    public static Vector2 World_GetGravity(WorldID worldId) => worldId.index1.gravity;
+    public static Vector2 GetGravity(WorldID worldId) => worldId.index1.gravity;
 
     public class ExplosionContext
     {
@@ -751,7 +751,7 @@ public static class WorldAPI
     /// <summary>Apply a radial explosion</summary>
     /// <param name="worldID">The world id</param>
     /// <param name="explosionDef">The explosion definition</param>
-    public static void World_Explode(WorldID worldId, ref ExplosionDef explosionDef)
+    public static void Explode(WorldID worldId, ref ExplosionDef explosionDef)
     {
         Debug.Assert(explosionDef.position.IsValid());
         Debug.Assert(float.IsFinite(explosionDef.radius) && explosionDef.radius >= 0);
@@ -773,7 +773,7 @@ public static class WorldAPI
     /// <param name="dampingRatio">The contact bounciness with 1 being critical damping (non-dimensional)</param>
     /// <param name="pushSpeed">The maximum contact constraint push out speed (meters per second)</param>
     /// <remarks>Advanced feature</remarks>
-    public static void World_SetContactTuning(WorldID worldId, float hertz, float dampingRatio, float pushSpeed)
+    public static void SetContactTuning(WorldID worldId, float hertz, float dampingRatio, float pushSpeed)
     {
         World world = worldId.index1; Debug.Assert(!world.locked); if (world.locked) return;
         world.contactHertz = Math.Clamp(hertz, 0, float.MaxValue);
@@ -782,7 +782,7 @@ public static class WorldAPI
     }
 
     ///<summary> Set the maximum linear speed. Usually in m/s.</summary>
-    public static void World_SetMaximumLinearSpeed(WorldID worldId, float maximumLinearSpeed)
+    public static void SetMaximumLinearSpeed(WorldID worldId, float maximumLinearSpeed)
     {
         Debug.Assert(float.IsFinite(maximumLinearSpeed) && maximumLinearSpeed > 0);
         World world = worldId.index1; Debug.Assert(!world.locked); if (world.locked) return;
@@ -790,27 +790,27 @@ public static class WorldAPI
     }
 
     ///<summary> Get the maximum linear speed. Usually in m/s.</summary>
-    public static float World_GetMaximumLinearSpeed(WorldID worldId) => worldId.index1.maxLinearSpeed;
+    public static float GetMaximumLinearSpeed(WorldID worldId) => worldId.index1.maxLinearSpeed;
 
     ///<summary>Enable/disable constraint warm starting. Advanced feature for testing. Disabling
     /// warm starting greatly reduces stability and provides no performance gain.</summary>
-    public static void World_EnableWarmStarting(WorldID worldId, bool flag)
+    public static void EnableWarmStarting(WorldID worldId, bool flag)
     {
         World world = worldId.index1; Debug.Assert(!world.locked); if (world.locked) return;
         world.enableWarmStarting = flag;
     }
 
     ///<summary> Is constraint warm starting enabled?</summary>
-    public static bool World_IsWarmStartingEnabled(WorldID worldId) => worldId.index1.enableWarmStarting;
+    public static bool IsWarmStartingEnabled(WorldID worldId) => worldId.index1.enableWarmStarting;
 
     ///<summary> Get the number of awake bodies.</summary>
-    public static int World_GetAwakeBodyCount(WorldID worldId) => worldId.index1.solverSets[(int)SetType.Awake].bodySims.Count;
+    public static int GetAwakeBodyCount(WorldID worldId) => worldId.index1.solverSets[(int)SetType.Awake].bodySims.Count;
 
     ///<summary> Get the current world performance profile</summary>
-    public static Profile World_GetProfile(WorldID worldId) => worldId.index1.profile;
+    public static Profile GetProfile(WorldID worldId) => worldId.index1.profile;
 
     ///<summary> Get world counters and sizes</summary>
-    public static Counters World_GetCounters(WorldID worldId)
+    public static Counters GetCounters(WorldID worldId)
     {
         World world = worldId.index1;
         Counters s = new()
@@ -830,20 +830,20 @@ public static class WorldAPI
     }
 
     ///<summary> Set the user data pointer.</summary>
-    public static void World_SetUserData(WorldID worldId, object userData) => worldId.index1.userData = userData;
+    public static void SetUserData(WorldID worldId, object userData) => worldId.index1.userData = userData;
 
     ///<summary> Get the user data pointer.</summary>
-    public static object World_GetUserData(WorldID worldId) => worldId.index1.userData;
+    public static object GetUserData(WorldID worldId) => worldId.index1.userData;
 
     ///<summary> Set the friction callback. Passing NULL resets to default.</summary>
-    public static void World_SetFrictionCallback(WorldID worldId, ref FrictionCallback callback)
+    public static void SetFrictionCallback(WorldID worldId, ref FrictionCallback callback)
     {
         World world = worldId.index1; Debug.Assert(!world.locked); if (world.locked) return;
         world.frictionCallback = callback ?? world.frictionCallback;
     }
 
     ///<summary> Set the restitution callback. Passing NULL resets to default.</summary>
-    public static void World_SetRestitutionCallback(WorldID worldId, ref RestitutionCallback callback)
+    public static void SetRestitutionCallback(WorldID worldId, ref RestitutionCallback callback)
     {
         World world = worldId.index1; Debug.Assert(!world.locked); if (world.locked) return;
         world.restitutionCallback = callback ?? world.restitutionCallback;
@@ -851,7 +851,7 @@ public static class WorldAPI
 
     ///<summary> Dump memory stats to box2d_memory.txt</summary>
     ///<remarks>Probably inaccurate in .NET (many object sizes are estimated)</remarks>
-    public static unsafe void World_DumpMemoryStats(WorldID worldId)
+    public static unsafe void DumpMemoryStats(WorldID worldId)
     {
         System.IO.FileStream f = System.IO.File.OpenWrite("box2d_memory.txt");
         if (f == null) return;
@@ -927,12 +927,12 @@ public static class WorldAPI
     }
 
     ///<summary> This is for internal testing</summary>
-    public static void World_RebuildStaticTree(WorldID worldId)
+    public static void RebuildStaticTree(WorldID worldId)
     {
         World world = worldId.index1; Debug.Assert(!world.locked); if (world.locked) return;
         world.broadPhase.trees[(int)SetType.Static].Rebuild(true);
     }
 
     ///<summary> This is for internal testing</summary>
-    public static void World_EnableSpeculative(WorldID worldId, bool flag) => worldId.index1.enableSpeculative = flag;
+    public static void EnableSpeculative(WorldID worldId, bool flag) => worldId.index1.enableSpeculative = flag;
 }

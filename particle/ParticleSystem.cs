@@ -194,7 +194,7 @@ public class ParticleSystem
             }
         };
         AABB aabb = shape.ComputeAABB(xf);
-        WorldAPI.World_OverlapAABB(new WorldID { generation = World.generation, index1 = World }, aabb, new QueryFilter(), null, null, callback);
+        WorldAPI.OverlapAABB(new WorldID { generation = World.generation, index1 = World }, aabb, new QueryFilter(), null, null, callback);
         return destroyed;
     }
     public ParticleGroup CreateParticleGroup(ParticleGroupDef groupDef)
@@ -1485,7 +1485,7 @@ public class ParticleSystem
                 }
             }
         };
-        WorldAPI.World_OverlapAABB(new() { generation = World.generation, index1 = World }, ComputeAABB(), new(),
+        WorldAPI.OverlapAABB(new() { generation = World.generation, index1 = World }, ComputeAABB(), new(),
             (shape, _) => callback.ReportFixture(shape.world0, shape.world0.GetShape(shape)), null, callback);
         BodyContactBuffer.RemoveRange(bcb, BodyContactBuffer.Count - bcb);
         StuckParticleBuffer.RemoveRange(spb, StuckParticleBuffer.Count - spb);
@@ -1620,7 +1620,7 @@ public class ParticleSystem
                 }
             }
         };
-        WorldAPI.World_OverlapAABB(new() { generation = World.generation, index1 = World }, aabb, new(), (s, _) => callback.ReportFixture(s.world0, s.world0.GetShape(s)), null, callback);
+        WorldAPI.OverlapAABB(new() { generation = World.generation, index1 = World }, aabb, new(), (s, _) => callback.ReportFixture(s.world0, s.world0.GetShape(s)), null, callback);
     }
     unsafe void LimitVelocity(float dt, float inv_dt)
     {

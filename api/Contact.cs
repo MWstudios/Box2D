@@ -5,7 +5,7 @@ namespace Box2D.API;
 public static class ContactAPI
 {
     ///<summary> Contact identifier validation. Provides validation for up to 2^32 allocations.</summary>
-    public static bool Contact_IsValid(ContactID id)
+    public static bool IsValid(ContactID id)
     {
         World world = id.world0;
         if (world == null) return false;
@@ -17,7 +17,7 @@ public static class ContactAPI
     }
 
     ///<summary> Get the data for a contact. The manifold may have no points if the contact is not touching.</summary>
-    public static ContactData Contact_GetData(ContactID contactId)
+    public static ContactData GetData(ContactID contactId)
     {
         World world = contactId.world0;
         Contact contact = world.GetContactFullId(contactId);

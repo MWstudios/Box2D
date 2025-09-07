@@ -16,7 +16,7 @@ public static class JointAPI
     }
 
     ///<summary> Joint identifier validation. Provides validation for up to 64K allocations.</summary>
-    public static bool Joint_IsValid(JointID id)
+    public static bool IsValid(JointID id)
     {
         World world = id.world0;
         if (world == null) return false;
@@ -29,31 +29,31 @@ public static class JointAPI
     }
 
     ///<summary> Get the joint type</summary>
-    public static JointType Joint_GetType(JointID jointId) => jointId.world0.GetJointFullID(jointId).type;
+    public static JointType GetType(JointID jointId) => jointId.world0.GetJointFullID(jointId).type;
 
     ///<summary> Get body A id on a joint</summary>
-    public static BodyID Joint_GetBodyA(JointID jointId) => jointId.world0.MakeBodyID(jointId.world0.GetJointFullID(jointId).edge0.bodyId);
+    public static BodyID GetBodyA(JointID jointId) => jointId.world0.MakeBodyID(jointId.world0.GetJointFullID(jointId).edge0.bodyId);
 
     ///<summary> Get body B id on a joint</summary>
-    public static BodyID Joint_GetBodyB(JointID jointId) => jointId.world0.MakeBodyID(jointId.world0.GetJointFullID(jointId).edge1.bodyId);
+    public static BodyID GetBodyB(JointID jointId) => jointId.world0.MakeBodyID(jointId.world0.GetJointFullID(jointId).edge1.bodyId);
 
     ///<summary> Get the world that owns this joint</summary>
-    public static WorldID Joint_GetWorld(JointID jointId) => new() { index1 = jointId.world0, generation = jointId.world0.generation };
+    public static WorldID GetWorld(JointID jointId) => new() { index1 = jointId.world0, generation = jointId.world0.generation };
 
     ///<summary> Set the local frame on bodyA</summary>
-    public static void Joint_SetLocalFrameA(JointID jointId, Transform localFrame) => jointId.world0.GetJointSim(jointId.world0.GetJointFullID(jointId)).localFrameA = localFrame;
+    public static void SetLocalFrameA(JointID jointId, Transform localFrame) => jointId.world0.GetJointSim(jointId.world0.GetJointFullID(jointId)).localFrameA = localFrame;
 
     ///<summary> Get the local frame on bodyA</summary>
-    public static Transform Joint_GetLocalFrameA(JointID jointId) => jointId.world0.GetJointSim(jointId.world0.GetJointFullID(jointId)).localFrameA;
+    public static Transform GetLocalFrameA(JointID jointId) => jointId.world0.GetJointSim(jointId.world0.GetJointFullID(jointId)).localFrameA;
 
     ///<summary> Set the local frame on bodyB</summary>
-    public static void Joint_SetLocalFrameB(JointID jointId, Transform localFrame) => jointId.world0.GetJointSim(jointId.world0.GetJointFullID(jointId)).localFrameB = localFrame;
+    public static void SetLocalFrameB(JointID jointId, Transform localFrame) => jointId.world0.GetJointSim(jointId.world0.GetJointFullID(jointId)).localFrameB = localFrame;
 
     ///<summary> Get the local frame on bodyB</summary>
-    public static Transform Joint_GetLocalFrameB(JointID jointId) => jointId.world0.GetJointSim(jointId.world0.GetJointFullID(jointId)).localFrameB;
+    public static Transform GetLocalFrameB(JointID jointId) => jointId.world0.GetJointSim(jointId.world0.GetJointFullID(jointId)).localFrameB;
 
     ///<summary> Toggle collision between connected bodies</summary>
-    public static void Joint_SetCollideConnected(JointID jointId, bool shouldCollide)
+    public static void SetCollideConnected(JointID jointId, bool shouldCollide)
     {
         World world = World.GetWorldLocked(jointId.world0);
         if (world == null) return;
@@ -76,16 +76,16 @@ public static class JointAPI
     }
 
     ///<summary> Is collision allowed between connected bodies?</summary>
-    public static bool Joint_GetCollideConnected(JointID jointId) => jointId.world0.GetJointFullID(jointId).collideConnected;
+    public static bool GetCollideConnected(JointID jointId) => jointId.world0.GetJointFullID(jointId).collideConnected;
 
     ///<summary> Set the user data on a joint</summary>
-    public static void Joint_SetUserData(JointID jointId, object userData) => jointId.world0.GetJointFullID(jointId).userData = userData;
+    public static void SetUserData(JointID jointId, object userData) => jointId.world0.GetJointFullID(jointId).userData = userData;
 
     ///<summary> Get the user data on a joint</summary>
-    public static object Joint_GetUserData(JointID jointId) => jointId.world0.GetJointFullID(jointId).userData;
+    public static object GetUserData(JointID jointId) => jointId.world0.GetJointFullID(jointId).userData;
 
     ///<summary> Wake the bodies connect to this joint</summary>
-    public static void Joint_WakeBodies(JointID jointId)
+    public static void WakeBodies(JointID jointId)
     {
         World world = World.GetWorldLocked(jointId.world0);
         if (world == null) return;
@@ -95,13 +95,13 @@ public static class JointAPI
     }
 
     ///<summary> Get the current constraint force for this joint. Usually in Newtons.</summary>
-    public static Vector2 Joint_GetConstraintForce(JointID jointId) => jointId.world0.GetJointConstraintForce(jointId.world0.GetJointFullID(jointId));
+    public static Vector2 GetConstraintForce(JointID jointId) => jointId.world0.GetJointConstraintForce(jointId.world0.GetJointFullID(jointId));
 
     ///<summary> Get the current constraint torque for this joint. Usually in Newton * meters.</summary>
-    public static float Joint_GetConstraintTorque(JointID jointId) => jointId.world0.GetJointConstraintTorque(jointId.world0.GetJointFullID(jointId));
+    public static float GetConstraintTorque(JointID jointId) => jointId.world0.GetJointConstraintTorque(jointId.world0.GetJointFullID(jointId));
 
     ///<summary> Get the current linear separation error for this joint. Does not consider admissible movement. Usually in meters.</summary>
-    public static float Joint_GetLinearSeparation(JointID jointId)
+    public static float GetLinearSeparation(JointID jointId)
     {
         World world = jointId.world0;
         Joint joint = world.GetJointFullID(jointId);
@@ -113,7 +113,7 @@ public static class JointAPI
     }
 
     ///<summary> Get the current angular separation error for this joint. Does not consider admissible movement. Usually in meters.</summary>
-    public static float Joint_GetAngularSeparation(JointID jointId)
+    public static float GetAngularSeparation(JointID jointId)
     {
         World world = jointId.world0;
         Joint joint = world.GetJointFullID(jointId);
@@ -127,7 +127,7 @@ public static class JointAPI
     /// <param name="jointID">the joint</param>
     /// <param name="hertz">the stiffness in Hertz (cycles per second)</param>
     /// <param name="dampingRatio">the non-dimensional damping ratio (one for critical damping)</param>
-    public static void Joint_SetConstraintTuning(JointID jointId, float hertz, float dampingRatio)
+    public static void SetConstraintTuning(JointID jointId, float hertz, float dampingRatio)
     {
         Debug.Assert(float.IsFinite(hertz) && hertz >= 0);
         Debug.Assert(float.IsFinite(dampingRatio) && dampingRatio >= 0);
@@ -137,7 +137,7 @@ public static class JointAPI
     }
 
     ///<summary> Get the joint constraint tuning. Advanced feature.</summary>
-    public static void Joint_GetConstraintTuning(JointID jointId, out float hertz, out float dampingRatio)
+    public static void GetConstraintTuning(JointID jointId, out float hertz, out float dampingRatio)
     {
         JointSim base_ = jointId.world0.GetJointSim(jointId.world0.GetJointFullID(jointId));
         hertz = base_.constraintHertz;
@@ -145,25 +145,25 @@ public static class JointAPI
     }
 
     ///<summary> Set the force threshold for joint events (Newtons)</summary>
-    public static void Joint_SetForceThreshold(JointID jointId, float threshold)
+    public static void SetForceThreshold(JointID jointId, float threshold)
     {
         Debug.Assert(float.IsFinite(threshold) && threshold >= 0);
         jointId.world0.GetJointSim(jointId.world0.GetJointFullID(jointId)).forceThreshold = threshold;
     }
 
     ///<summary> Get the force threshold for joint events (Newtons)</summary>
-    public static float Joint_GetForceThreshold(JointID jointId) =>
+    public static float GetForceThreshold(JointID jointId) =>
         jointId.world0.GetJointSim(jointId.world0.GetJointFullID(jointId)).forceThreshold;
 
     ///<summary> Set the torque threshold for joint events (N-m)</summary>
-    public static void Joint_SetTorqueThreshold(JointID jointId, float threshold)
+    public static void SetTorqueThreshold(JointID jointId, float threshold)
     {
         Debug.Assert(float.IsFinite(threshold) && threshold >= 0);
         jointId.world0.GetJointSim(jointId.world0.GetJointFullID(jointId)).torqueThreshold = threshold;
     }
 
     ///<summary> Get the torque threshold for joint events (N-m)</summary>
-    public static float Joint_GetTorqueThreshold(JointID jointId) =>
+    public static float GetTorqueThreshold(JointID jointId) =>
         jointId.world0.GetJointSim(jointId.world0.GetJointFullID(jointId)).torqueThreshold;
     static JointSim GetJointSimCheckType(JointID jointId, JointType type)
     {

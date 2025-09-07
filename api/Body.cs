@@ -163,7 +163,7 @@ public unsafe static class BodyAPI
 
     ///<summary> Body identifier validation. Can be used to detect orphaned ids. Provides validation for up to 64K allocations.
     ///This can be used to detect orphaned ids. Provides validation for up to 64K allocations.</summary>
-    public static bool Body_IsValid(BodyID id)
+    public static bool IsValid(BodyID id)
     {
         World world = id.world0;
         if (world == null) return false;
@@ -176,11 +176,11 @@ public unsafe static class BodyAPI
     }
 
     ///<summary> Get the body type: static, kinematic, or dynamic</summary>
-    public static BodyType Body_GetType(BodyID bodyId) => bodyId.world0.GetBodyFullID(bodyId).type;
+    public static BodyType GetType(BodyID bodyId) => bodyId.world0.GetBodyFullID(bodyId).type;
 
     ///<summary>Change the body type. This is an expensive operation. This automatically updates the mass
     /// properties regardless of the automatic mass setting.</summary>
-    public static void Body_SetType(BodyID bodyId, BodyType type)
+    public static void SetType(BodyID bodyId, BodyType type)
     {
         World world = bodyId.world0; Body body = world.GetBodyFullID(bodyId);
         BodyType originalType = body.type;
@@ -265,34 +265,34 @@ public unsafe static class BodyAPI
     }
 
     ///<summary> Set the body name. Up to 31 characters excluding 0 termination.</summary>
-    public static void Body_SetName(BodyID bodyId, string name) => bodyId.world0.GetBodyFullID(bodyId).name = name;
+    public static void SetName(BodyID bodyId, string name) => bodyId.world0.GetBodyFullID(bodyId).name = name;
 
     ///<summary> Get the body name.</summary>
-    public static string Body_GetName(BodyID bodyId) => bodyId.world0.GetBodyFullID(bodyId).name;
+    public static string GetName(BodyID bodyId) => bodyId.world0.GetBodyFullID(bodyId).name;
 
     ///<summary> Set the user data for a body</summary>
-    public static void Body_SetUserData(BodyID bodyId, object userData) => bodyId.world0.GetBodyFullID(bodyId).userData = userData;
+    public static void SetUserData(BodyID bodyId, object userData) => bodyId.world0.GetBodyFullID(bodyId).userData = userData;
 
     ///<summary> Get the user data stored in a body</summary>
-    public static object Body_GetUserData(BodyID bodyId) => bodyId.world0.GetBodyFullID(bodyId).userData;
+    public static object GetUserData(BodyID bodyId) => bodyId.world0.GetBodyFullID(bodyId).userData;
 
     ///<summary> Get the world position of a body. This is the location of the body origin.</summary>
-    public static Vector2 Body_GetPosition(BodyID bodyId) => bodyId.world0.GetBodyTransformQuick(bodyId.world0.GetBodyFullID(bodyId)).p;
+    public static Vector2 GetPosition(BodyID bodyId) => bodyId.world0.GetBodyTransformQuick(bodyId.world0.GetBodyFullID(bodyId)).p;
 
     ///<summary> Get the world rotation of a body as a cosine/sine pair (complex number)</summary>
-    public static Rotation Body_GetRotation(BodyID bodyId) => bodyId.world0.GetBodyTransformQuick(bodyId.world0.GetBodyFullID(bodyId)).q;
+    public static Rotation GetRotation(BodyID bodyId) => bodyId.world0.GetBodyTransformQuick(bodyId.world0.GetBodyFullID(bodyId)).q;
 
     ///<summary> Get the world transform of a body.</summary>
-    public static Transform Body_GetTransform(BodyID bodyId) => bodyId.world0.GetBodyTransformQuick(bodyId.world0.GetBodyFullID(bodyId));
+    public static Transform GetTransform(BodyID bodyId) => bodyId.world0.GetBodyTransformQuick(bodyId.world0.GetBodyFullID(bodyId));
 
     /// <summary>Set the world transform of a body. This acts as a teleport and is fairly expensive.
     /// @see BodyDef::position and BodyDef::rotation</summary>
     /// <remarks>Generally you should create a body with then intended transform.</remarks>
-    public static void Body_SetTransform(BodyID bodyId, Vector2 position, Rotation rotation)
+    public static void SetTransform(BodyID bodyId, Vector2 position, Rotation rotation)
     {
         Debug.Assert(position.IsValid());
         Debug.Assert(rotation.IsValid());
-        Debug.Assert(Body_IsValid(bodyId));
+        Debug.Assert(IsValid(bodyId));
         World world = bodyId.world0; Debug.Assert(!world.locked);
         Body body = world.GetBodyFullID(bodyId);
         BodySim bodySim = world.GetBodySim(body);
@@ -324,37 +324,37 @@ public unsafe static class BodyAPI
     }
 
     ///<summary> Get a local point on a body given a world point</summary>
-    public static Vector2 Body_GetLocalPoint(BodyID bodyId, Vector2 worldPoint) =>
+    public static Vector2 GetLocalPoint(BodyID bodyId, Vector2 worldPoint) =>
         bodyId.world0.GetBodyTransformQuick(bodyId.world0.GetBodyFullID(bodyId)).InvTransformPoint(worldPoint);
 
     ///<summary> Get a world point on a body given a local point</summary>
-    public static Vector2 Body_GetWorldPoint(BodyID bodyId, Vector2 localPoint) =>
+    public static Vector2 GetWorldPoint(BodyID bodyId, Vector2 localPoint) =>
         bodyId.world0.GetBodyTransformQuick(bodyId.world0.GetBodyFullID(bodyId)).TransformPoint(localPoint);
 
     ///<summary> Get a local vector on a body given a world vector</summary>
-    public static Vector2 Body_GetLocalVector(BodyID bodyId, Vector2 worldVector) =>
+    public static Vector2 GetLocalVector(BodyID bodyId, Vector2 worldVector) =>
         bodyId.world0.GetBodyTransformQuick(bodyId.world0.GetBodyFullID(bodyId)).q.InvRotateVector(worldVector);
 
     ///<summary> Get a world vector on a body given a local vector</summary>
-    public static Vector2 Body_GetWorldVector(BodyID bodyId, Vector2 localVector) =>
+    public static Vector2 GetWorldVector(BodyID bodyId, Vector2 localVector) =>
         bodyId.world0.GetBodyTransformQuick(bodyId.world0.GetBodyFullID(bodyId)).q * localVector;
 
     ///<summary> Get the linear velocity of a body's center of mass. Usually in meters per second.</summary>
-    public static Vector2 Body_GetLinearVelocity(BodyID bodyId)
+    public static Vector2 GetLinearVelocity(BodyID bodyId)
     {
         BodyState* state = bodyId.world0.GetBodyState(bodyId.world0.GetBodyFullID(bodyId));
         return state != null ? state->linearVelocity : Vector2.Zero;
     }
 
     ///<summary> Get the angular velocity of a body in radians per second</summary>
-    public static float Body_GetAngularVelocity(BodyID bodyId)
+    public static float GetAngularVelocity(BodyID bodyId)
     {
         BodyState* state = bodyId.world0.GetBodyState(bodyId.world0.GetBodyFullID(bodyId));
         return state != null ? state->angularVelocity : 0;
     }
 
     ///<summary> Set the linear velocity of a body. Usually in meters per second.</summary>
-    public static void Body_SetLinearVelocity(BodyID bodyId, Vector2 linearVelocity)
+    public static void SetLinearVelocity(BodyID bodyId, Vector2 linearVelocity)
     {
         World world = bodyId.world0; Body body = world.GetBodyFullID(bodyId);
         if (body.type == BodyType.Static) return;
@@ -364,7 +364,7 @@ public unsafe static class BodyAPI
     }
 
     ///<summary> Set the angular velocity of a body in radians per second</summary>
-    public static void Body_SetAngularVelocity(BodyID bodyId, float angularVelocity)
+    public static void SetAngularVelocity(BodyID bodyId, float angularVelocity)
     {
         World world = bodyId.world0; Body body = world.GetBodyFullID(bodyId);
         if (body.type == BodyType.Static) return;
@@ -377,7 +377,7 @@ public unsafe static class BodyAPI
     /// The result will be close but maybe not exact. This is meant for kinematic bodies.
     /// The target is not applied if the velocity would be below the sleep threshold.
     /// This will automatically wake the body if asleep.</summary>
-    public static void Body_SetTargetTransform(BodyID bodyId, Transform target, float timeStep)
+    public static void SetTargetTransform(BodyID bodyId, Transform target, float timeStep)
     {
         World world = bodyId.world0; Body body = world.GetBodyFullID(bodyId);
         if (body.setIndex == (int)SetType.Disabled) return;
@@ -404,7 +404,7 @@ public unsafe static class BodyAPI
     }
 
     ///<summary> Get the linear velocity of a local point attached to a body. Usually in meters per second.</summary>
-    public static Vector2 Body_GetLocalPointVelocity(BodyID bodyId, Vector2 localPoint)
+    public static Vector2 GetLocalPointVelocity(BodyID bodyId, Vector2 localPoint)
     {
         World world = bodyId.world0; Body body = world.GetBodyFullID(bodyId);
         BodyState* state = world.GetBodyState(body);
@@ -416,7 +416,7 @@ public unsafe static class BodyAPI
     }
 
     ///<summary> Get the linear velocity of a world point attached to a body. Usually in meters per second.</summary>
-    public static Vector2 Body_GetWorldPointVelocity(BodyID bodyId, Vector2 worldPoint)
+    public static Vector2 GetWorldPointVelocity(BodyID bodyId, Vector2 worldPoint)
     {
         World world = bodyId.world0; Body body = world.GetBodyFullID(bodyId);
         BodyState* state = world.GetBodyState(body);
@@ -434,7 +434,7 @@ public unsafe static class BodyAPI
     /// <param name="force">The world force vector, usually in newtons (N)</param>
     /// <param name="point">The world position of the point of application</param>
     /// <param name="wake">Option to wake up the body</param>
-    public static void Body_ApplyForce(BodyID bodyId, Vector2 force, Vector2 point, bool wake)
+    public static void ApplyForce(BodyID bodyId, Vector2 force, Vector2 point, bool wake)
     {
         World world = bodyId.world0; Body body = world.GetBodyFullID(bodyId);
         if (body.type != BodyType.Dynamic || body.setIndex == (int)SetType.Disabled) return;
@@ -452,7 +452,7 @@ public unsafe static class BodyAPI
     /// <param name="bodyID">The body id</param>
     /// <param name="force">the world force vector, usually in newtons (N).</param>
     /// <param name="wake">also wake up the body</param>
-    public static void Body_ApplyForceToCenter(BodyID bodyId, Vector2 force, bool wake)
+    public static void ApplyForceToCenter(BodyID bodyId, Vector2 force, bool wake)
     {
         World world = bodyId.world0; Body body = world.GetBodyFullID(bodyId);
         if (body.type != BodyType.Dynamic || body.setIndex == (int)SetType.Disabled) return;
@@ -469,7 +469,7 @@ public unsafe static class BodyAPI
     /// <param name="bodyID">The body id</param>
     /// <param name="torque">about the z-axis (out of the screen), usually in ref Nm.</param>
     /// <param name="wake">also wake up the body</param>
-    public static void Body_ApplyTorque(BodyID bodyId, float torque, bool wake)
+    public static void ApplyTorque(BodyID bodyId, float torque, bool wake)
     {
         World world = bodyId.world0; Body body = world.GetBodyFullID(bodyId);
         if (body.type != BodyType.Dynamic || body.setIndex == (int)SetType.Disabled) return;
@@ -491,7 +491,7 @@ public unsafe static class BodyAPI
     /// <param name="wake">also wake up the body</param>
     /// <remarks>This should be used for one-shot impulses. If you need a steady force,
     /// use a force instead, which will work better with the sub-stepping solver.</remarks>
-    public static void Body_ApplyLinearImpulse(BodyID bodyId, Vector2 impulse, Vector2 point, bool wake)
+    public static void ApplyLinearImpulse(BodyID bodyId, Vector2 impulse, Vector2 point, bool wake)
     {
         World world = bodyId.world0; Body body = world.GetBodyFullID(bodyId);
         if (body.type != BodyType.Dynamic || body.setIndex == (int)SetType.Disabled) return;
@@ -515,7 +515,7 @@ public unsafe static class BodyAPI
     /// <param name="wake">also wake up the body</param>
     /// <remarks>This should be used for one-shot impulses. If you need a steady force,
     /// use a force instead, which will work better with the sub-stepping solver.</remarks>
-    public static void Body_ApplyLinearImpulseToCenter(BodyID bodyId, Vector2 impulse, bool wake)
+    public static void ApplyLinearImpulseToCenter(BodyID bodyId, Vector2 impulse, bool wake)
     {
         World world = bodyId.world0; Body body = world.GetBodyFullID(bodyId);
         if (body.type != BodyType.Dynamic || body.setIndex == (int)SetType.Disabled) return;
@@ -538,9 +538,9 @@ public unsafe static class BodyAPI
     /// <param name="wake">also wake up the body</param>
     /// <remarks>This should be used for one-shot impulses. If you need a steady torque,
     /// use a torque instead, which will work better with the sub-stepping solver.</remarks>
-    public static void Body_ApplyAngularImpulse(BodyID bodyId, float impulse, bool wake)
+    public static void ApplyAngularImpulse(BodyID bodyId, float impulse, bool wake)
     {
-        Debug.Assert(Body_IsValid(bodyId));
+        Debug.Assert(IsValid(bodyId));
         World world = bodyId.world0; Body body = world.GetBodyFullID(bodyId);
         if (body.type != BodyType.Dynamic || body.setIndex == (int)SetType.Disabled) return;
         if (wake && body.setIndex >= (int)SetType.FirstSleeping) world.WakeBody(body);
@@ -555,21 +555,21 @@ public unsafe static class BodyAPI
     }
 
     ///<summary> Get the mass of the body, usually in kilograms</summary>
-    public static float Body_GetMass(BodyID bodyId) => bodyId.world0.GetBodyFullID(bodyId).mass;
+    public static float GetMass(BodyID bodyId) => bodyId.world0.GetBodyFullID(bodyId).mass;
 
     ///<summary> Get the rotational inertia of the body, usually in ref kgm^2</summary>
-    public static float Body_GetRotationalInertia(BodyID bodyId) => bodyId.world0.GetBodyFullID(bodyId).inertia;
+    public static float GetRotationalInertia(BodyID bodyId) => bodyId.world0.GetBodyFullID(bodyId).inertia;
 
     ///<summary> Get the center of mass position of the body in local space</summary>
-    public static Vector2 Body_GetLocalCenterOfMass(BodyID bodyId) => bodyId.world0.GetBodySim(bodyId.world0.GetBodyFullID(bodyId)).localCenter;
+    public static Vector2 GetLocalCenterOfMass(BodyID bodyId) => bodyId.world0.GetBodySim(bodyId.world0.GetBodyFullID(bodyId)).localCenter;
 
     ///<summary> Get the center of mass position of the body in world space</summary>
-    public static Vector2 Body_GetWorldCenterOfMass(BodyID bodyId) => bodyId.world0.GetBodySim(bodyId.world0.GetBodyFullID(bodyId)).center;
+    public static Vector2 GetWorldCenterOfMass(BodyID bodyId) => bodyId.world0.GetBodySim(bodyId.world0.GetBodyFullID(bodyId)).center;
 
     ///<summary>Override the body's mass properties. Normally this is computed automatically using the
     /// shape geometry and density. This information is lost if a shape is added or removed or if the
     /// body type changes.</summary>
-    public static void Body_SetMassData(BodyID bodyId, MassData massData)
+    public static void SetMassData(BodyID bodyId, MassData massData)
     {
         Debug.Assert(float.IsFinite(massData.mass) && massData.mass >= 0);
         Debug.Assert(float.IsFinite(massData.rotationalInertia) && massData.rotationalInertia >= 0);
@@ -588,7 +588,7 @@ public unsafe static class BodyAPI
     }
 
     ///<summary> Get the mass data for a body</summary>
-    public static MassData Body_GetMassData(BodyID bodyId)
+    public static MassData GetMassData(BodyID bodyId)
     {
         Body body = bodyId.world0.GetBodyFullID(bodyId);
         BodySim bodySim = bodyId.world0.GetBodySim(body);
@@ -601,14 +601,14 @@ public unsafe static class BodyAPI
     /// You may also use this when automatic mass computation has been disabled.
     /// You should call this regardless of body type.
     /// Note that sensor shapes may have mass.</summary>
-    public static void Body_ApplyMassFromShapes(BodyID bodyId)
+    public static void ApplyMassFromShapes(BodyID bodyId)
     {
         World world = World.GetWorldLocked(bodyId.world0); if (world == null) return;
         world.UpdateBodyMassData(world.GetBodyFullID(bodyId));
     }
 
     ///<summary> Adjust the linear damping. Normally this is set in BodyDef before creation.</summary>
-    public static void Body_SetLinearDamping(BodyID bodyId, float linearDamping)
+    public static void SetLinearDamping(BodyID bodyId, float linearDamping)
     {
         Debug.Assert(float.IsFinite(linearDamping) && linearDamping >= 0);
         World world = World.GetWorldLocked(bodyId.world0); if (world == null) return;
@@ -616,10 +616,10 @@ public unsafe static class BodyAPI
     }
 
     ///<summary> Get the current linear damping.</summary>
-    public static float Body_GetLinearDamping(BodyID bodyId) => bodyId.world0.GetBodySim(bodyId.world0.GetBodyFullID(bodyId)).linearDamping;
+    public static float GetLinearDamping(BodyID bodyId) => bodyId.world0.GetBodySim(bodyId.world0.GetBodyFullID(bodyId)).linearDamping;
 
     ///<summary> Adjust the angular damping. Normally this is set in BodyDef before creation.</summary>
-    public static void Body_SetAngularDamping(BodyID bodyId, float angularDamping)
+    public static void SetAngularDamping(BodyID bodyId, float angularDamping)
     {
         Debug.Assert(float.IsFinite(angularDamping) && angularDamping >= 0);
         World world = World.GetWorldLocked(bodyId.world0); if (world == null) return;
@@ -627,32 +627,32 @@ public unsafe static class BodyAPI
     }
 
     ///<summary> Get the current angular damping.</summary>
-    public static float Body_GetAngularDamping(BodyID bodyId) => bodyId.world0.GetBodySim(bodyId.world0.GetBodyFullID(bodyId)).angularDamping;
+    public static float GetAngularDamping(BodyID bodyId) => bodyId.world0.GetBodySim(bodyId.world0.GetBodyFullID(bodyId)).angularDamping;
 
     ///<summary>Adjust the gravity scale. Normally this is set in BodyDef before creation.
     /// @see BodyDef::gravityScale</summary>
-    public static void Body_SetGravityScale(BodyID bodyId, float gravityScale)
+    public static void SetGravityScale(BodyID bodyId, float gravityScale)
     {
-        Debug.Assert(Body_IsValid(bodyId));
+        Debug.Assert(IsValid(bodyId));
         Debug.Assert(float.IsFinite(gravityScale));
         World world = World.GetWorldLocked(bodyId.world0); if (world == null) return;
         world.GetBodySim(world.GetBodyFullID(bodyId)).gravityScale = gravityScale;
     }
 
     ///<summary> Get the current gravity scale</summary>
-    public static float Body_GetGravityScale(BodyID bodyId)
+    public static float GetGravityScale(BodyID bodyId)
     {
-        Debug.Assert(Body_IsValid(bodyId));
+        Debug.Assert(IsValid(bodyId));
         return bodyId.world0.GetBodySim(bodyId.world0.GetBodyFullID(bodyId)).gravityScale;
     }
 
     ///<summary> <returns>true if this body is awake</returns></summary>
-    public static bool Body_IsAwake(BodyID bodyId) => bodyId.world0.GetBodyFullID(bodyId).setIndex == (int)SetType.Awake;
+    public static bool IsAwake(BodyID bodyId) => bodyId.world0.GetBodyFullID(bodyId).setIndex == (int)SetType.Awake;
 
     ///<summary>Wake a body from sleep. This wakes the entire island the body is touching.</summary>
     ///<remarks> Putting a body to sleep will put the entire island of bodies touching this body to sleep,
     /// which can be expensive and possibly unintuitive.</remarks>
-    public static void Body_SetAwake(BodyID bodyId, bool awake)
+    public static void SetAwake(BodyID bodyId, bool awake)
     {
         World world = World.GetWorldLocked(bodyId.world0); if (world == null) return;
         Body body = world.GetBodyFullID(bodyId);
@@ -666,7 +666,7 @@ public unsafe static class BodyAPI
     }
 
     ///<summary> Enable or disable sleeping for this body. If sleeping is disabled the body will wake.</summary>
-    public static void Body_EnableSleep(BodyID bodyId, bool enableSleep)
+    public static void EnableSleep(BodyID bodyId, bool enableSleep)
     {
         World world = World.GetWorldLocked(bodyId.world0); if (world == null) return;
         Body body = world.GetBodyFullID(bodyId);
@@ -675,19 +675,19 @@ public unsafe static class BodyAPI
     }
 
     ///<summary> Returns true if sleeping is enabled for this body</summary>
-    public static bool Body_IsSleepEnabled(BodyID bodyId) => bodyId.world0.GetBodyFullID(bodyId).enableSleep;
+    public static bool IsSleepEnabled(BodyID bodyId) => bodyId.world0.GetBodyFullID(bodyId).enableSleep;
 
     ///<summary> Set the sleep threshold, usually in meters per second</summary>
-    public static void Body_SetSleepThreshold(BodyID bodyId, float sleepThreshold) => bodyId.world0.GetBodyFullID(bodyId).sleepThreshold = sleepThreshold;
+    public static void SetSleepThreshold(BodyID bodyId, float sleepThreshold) => bodyId.world0.GetBodyFullID(bodyId).sleepThreshold = sleepThreshold;
 
     ///<summary> Get the sleep threshold, usually in meters per second.</summary>
-    public static float Body_GetSleepThreshold(BodyID bodyId) => bodyId.world0.GetBodyFullID(bodyId).sleepThreshold;
+    public static float GetSleepThreshold(BodyID bodyId) => bodyId.world0.GetBodyFullID(bodyId).sleepThreshold;
 
     ///<summary> Returns true if this body is enabled</summary>
-    public static bool Body_IsEnabled(BodyID bodyId) => bodyId.world0.GetBodyFullID(bodyId).setIndex != (int)SetType.Disabled;
+    public static bool IsEnabled(BodyID bodyId) => bodyId.world0.GetBodyFullID(bodyId).setIndex != (int)SetType.Disabled;
 
     ///<summary> Disable a body by removing it completely from the simulation. This is expensive.</summary>
-    public static void Body_Disable(BodyID bodyId)
+    public static void Disable(BodyID bodyId)
     {
         World world = World.GetWorldLocked(bodyId.world0); if (world == null) return;
         Body body = world.GetBodyFullID(bodyId);
@@ -720,7 +720,7 @@ public unsafe static class BodyAPI
     }
 
     ///<summary> Enable a body by adding it to the simulation. This is expensive.</summary>
-    public static void Body_Enable(BodyID bodyId)
+    public static void Enable(BodyID bodyId)
     {
         World world = World.GetWorldLocked(bodyId.world0); if (world == null) return;
         Body body = world.GetBodyFullID(bodyId);
@@ -762,7 +762,7 @@ public unsafe static class BodyAPI
     }
 
     ///<summary> Set the motion locks on this body.</summary>
-    public static void Body_SetMotionLocks(BodyID bodyId, MotionLocks locks)
+    public static void SetMotionLocks(BodyID bodyId, MotionLocks locks)
     {
         World world = World.GetWorldLocked(bodyId.world0); if (world == null) return;
         BodyFlags newFlags = (locks.linearX ? BodyFlags.LockLinearX : 0)
@@ -788,7 +788,7 @@ public unsafe static class BodyAPI
     }
 
     ///<summary> Get the motion locks for this body.</summary>
-    public static MotionLocks Body_GetMotionLocks(BodyID bodyId)
+    public static MotionLocks GetMotionLocks(BodyID bodyId)
     {
         Body body = bodyId.world0.GetBodyFullID(bodyId);
         return new()
@@ -801,7 +801,7 @@ public unsafe static class BodyAPI
 
     ///<summary>Set this body to be a bullet. A bullet does continuous collision detection
     /// against dynamic bodies (but not other bullets).</summary>
-    public static void Body_SetBullet(BodyID bodyId, bool flag)
+    public static void SetBullet(BodyID bodyId, bool flag)
     {
         World world = World.GetWorldLocked(bodyId.world0); if (world == null) return;
         BodySim bodySim = world.GetBodySim(world.GetBodyFullID(bodyId));
@@ -810,12 +810,12 @@ public unsafe static class BodyAPI
     }
 
     ///<summary> Is this body a bullet?</summary>
-    public static bool Body_IsBullet(BodyID bodyId) => bodyId.world0.GetBodySim(bodyId.world0.GetBodyFullID(bodyId)).flags.HasFlag(BodyFlags.IsBullet);
+    public static bool IsBullet(BodyID bodyId) => bodyId.world0.GetBodySim(bodyId.world0.GetBodyFullID(bodyId)).flags.HasFlag(BodyFlags.IsBullet);
 
     ///<summary>Enable/disable contact events on all shapes.
     /// @see ShapeDef::enableContactEvents</summary>
     ///<remarks> changing this at runtime may cause mismatched begin/end touch events</remarks>
-    public static void Body_EnableContactEvents(BodyID bodyId, bool flag)
+    public static void EnableContactEvents(BodyID bodyId, bool flag)
     {
         World world = bodyId.world0; Body body = world.GetBodyFullID(bodyId);
         int shapeId = body.headShapeId;
@@ -829,7 +829,7 @@ public unsafe static class BodyAPI
 
     ///<summary>Enable/disable hit events on all shapes
     /// @see ShapeDef::enableHitEvents</summary>
-    public static void Body_EnableHitEvents(BodyID bodyId, bool flag)
+    public static void EnableHitEvents(BodyID bodyId, bool flag)
     {
         World world = bodyId.world0; Body body = world.GetBodyFullID(bodyId);
         int shapeId = body.headShapeId;
@@ -842,14 +842,14 @@ public unsafe static class BodyAPI
     }
 
     ///<summary> Get the world that owns this body</summary>
-    public static WorldID Body_GetWorld(BodyID bodyId) => new() { index1 = bodyId.world0, generation = bodyId.world0.generation };
+    public static WorldID GetWorld(BodyID bodyId) => new() { index1 = bodyId.world0, generation = bodyId.world0.generation };
 
     ///<summary> Get the number of shapes on this body</summary>
-    public static int Body_GetShapeCount(BodyID bodyId) => bodyId.world0.GetBodyFullID(bodyId).shapeCount;
+    public static int GetShapeCount(BodyID bodyId) => bodyId.world0.GetBodyFullID(bodyId).shapeCount;
 
     ///<summary>Get the shape ids for all shapes on this body, up to the provided capacity.</summary>
     ///<returns> the number of shape ids stored in the user array</returns>
-    public static int Body_GetShapes(BodyID bodyId, ShapeID[] shapeArray)
+    public static int GetShapes(BodyID bodyId, ShapeID[] shapeArray)
     {
         World world = bodyId.world0; Body body = world.GetBodyFullID(bodyId);
         int shapeId = body.headShapeId, shapeCount = 0;
@@ -863,11 +863,11 @@ public unsafe static class BodyAPI
     }
 
     ///<summary> Get the number of joints on this body</summary>
-    public static int Body_GetJointCount(BodyID bodyId) => bodyId.world0.GetBodyFullID(bodyId).jointCount;
+    public static int GetJointCount(BodyID bodyId) => bodyId.world0.GetBodyFullID(bodyId).jointCount;
         
     ///<summary>Get the joint ids for all joints on this body, up to the provided capacity</summary>
     ///<returns>the number of joint ids stored in the user array</returns>
-    public static int Body_GetJoints(BodyID bodyId, JointID[] jointArray)
+    public static int GetJoints(BodyID bodyId, JointID[] jointArray)
     {
         World world = bodyId.world0; Body body = world.GetBodyFullID(bodyId);
         int jointKey = body.headJointKey, jointCount = 0;
@@ -883,7 +883,7 @@ public unsafe static class BodyAPI
     }
 
     ///<summary> Get the maximum capacity required for retrieving all the touching contacts on a body</summary>
-    public static int Body_GetContactCapacity(BodyID bodyId)
+    public static int GetContactCapacity(BodyID bodyId)
     {
         World world = World.GetWorldLocked(bodyId.world0); if (world == null) return 0;
         return world.GetBodyFullID(bodyId).contactCount;
@@ -893,7 +893,7 @@ public unsafe static class BodyAPI
     /// <remarks>Box2D uses speculative collision so some contact points may be separated.</remarks>
     /// <returns>the number of elements filled in the provided array<br/>
     /// do not ignore the return value, it specifies the valid number of elements</returns>
-    public static int Body_GetContactData(BodyID bodyId, ContactData[] contactData)
+    public static int GetContactData(BodyID bodyId, ContactData[] contactData)
     {
         World world = World.GetWorldLocked(bodyId.world0); if (world == null) return 0;
         Body body = world.GetBodyFullID(bodyId);
@@ -924,7 +924,7 @@ public unsafe static class BodyAPI
 
     ///<summary>Get the current world AABB that contains all the attached shapes. Note that this may not encompass the body origin.
     /// If there are no shapes attached then the returned AABB is empty and centered on the body origin.</summary>
-    public static AABB Body_ComputeAABB(BodyID bodyId)
+    public static AABB ComputeAABB(BodyID bodyId)
     {
         World world = World.GetWorldLocked(bodyId.world0); if (world == null) return new();
         Body body = world.GetBodyFullID(bodyId);

@@ -134,10 +134,10 @@ public static class ChainAPI
     }
 
     ///<summary> Get the world that owns this chain shape</summary>
-    public static WorldID Chain_GetWorld(ChainID chainId) => new() { index1 = chainId.world0, generation = chainId.world0.generation };
+    public static WorldID GetWorld(ChainID chainId) => new() { index1 = chainId.world0, generation = chainId.world0.generation };
 
     ///<summary> Get the number of segments on this chain</summary>
-    public static int Chain_GetSegmentCount(ChainID chainId)
+    public static int GetSegmentCount(ChainID chainId)
     {
         World world = World.GetWorldLocked(chainId.world0); if (world == null) return 0;
         return world.GetChainShape(chainId).shapeIndices.Length;
@@ -145,7 +145,7 @@ public static class ChainAPI
 
     ///<summary>Fill a user array with chain segment shape ids up to the specified capacity. Returns
     /// the actual number of segments returned.</summary>
-    public static int Chain_GetSegments(ChainID chainId, ShapeID[] segmentArray, int capacity)
+    public static int GetSegments(ChainID chainId, ShapeID[] segmentArray, int capacity)
     {
         World world = World.GetWorldLocked(chainId.world0); if (world == null) return 0;
         ChainShape chain = world.GetChainShape(chainId);
@@ -160,11 +160,11 @@ public static class ChainAPI
     }
 
     /// <summary>Get the number of materials used on this chain. Must be 1 or the number of segments.</summary>
-    public static int Chain_GetSurfaceMaterialCount(ChainID chainId) => chainId.world0.GetChainShape(chainId).materialCount;
+    public static int GetSurfaceMaterialCount(ChainID chainId) => chainId.world0.GetChainShape(chainId).materialCount;
 
     /// <summary>Set a chain material. If the chain has only one material, this material is applied to all
     /// segments. Otherwise it is applied to a single segment. </summary>
-    public static void Chain_SetSurfaceMaterial(ChainID chainId, ref SurfaceMaterial material, int materialIndex)
+    public static void SetSurfaceMaterial(ChainID chainId, ref SurfaceMaterial material, int materialIndex)
     {
         World world = World.GetWorldLocked(chainId.world0); if (world == null) return;
         ChainShape chainShape = world.GetChainShape(chainId);
@@ -182,7 +182,7 @@ public static class ChainAPI
     }
 
     /// <summary>Get a chain material by index.</summary>
-    public static SurfaceMaterial Chain_GetSurfaceMaterial(ChainID chainId, int segmentIndex)
+    public static SurfaceMaterial GetSurfaceMaterial(ChainID chainId, int segmentIndex)
     {
         ChainShape chainShape = chainId.world0.GetChainShape(chainId);
         Debug.Assert(0 <= segmentIndex && segmentIndex < chainShape.shapeIndices.Length);
@@ -190,7 +190,7 @@ public static class ChainAPI
     }
 
     ///<summary> Chain identifier validation. Provides validation for up to 64K allocations.</summary>
-    public static bool Chain_IsValid(ChainID id)
+    public static bool IsValid(ChainID id)
     {
         World world = id.world0;
         if (world == null) return false;
