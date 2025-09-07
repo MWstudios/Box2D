@@ -1,0 +1,42 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <RootNamespace>Box2D</RootNamespace>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
+    <IsAotCompatible>True</IsAotCompatible>
+    <NoWarn>1701;1702;8600;8618;8625</NoWarn>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
+    <IsAotCompatible>True</IsAotCompatible>
+    <NoWarn>1701;1702;8600;8618;8625</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Remove="box2d-main\**" />
+    <Compile Remove="Test\**" />
+    <EmbeddedResource Remove="box2d-main\**" />
+    <EmbeddedResource Remove="Test\**" />
+    <None Remove="box2d-main\**" />
+    <None Remove="Test\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Remove="src\joints\MouseJoint.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Remove="particle\ParticleSystem.cs~RF23463026.TMP" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="HPCsharp" Version="3.17.0" />
+  </ItemGroup>
+
+</Project>
