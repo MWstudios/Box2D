@@ -11,6 +11,7 @@ A few changes have also been made:
 - Struct unions have been turned into polymorphic classes.
 - Normal C# arrays instead of arena allocations.
 - Some LiquidFun functions are now multithreaded or have new AVX counterparts. The SIMD functions from the original have been excluded (I was unable to transcribe them to C#).
+- Box2D itself is currently single-threaded (I have yet to translate enkiTS into C# tasks).
 - LiquidFun also uses [HPCSharp](https://github.com/DragonSpit/HPCSharp) to sort arrays.
 - All fields and methods in Box2D (except integrity checks) have been made public.
 - To not get lost in the chaos, the original Box2D API has been moved to the `Box2D.API` namespace and split into classes. LiquidFun got a new one, `ParticleAPI`.

@@ -17,6 +17,9 @@ public interface IShape
     public PlaneResult CollideMover(ref Capsule mover) => new();
     public ShapeProxy MakeProxy() => new();
     public bool TestPoint(Vector2 point) => false;
+    public unsafe void ApplyWindForce(float airDensity, Vector2 wind, float drag, float lift, ref Transform transform,
+        BodySim sim, Vector2 lever, Vector2 shapeVelocity, out Vector2 force, out float torque)
+    { force = Vector2.Zero; torque = 0; }
 }
 public class Shape
 {

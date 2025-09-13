@@ -8,31 +8,19 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
+  <PropertyGroup>
     <IsAotCompatible>True</IsAotCompatible>
     <NoWarn>1701;1702;8600;8618;8625</NoWarn>
+  </PropertyGroup>
+    
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
-    <IsAotCompatible>True</IsAotCompatible>
-    <NoWarn>1701;1702;8600;8618;8625</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
-    <Compile Remove="box2d-main\**" />
-    <Compile Remove="Test\**" />
-    <EmbeddedResource Remove="box2d-main\**" />
-    <EmbeddedResource Remove="Test\**" />
-    <None Remove="box2d-main\**" />
-    <None Remove="Test\**" />
-  </ItemGroup>
-
-  <ItemGroup>
     <Compile Remove="src\joints\MouseJoint.cs" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <None Remove="particle\ParticleSystem.cs~RF23463026.TMP" />
   </ItemGroup>
 
   <ItemGroup>

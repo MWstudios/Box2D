@@ -818,7 +818,7 @@ public class ContactSolverAVX : IContactSolverW
                     Vector256<float> dvy = Avx.Subtract(Avx.Add(bB.v.Y, Avx.Multiply(bB.w, rB.X)), Avx.Add(bA.v.Y, Avx.Multiply(bA.w, rA.X)));
                     Vector256<float> vn = Avx.Add(Avx.Multiply(dvx, c->normal.X), Avx.Multiply(dvy, c->normal.Y));
                     //different than 1, is this intended?
-                    Vector256<float> negImpulse = Avx.Add(Avx.Multiply(c->normalMass2, Avx.Multiply(pointMassScale, Avx.Add(vn, bias))), Avx.Multiply(pointImpulseScale, c->normalImpulse2));
+                    Vector256<float> negImpulse = Avx.Add(Avx.Multiply(c->normalMass2, Avx.Add(Avx.Multiply(pointMassScale, vn), bias)), Avx.Multiply(pointImpulseScale, c->normalImpulse2));
                     Vector256<float> newImpulse = Avx.Max(Avx.Subtract(c->normalImpulse2, negImpulse), Vector256<float>.Zero);
                     Vector256<float> impulse = Avx.Subtract(newImpulse, c->normalImpulse2);
                     c->normalImpulse2 = newImpulse;
@@ -1506,7 +1506,7 @@ public class ContactSolverNeon : IContactSolverW
                     Vector128<float> dvy = AdvSimd.Subtract(AdvSimd.Add(bB.v.Y, AdvSimd.Multiply(bB.w, rB.X)), AdvSimd.Add(bA.v.Y, AdvSimd.Multiply(bA.w, rA.X)));
                     Vector128<float> vn = AdvSimd.Add(AdvSimd.Multiply(dvx, c->normal.X), AdvSimd.Multiply(dvy, c->normal.Y));
                     //different than 1, is this intended?
-                    Vector128<float> negImpulse = AdvSimd.Add(AdvSimd.Multiply(c->normalMass2, AdvSimd.Multiply(pointMassScale, AdvSimd.Add(vn, bias))), AdvSimd.Multiply(pointImpulseScale, c->normalImpulse2));
+                    Vector128<float> negImpulse = AdvSimd.Add(AdvSimd.Multiply(c->normalMass2, AdvSimd.Add(AdvSimd.Multiply(pointMassScale, vn), bias)), AdvSimd.Multiply(pointImpulseScale, c->normalImpulse2));
                     Vector128<float> newImpulse = AdvSimd.Max(AdvSimd.Subtract(c->normalImpulse2, negImpulse), Vector128<float>.Zero);
                     Vector128<float> impulse = AdvSimd.Subtract(newImpulse, c->normalImpulse2);
                     c->normalImpulse2 = newImpulse;
@@ -2147,7 +2147,7 @@ public class ContactSolverSSE : IContactSolverW
                     Vector128<float> dvy = Sse.Subtract(Sse.Add(bB.v.Y, Sse.Multiply(bB.w, rB.X)), Sse.Add(bA.v.Y, Sse.Multiply(bA.w, rA.X)));
                     Vector128<float> vn = Sse.Add(Sse.Multiply(dvx, c->normal.X), Sse.Multiply(dvy, c->normal.Y));
                     //different than 1, is this intended?
-                    Vector128<float> negImpulse = Sse.Add(Sse.Multiply(c->normalMass2, Sse.Multiply(pointMassScale, Sse.Add(vn, bias))), Sse.Multiply(pointImpulseScale, c->normalImpulse2));
+                    Vector128<float> negImpulse = Sse.Add(Sse.Multiply(c->normalMass2, Sse.Add(Sse.Multiply(pointMassScale, vn), bias)), Sse.Multiply(pointImpulseScale, c->normalImpulse2));
                     Vector128<float> newImpulse = Sse.Max(Sse.Subtract(c->normalImpulse2, negImpulse), Vector128<float>.Zero);
                     Vector128<float> impulse = Sse.Subtract(newImpulse, c->normalImpulse2);
                     c->normalImpulse2 = newImpulse;
@@ -2829,7 +2829,7 @@ public class ContactSolverFloat : IContactSolverW
                     FloatW dvy = (bB.v.Y + bB.w * rB.X) - (bA.v.Y + bA.w * rA.X);
                     FloatW vn = dvx * c->normal.X + dvy * c->normal.Y;
                     //different than 1, is this intended?
-                    FloatW negImpulse = c->normalMass2 * (pointMassScale * (vn + bias)) + pointImpulseScale * c->normalImpulse2;
+                    FloatW negImpulse = c->normalMass2 * (pointMassScale * vn + bias) + pointImpulseScale * c->normalImpulse2;
                     FloatW newImpulse = MaxW(c->normalImpulse2 - negImpulse, FloatW.Zero);
                     FloatW impulse = newImpulse - c->normalImpulse2;
                     c->normalImpulse2 = newImpulse;

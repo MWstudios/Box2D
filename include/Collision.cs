@@ -169,6 +169,15 @@ public record Circle : IShape
     public ShapeProxy MakeProxy() => Distance.MakeProxy([center], radius);
     ///<summary>Test a point for overlap with a circle in local space</summary>
     public bool TestPoint(Vector2 point) => Vector2.DistanceSquared(point, center) <= radius * radius;
+    public unsafe void ApplyWindForce(float airDensity, Vector2 wind, float drag, float lift, ref Transform transform,
+        BodySim sim, Vector2 lever, Vector2 shapeVelocity, out Vector2 force, out float torque)
+    {
+        Vector2 relativeVelocity = Vector2.MulSub(wind, drag, shapeVelocity);
+        Vector2 direction = relativeVelocity.GetLengthAndNormalize(out float speed);
+        float projectedArea = 2 * radius;
+        force = 0.5f * airDensity * projectedArea * speed * speed * direction;
+        torque = Vector2.Cross(lever, force);
+    }
 }
 /// <summary>A solid capsule can be viewed as two semicircles connected
 /// by a rectangle.</summary>
@@ -340,6 +349,22 @@ public record Capsule : IShape
         float t = Math.Clamp(Vector2.Dot(point - p1, d) / dd, 0, 1);
         Vector2 c = Vector2.MulAdd(p1, t, d);
         return Vector2.DistanceSquared(point, c) <= rr;
+    }
+    public unsafe void ApplyWindForce(float airDensity, Vector2 wind, float drag, float lift, ref Transform transform,
+        BodySim sim, Vector2 lever, Vector2 shapeVelocity, out Vector2 force, out float torque)
+    {
+        Vector2 relativeVelocity = Vector2.MulSub(wind, drag, shapeVelocity);
+        Vector2 direction = relativeVelocity.GetLengthAndNormalize(out float speed);
+        Vector2 d = center2 - center1;
+        d = transform.q * d;
+        float projectedArea = 2 * radius + Math.Abs(Vector2.Cross(d, direction));
+        Vector2 normal = d.Normalize().LeftPerp();
+        normal = Vector2.Dot(normal, direction) > 0 ? -normal : normal;
+        Vector2 liftDirection = Vector2.CrossSV(Vector2.Cross(normal, direction), direction);
+        float forceMagnitude = 0.5f * airDensity * projectedArea * speed * speed;
+        force = forceMagnitude * Vector2.MulAdd(direction, lift, liftDirection);
+        Vector2 edgeLever = Vector2.MulAdd(lever, radius, normal);
+        torque = Vector2.Cross(edgeLever, force);
     }
 }
 /// <summary>A solid convex polygon. It is assumed that the interior of the polygon is to
@@ -579,6 +604,28 @@ public record Polygon : IShape
         SimplexCache cache = new();
         DistanceOutput output = input.ShapeDistance(ref cache, null);
         return output.distance <= radius;
+    }
+    public unsafe void ApplyWindForce(float airDensity, Vector2 wind, float drag, float lift, ref Transform transform,
+        BodySim sim, Vector2 lever, Vector2 shapeVelocity, out Vector2 force, out float torque)
+    {
+        Vector2 relativeVelocity = Vector2.MulSub(wind, drag, shapeVelocity);
+        Vector2 direction = relativeVelocity.GetLengthAndNormalize(out float speed);
+        Vector2 v1 = vertices[^1];
+        force = Vector2.Zero;
+        torque = 0;
+        for (int i = 0; i < vertices.Length; i++)
+        {
+            Vector2 v2 = vertices[i], d = v2 - v1, edgeCenter = Vector2.Lerp(v1, v2, 0.5f);
+            float projectedArea = Vector2.Cross(d, direction);
+            if (projectedArea <= 0) continue;
+            Vector2 normal = d.Normalize().RightPerp();
+            Vector2 liftDirection = Vector2.CrossSV(Vector2.Cross(normal, direction), direction);
+            float forceMagnitude = 0.5f * airDensity * projectedArea * speed * speed;
+            Vector2 f = forceMagnitude * Vector2.MulAdd(direction, lift, liftDirection);
+            Vector2 edgeLever = transform.q * (edgeCenter - sim.localCenter);
+            force += f;
+            torque += Vector2.Cross(edgeLever, f);
+        }
     }
 }
 /// <summary>A line segment with two-sided collision.</summary>

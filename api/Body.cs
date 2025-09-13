@@ -666,6 +666,24 @@ public unsafe static class BodyAPI
         }
     }
 
+    /// <summary>Wake bodies touching this body. Works for static bodies.</summary>
+    public static void WakeTouching(BodyID bodyId)
+    {
+        World world = World.GetWorldLocked(bodyId.world0); if (world == null) return;
+        Body body = world.GetBodyFullID(bodyId);
+        int contactKey = body.headContactKey;
+        while (contactKey != -1)
+        {
+            int contactId = contactKey >> 1;
+            int edgeIndex = contactKey & 1;
+            Contact contact = world.contacts[contactId];
+            Shape shapeA = world.shapes[contact.shapeIdA], shapeB = world.shapes[contact.shapeIdB];
+            if (shapeA.bodyId == bodyId.index1 - 1) world.WakeBody(world.bodies[shapeB.bodyId]);
+            else world.WakeBody(world.bodies[shapeA.bodyId]);
+            contactKey = edgeIndex == 1 ? contact.edge1.nextKey : contact.edge0.nextKey;
+        }
+    }
+
     ///<summary> Enable or disable sleeping for this body. If sleeping is disabled the body will wake.</summary>
     public static void EnableSleep(BodyID bodyId, bool enableSleep)
     {

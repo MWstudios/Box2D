@@ -451,4 +451,26 @@ public static class ShapeAPI
         SimplexCache cache = new();
         return input.ShapeDistance(ref cache, null).pointA;
     }
+
+    public static unsafe void ApplyWindForce(ShapeID shapeId, Vector2 wind, float drag, float lift, float airDensity = 1.225f, bool wake = true)
+    {
+        World world = World.GetWorldLocked(shapeId.world0); if (world == null) return;
+        Shape shape = world.GetShape(shapeId);
+        ShapeType shapeType = shape.type;
+        if (shapeType != ShapeType.Circle && shapeType != ShapeType.Segment && shapeType != ShapeType.Polygon) return;
+        Body body = world.bodies[shape.bodyId];
+        if (body.type != BodyType.Dynamic) return;
+        if (body.setIndex >= (int)SetType.FirstSleeping && !wake) return;
+        BodySim sim = world.GetBodySim(body);
+        if (body.setIndex != (int)SetType.Awake) world.WakeBody(body);
+        BodyState* state = world.GetBodyState(body);
+        Transform transform = sim.transform;
+        float volumeUnits = Box2D.LengthUnitsPerMeter * Box2D.LengthUnitsPerMeter * Box2D.LengthUnitsPerMeter;
+        airDensity /= volumeUnits;
+        Vector2 lever = transform.q * (shape.localCentroid - sim.localCenter);
+        Vector2 shapeVelocity = state->linearVelocity + Vector2.CrossSV(state->angularVelocity, lever);
+        shape.shape.ApplyWindForce(airDensity, wind, drag, lift, ref transform, sim, lever, shapeVelocity, out Vector2 force, out float torque);
+        sim.force += force;
+        sim.torque += torque;
+    }
 }

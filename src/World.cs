@@ -554,7 +554,6 @@ public partial class World
                         Body body = bodies[bodyId];
                         Debug.Assert(body.setIndex == setIndex);
                         Debug.Assert(body.localIndex == i);
-                        //Debug.Assert(body.generation == body.generation); // ???
                         if (body.type == BodyType.Dynamic) Debug.Assert(body.flags.HasFlag(BodyFlags.Dynamic));
                         if (setIndex == (int)SetType.Disabled) Debug.Assert(body.headContactKey == -1);
                         int prevShapeId = -1;

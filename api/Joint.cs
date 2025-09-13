@@ -6,13 +6,13 @@ namespace Box2D.API;
 public static class JointAPI
 {
     ///<summary> Destroy a joint</summary>
-    public static void DestroyJoint(JointID jointId)
+    public static void DestroyJoint(JointID jointId, bool wakeAttached)
     {
         World world = jointId.world0;
         Debug.Assert(!world.locked);
         if (world.locked) return;
         Joint joint = world.GetJointFullID(jointId);
-        world.DestroyJointInternal(joint, true);
+        world.DestroyJointInternal(joint, wakeAttached);
     }
 
     ///<summary> Joint identifier validation. Provides validation for up to 64K allocations.</summary>
