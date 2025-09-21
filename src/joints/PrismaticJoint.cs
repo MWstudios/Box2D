@@ -23,7 +23,6 @@ public unsafe record class PrismaticJoint : IJoint
     public Transform frameA;
     public Transform frameB;
     public Vector2 deltaCenter;
-    public float axialMass;
     public Softness springSoftness;
 
     public bool enableSpring;
@@ -107,13 +106,6 @@ public unsafe record class PrismaticJoint : IJoint
         frameB.q = bodySimB.transform.q * joint.localFrameB.q;
         frameB.p = bodySimB.transform.q * (joint.localFrameB.p - bodySimB.localCenter);
         deltaCenter = bodySimB.center - bodySimA.center;
-        Vector2 rA = frameA.p, rB = frameB.p;
-        Vector2 axisA = frameA.q * new Vector2(1, 0);
-        Vector2 d = deltaCenter + (rB - rA);
-        float a1 = Vector2.Cross(d + rA, axisA);
-        float a2 = Vector2.Cross(rB, axisA);
-        float k = mA + mB + iA * a1 * a1 + iB * a2 * a2;
-        axialMass = k > 0 ? 1 / k : 0;
         springSoftness = new(hertz, dampingRatio, context.h);
         if (!context.enableWarmStarting)
         {
@@ -133,11 +125,11 @@ public unsafe record class PrismaticJoint : IJoint
         Vector2 d = stateB->deltaPosition - stateA->deltaPosition + deltaCenter + (rB - rA);
         Vector2 axisA = frameA.q * new Vector2(1, 0);
         axisA = stateA->deltaRotation * axisA;
-        float a1 = Vector2.Cross(d + rA, axisA);
+        float a1 = Vector2.Cross(rA + d, axisA);
         float a2 = Vector2.Cross(rB, axisA);
         float axialImpulse = springImpulse + motorImpulse + lowerImpulse - upperImpulse;
         Vector2 perpA = axisA.LeftPerp();
-        float s1 = Vector2.Cross(d + rA, perpA);
+        float s1 = Vector2.Cross(rA + d, perpA);
         float s2 = Vector2.Cross(rB, perpA);
         float perpImpulse = impulse.x, angleImpulse = impulse.y;
         Vector2 P = axialImpulse * axisA + perpImpulse * perpA;
@@ -171,8 +163,10 @@ public unsafe record class PrismaticJoint : IJoint
         Vector2 axisA = frameA.q * new Vector2(1, 0);
         axisA = stateA->deltaRotation * axisA;
         float translation = Vector2.Dot(axisA, d);
-        float a1 = Vector2.Cross(d + rA, axisA);
+        float a1 = Vector2.Cross(rA + d, axisA);
         float a2 = Vector2.Cross(rB, axisA);
+        float k = mA + mB + iA * a1 * a1 + iB * a2 * a2;
+        float axialMass = k > 0 ? 1 / k : 0;
         if (enableSpring)
         {
             float C = translation - targetTranslation;
@@ -202,45 +196,54 @@ public unsafe record class PrismaticJoint : IJoint
         }
         if (enableLimit)
         {
+            float speculativeDistance = 0.25f * (upperTranslation - lowerTranslation);
             {
                 float C = translation - lowerTranslation;
-                float bias = 0, massScale = 1, impulseScale = 0;
-                if (C > 0) bias = C * context.inv_h;
-                else if (useBias)
+                if (C > speculativeDistance)
                 {
-                    bias = joint.constraintSoftness.biasRate * C;
-                    massScale = joint.constraintSoftness.massScale;
-                    impulseScale = joint.constraintSoftness.impulseScale;
+                    float bias = 0, massScale = 1, impulseScale = 0;
+                    if (C > 0) bias = Math.Min(C, Box2D.LengthUnitsPerMeter) * context.inv_h;
+                    else if (useBias)
+                    {
+                        bias = C * context.inv_h;
+                        massScale = joint.constraintSoftness.massScale;
+                        impulseScale = joint.constraintSoftness.impulseScale;
+                    }
+                    float oldImpulse = lowerImpulse;
+                    float Cdot = Vector2.Dot(axisA, vB - vA) + a2 * wB - a1 * wA;
+                    float deltaImpulse = -axialMass * massScale * (Cdot + bias) - impulseScale * oldImpulse;
+                    lowerImpulse = Math.Max(oldImpulse + deltaImpulse, 0);
+                    deltaImpulse = lowerImpulse - oldImpulse;
+                    Vector2 P = impulse * axisA;
+                    float LA = deltaImpulse * a1, LB = deltaImpulse * a2;
+                    vA = Vector2.MulSub(vA, mA, P); wA -= iA * LA;
+                    vB = Vector2.MulAdd(vB, mB, P); wB += iB * LB;
                 }
-                float oldImpulse = lowerImpulse;
-                float Cdot = Vector2.Dot(axisA, vB - vA) + a2 * wB - a1 * wA;
-                float impulse = -axialMass * massScale * (Cdot + bias) - impulseScale * oldImpulse;
-                lowerImpulse = Math.Max(oldImpulse + impulse, 0);
-                impulse = lowerImpulse - oldImpulse;
-                Vector2 P = impulse * axisA;
-                float LA = impulse * a1, LB = impulse * a2;
-                vA = Vector2.MulSub(vA, mA, P); wA -= iA * LA;
-                vB = Vector2.MulAdd(vB, mB, P); wB += iB * LB;
+                else lowerImpulse = 0;
             }
             {
                 float C = upperTranslation - translation;
-                float bias = 0, massScale = 1, impulseScale = 0;
-                if (C > 0) bias = C * context.inv_h;
-                else if (useBias)
+                if (C > speculativeDistance)
                 {
-                    bias = joint.constraintSoftness.biasRate * C;
-                    massScale = joint.constraintSoftness.massScale;
-                    impulseScale = joint.constraintSoftness.impulseScale;
+                    float bias = 0, massScale = 1, impulseScale = 0;
+                    if (C > 0) bias = Math.Min(C, Box2D.LengthUnitsPerMeter) * context.inv_h;
+                    else if (useBias)
+                    {
+                        bias = C * context.inv_h;
+                        massScale = joint.constraintSoftness.massScale;
+                        impulseScale = joint.constraintSoftness.impulseScale;
+                    }
+                    float oldImpulse = upperImpulse;
+                    float Cdot = Vector2.Dot(axisA, vA - vB) + a1 * wA - a2 * wB;
+                    float deltaImpulse = -axialMass * massScale * (Cdot + bias) - impulseScale * oldImpulse;
+                    upperImpulse = Math.Max(oldImpulse + deltaImpulse, 0);
+                    deltaImpulse = upperImpulse - oldImpulse;
+                    Vector2 P = impulse * axisA;
+                    float LA = deltaImpulse * a1, LB = deltaImpulse * a2;
+                    vA = Vector2.MulAdd(vA, mA, P); wA += iA * LA;
+                    vB = Vector2.MulSub(vB, mB, P); wB -= iB * LB;
                 }
-                float oldImpulse = upperImpulse;
-                float Cdot = Vector2.Dot(axisA, vA - vB) + a1 * wA - a2 * wB;
-                float impulse = -axialMass * massScale * (Cdot + bias) - impulseScale * oldImpulse;
-                upperImpulse = Math.Max(oldImpulse + impulse, 0);
-                impulse = upperImpulse - oldImpulse;
-                Vector2 P = impulse * axisA;
-                float LA = impulse * a1, LB = impulse * a2;
-                vA = Vector2.MulAdd(vA, mA, P); wA += iA * LA;
-                vB = Vector2.MulSub(vB, mB, P); wB -= iB * LB;
+                else upperImpulse = 0;
             }
         }
         {
@@ -263,13 +266,17 @@ public unsafe record class PrismaticJoint : IJoint
             if (k22 == 0) k22 = 1;
             Mat22 K = new(new(k11, k12), new(k12, k22));
             Vector2 b = K.Solve(Cdot + bias);
-            Vector2 impulse = -massScale * b - impulseScale * this.impulse;
-            this.impulse += impulse;
-            Vector2 P = impulse.x * perpA;
-            float LA = impulse.x * s1 + impulse.y, LB = impulse.x * s2 + impulse.y;
+            Vector2 deltaImpulse = -massScale * b - impulseScale * this.impulse;
+            this.impulse += deltaImpulse;
+            Vector2 P = deltaImpulse.x * perpA;
+            float LA = deltaImpulse.x * s1 + deltaImpulse.y, LB = deltaImpulse.x * s2 + deltaImpulse.y;
             vA = Vector2.MulSub(vA, mA, P); wA -= iA * LA;
             vB = Vector2.MulAdd(vB, mB, P); wB += iB * LB;
         }
+        Debug.Assert(vA.IsValid());
+        Debug.Assert(float.IsFinite(wA));
+        Debug.Assert(vB.IsValid());
+        Debug.Assert(float.IsFinite(wB));
         if (stateA->flags.HasFlag(BodyFlags.Dynamic))
         {
             stateA->linearVelocity = vA;
