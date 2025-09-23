@@ -940,6 +940,7 @@ public struct ManifoldPoint
     public ushort id;
     /// <summary>Did this contact point exist the previous step?</summary>
     public bool persisted;
+    public override string ToString() => $"point={point} A={anchorA} B={anchorB} separation={separation} normalImpulse={normalImpulse} tangentImpulse={tangentImpulse} totalNormalImpulse={totalNormalImpulse} normalVelocity={normalVelocity} id={id}";
 }
 /// <summary>A contact manifold describes the contact points between colliding shapes.
 /// Box2D uses speculative collision so some contact points may be separated.</summary>
@@ -953,6 +954,7 @@ public struct Manifold
     public ManifoldPoint point0, point1;
     /// <summary>The number of contacts points, will be 0, 1, or 2</summary>
     public int pointCount;
+    public override string ToString() => $"n={normal} rollingImpulse={rollingImpulse}{(pointCount > 0 ? $" {{{point0}}}" + (pointCount > 1 ? $" {{{point1}}}" : "") : "")}";
 }
 /// <summary>The dynamic tree structure. This should be considered private data.
 /// It is placed here for performance reasons.</summary>

@@ -4,7 +4,7 @@ using System.Diagnostics;
 namespace Box2D;
 /// <summary>2D vector<br/>
 /// This can be used to represent a point or free vector</summary>
-[DebuggerDisplay("({x}, {y})")] public struct Vector2
+public struct Vector2
 {
     public float x, y;
     public static readonly Vector2 Zero = new(0, 0);
@@ -78,20 +78,22 @@ namespace Box2D;
     public float LengthSquared() => x * x + y * y;
     /// <summary>Get the distance squared between points</summary>
     public static float DistanceSquared(Vector2 a, Vector2 b) { Vector2 c = b - a; return c.x * c.x + c.y * c.y; }
+    public override string ToString() => $"({x}, {y})";
 }
 /// <summary>Cosine and sine pair<br/>
 /// This uses a custom implementation designed for cross-platform determinism</summary>
-[DebuggerDisplay("(c={cosine}, s={sine})")] public struct CosSin
+public struct CosSin
 {
     public float cosine, sine;
     public CosSin(float cosine, float sine) { this.cosine = cosine; this.sine = sine; }
     /// <summary>Compute the cosine and sine of an angle in radians. Implemented
     /// for cross-platform determinism.</summary>
     public CosSin(float radians) => (sine, cosine) = MathF.SinCos(radians);
+    public override string ToString() => $"(c={cosine}, s={sine})";
 }
 /// <summary>2D rotation<br/>
 /// This is similar to using a complex number for rotation</summary>
-[DebuggerDisplay("(c={c}, s={s})")] public struct Rotation
+public struct Rotation
 {
     public float c = 1, s = 0;
     public static readonly Rotation Identity = new(1, 0);
@@ -164,9 +166,10 @@ namespace Box2D;
     public static Vector2 operator *(Rotation q, Vector2 v) => new(q.c * v.x - q.s * v.y, q.s * v.x + q.c * v.y);
     /// <summary>Inverse rotate a vector</summary>
     public Vector2 InvRotateVector(Vector2 v) => new(c * v.x + s * v.y, -s * v.x + c * v.y);
+    public override string ToString() => $"(c={c}, s={s})";
 }
 /// <summary>A 2D rigid transform</summary>
-[DebuggerDisplay("\\{{q}, {p}\\}")] public struct Transform
+public struct Transform
 {
     public Vector2 p; public Rotation q;
     public static readonly Transform Identity = new(new(0, 0), new(1, 0));
@@ -187,9 +190,10 @@ namespace Box2D;
     /// v2 = A.q' * (B.q * v1 + B.p - A.p)<br/>
     ///    = A.q' * B.q * v1 + A.q' * (B.p - A.p)</summary>
     public static Transform InvMulTransforms(Transform a, Transform b) => new(a.q.InvRotateVector(b.p - a.p), Rotation.InvMulRot(a.q, b.q));
+    public override string ToString() => $"{{{q}, {p}}}";
 }
 /// <summary>A 2-by-2 Matrix</summary>
-[DebuggerDisplay("\\{{cx}, {cy}\\}")] public struct Mat22
+public struct Mat22
 {
     public Vector2 cx, cy;
     public static readonly Mat22 Zero = new(new(0, 0), new(0, 0));
@@ -209,9 +213,10 @@ namespace Box2D;
         float det = cx.x * cy.y - cy.x * cx.y; if (det != 0) det = 1 / det;
         return new(det * (cy.y * b.x - cy.x * b.y), det * (cx.x * b.y - cx.y * b.x));
     }
+    public override string ToString() => $"{{{cx}, {cy}}}";
 }
 /// <summary>Axis-aligned bounding box</summary>
-[DebuggerDisplay("[{lowerBound}, {upperBound}]")] public struct AABB
+public struct AABB
 {
     public Vector2 lowerBound, upperBound;
     public AABB(Vector2 lowerBound, Vector2 upperBound) { this.lowerBound = lowerBound; this.upperBound = upperBound; }
@@ -288,9 +293,10 @@ namespace Box2D;
         if (upperBound.y < b.upperBound.y) { upperBound.y = b.upperBound.y; changed = true; }
         return changed;
     }
+    public override string ToString() => $"[{lowerBound}, {upperBound}]";
 }
 /// <summary>separation = dot(normal, point) - offset</summary>
-[DebuggerDisplay("\\{{normal}, {offset}\\}")] public struct Plane
+public struct Plane
 {
     public Vector2 normal; public float offset;
     public Plane(Vector2 normal, float offset) { this.normal = normal; this.offset = offset; }
@@ -298,6 +304,7 @@ namespace Box2D;
     public bool IsValid() => normal.IsValid() && normal.IsNormalized() && float.IsFinite(offset);
     /// <summary>Signed separation of a point from a plane</summary>
     public float PlaneSeparation(Vector2 point) => Vector2.Dot(normal, point) - offset;
+    public override string ToString() => $"{{{normal}, {offset}}}";
 }
 public static partial class Box2D
 {

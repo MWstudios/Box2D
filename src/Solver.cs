@@ -1193,7 +1193,7 @@ public unsafe partial class World
             if (userTreeTask != null)
             {
                 finishTaskFcn(userTreeTask, userTaskContext);
-                userTaskContext = null;
+                userTreeTask = null;
                 activeTaskCount--;
             }
             broadPhase.ValidateNoEnlarged();

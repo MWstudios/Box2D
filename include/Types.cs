@@ -1,5 +1,7 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Box2D;
@@ -60,6 +62,16 @@ public class DefaultTaskObject
         for (int i = 0; i < tasks.Count; i++) tasks[i].Wait();
     }
 }
+public class DefaultTaskContext
+{
+    public ConcurrentQueue<uint> taskIndices = new();
+    public SemaphoreSlim semaphore;
+    public DefaultTaskContext(int workerCount)
+    {
+        semaphore = new(workerCount);
+        for (uint i = 0; i < workerCount; i++) taskIndices.Enqueue(i);
+    }
+}
 /// <summary>World definition used to create a simulation world.
 /// Must be initialized using b2DefaultWorldDef().</summary>
 public struct WorldDef
@@ -103,17 +115,22 @@ public struct WorldDef
     /// <summary>Function to spawn tasks</summary>
     public EnqueueTaskCallback enqueueTask = (task, itemCount, minRange, taskContext, userContext) =>
     {
-        int threads = Math.Min(itemCount, Environment.ProcessorCount);
+        DefaultTaskContext context = (DefaultTaskContext)userContext;
         DefaultTaskObject t = new();
-        for (int i = 0; i < threads; i++)
+        for (int i = 0; i < itemCount;)
         {
-            int i2 = i;
-            t.tasks.Add(Task.Run(() => task(itemCount * i2 / threads, itemCount * (i2 + 1) / threads, (uint)i2, taskContext)));
+            int startIndex = i, endIndex = i + Math.Min(itemCount - i, minRange);
+            context.semaphore.Wait();
+            context.taskIndices.TryDequeue(out uint index);
+            t.tasks.Add(Task.Run(() => task(startIndex, endIndex, index, taskContext)));
+            context.taskIndices.Enqueue(index);
+            context.semaphore.Release();
+            i = endIndex;
         }
         return t;
     };
     /// <summary>Function to finish a task</summary>
-    public FinishTaskCallback finishTask = (userTask, userObject) => ((DefaultTaskObject)userTask).Await();
+    public FinishTaskCallback finishTask = (userTask, userContext) => ((DefaultTaskObject)userTask).Await();
     /// <summary>User context that is provided to enqueueTask and finishTask</summary>
     public object userTaskContext = null;
     /// <summary>User data</summary>

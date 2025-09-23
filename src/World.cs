@@ -204,7 +204,7 @@ public partial class World
             workerCount = Math.Min(def.WorkerCount, Box2D.MaxWorkers);
             enqueueTaskFcn = def.enqueueTask;
             finishTaskFcn = def.finishTask;
-            userTaskContext = def.userTaskContext;
+            userTaskContext = def.userTaskContext ?? new DefaultTaskContext(workerCount);
         }
         taskContexts = new(workerCount);
         sensorTaskContexts = new(workerCount);
@@ -344,6 +344,7 @@ public partial class World
             contactCount += graphColors[i].contactSims.Count;
         int nonTouchingCount = world.solverSets[(int)SetType.Awake].contactSims.Count;
         contactCount += nonTouchingCount;
+        if (contactCount == 0) return;
         ContactSim[] contactSims = new ContactSim[contactCount];
         int contactIndex = 0;
         for (int i = 0; i < Box2D.GraphColorCount; i++)
