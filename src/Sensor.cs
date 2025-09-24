@@ -81,7 +81,7 @@ public partial class World
         SensorTaskContext taskContext = world.sensorTaskContexts[(int)threadIndex];
         Debug.Assert(startIndex < endIndex);
         DynamicTree[] trees = world.broadPhase.trees;
-        for (int sensorIndex = 0; sensorIndex < endIndex; sensorIndex++)
+        for (int sensorIndex = startIndex; sensorIndex < endIndex; sensorIndex++)
         {
             Sensor sensor = world.sensors[sensorIndex];
             Shape sensorShape = world.shapes[sensor.shapeId];
