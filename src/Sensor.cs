@@ -200,7 +200,7 @@ public partial class World
                 }
                 while (index2 < count2)
                 {
-                    Visitor r2 = sensor.overlaps1[index1];
+                    Visitor r2 = sensor.overlaps2[index2];
                     ShapeID visitorId = new() { index1 = r2.shapeId + 1, world0 = this, generation = r2.generation };
                     sensorBeginEvents.Add(new() { sensorShapeId = sensorId, visitorShapeId = visitorId });
                     index2++;

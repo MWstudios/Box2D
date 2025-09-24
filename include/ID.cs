@@ -4,7 +4,7 @@
 public struct WorldID
 {
     public World index1; public uint padding; public uint generation;
-    public bool IsNull() => index1 != null || generation != 0;
+    public bool IsNull() => index1 == null;
     public static bool operator ==(WorldID left, WorldID right) { return left.index1 == right.index1 && left.generation == right.generation; }
     public static bool operator !=(WorldID left, WorldID right) { return left.index1 != right.index1 || left.generation != right.generation; }
 }
@@ -20,7 +20,7 @@ public struct BodyID
 public struct ShapeID
 {
     public int index1; public World world0; public uint generation;
-    public bool IsNull() => index1 != 0 || world0 != null || generation != 0;
+    public bool IsNull() => index1 == 0;
     public static bool operator ==(ShapeID left, ShapeID right) { return left.index1 == right.index1 && left.world0 == right.world0 && left.generation == right.generation; }
     public static bool operator !=(ShapeID left, ShapeID right) { return left.index1 != right.index1 || left.world0 != right.world0 || left.generation != right.generation; }
 }
@@ -28,7 +28,7 @@ public struct ShapeID
 public struct ChainID
 {
     public int index1; public World world0; public uint generation;
-    public bool IsNull() => index1 != 0 || world0 != null || generation != 0;
+    public bool IsNull() => index1 == 0;
     public static bool operator ==(ChainID left, ChainID right) { return left.index1 == right.index1 && left.world0 == right.world0 && left.generation == right.generation; }
     public static bool operator !=(ChainID left, ChainID right) { return left.index1 != right.index1 || left.world0 != right.world0 || left.generation != right.generation; }
 }
@@ -36,7 +36,7 @@ public struct ChainID
 public struct JointID
 {
     public int index1; public World world0; public uint generation;
-    public bool IsNull() => index1 != 0 || world0 != null || generation != 0;
+    public bool IsNull() => index1 == 0;
     public static bool operator ==(JointID left, JointID right) { return left.index1 == right.index1 && left.world0 == right.world0 && left.generation == right.generation; }
     public static bool operator !=(JointID left, JointID right) { return left.index1 != right.index1 || left.world0 != right.world0 || left.generation != right.generation; }
 }
@@ -44,7 +44,7 @@ public struct JointID
 public struct ContactID
 {
     public int index1; public World world0; public uint generation;
-    public bool IsNull() => index1 != 0 || world0 != null || generation != 0;
+    public bool IsNull() => index1 == 0;
     public static bool operator ==(ContactID left, ContactID right) { return left.index1 == right.index1 && left.world0 == right.world0 && left.generation == right.generation; }
     public static bool operator !=(ContactID left, ContactID right) { return left.index1 != right.index1 || left.world0 != right.world0 || left.generation != right.generation; }
 }
