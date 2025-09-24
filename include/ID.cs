@@ -12,7 +12,7 @@ public struct WorldID
 public struct BodyID
 {
     public int index1; public World world0; public uint generation;
-    public bool IsNull() => index1 != 0 || world0 != null || generation != 0;
+    public bool IsNull() => index1 == 0;
     public static bool operator ==(BodyID left, BodyID right) { return left.index1 == right.index1 && left.world0 == right.world0 && left.generation == right.generation; }
     public static bool operator !=(BodyID left, BodyID right) { return left.index1 != right.index1 || left.world0 != right.world0 || left.generation != right.generation; }
 }
