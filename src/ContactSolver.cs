@@ -328,7 +328,7 @@ public unsafe partial class StepContext
         for (int i = 0; i < contactCount; i++)
         {
             ref ContactConstraint constraint = ref constraints[i];
-            ContactSim contact = contacts[i];
+            ContactSim contact = color.contactSims[i];
             ref Manifold manifold = ref contact.manifold;
             int pointCount = manifold.pointCount;
             if (pointCount > 0)

@@ -119,6 +119,7 @@ public unsafe static class BodyAPI
             edgeKey = edgeIndex == 1 ? joint.edge1.nextKey : joint.edge0.nextKey;
             world.DestroyJointInternal(joint, true);
         }
+        world.DestroyBodyContacts(body, true);
         int shapeId = body.headShapeId;
         while (shapeId != -1)
         {
