@@ -74,6 +74,7 @@ public static class WorldAPI
             context.inv_h = 0;
         }
         world.inv_h = context.inv_h;
+        world.inv_dt = context.inv_dt;
         float contactHertz = Math.Min(world.contactHertz, 0.125f * context.inv_h);
         context.contactSoftness = new(contactHertz, world.contactDampingRatio, context.h);
         context.staticSoftness = new(2 * contactHertz, world.contactDampingRatio, context.h);
@@ -116,7 +117,7 @@ public static class WorldAPI
     {
         World world = worldId.index1; //Debug.Assert(!world.locked); if (world.locked) return;
         Debug.Assert(draw.drawingBounds.IsValid());
-        const float k_impulseScale = 1, k_axisScale = 0.3f;
+        const float k_axisScale = 0.3f;
         HexColor speculativeColor = HexColor.Gainsboro;
         HexColor addColor = HexColor.Green;
         HexColor persistColor = HexColor.Blue;
@@ -216,24 +217,26 @@ public static class WorldAPI
                                     Vector2 p2 = Vector2.MulAdd(p1, k_axisScale, normal);
                                     draw.DrawSegmentFcn(p1, p2, normalColor, draw.context);
                                 }
-                                else if (draw.drawContactImpulses)
+                                else if (draw.drawContactForces)
                                 {
+                                    float force = 0.5f * point.totalNormalImpulse * world.inv_dt;
                                     Vector2 p1 = point.point;
-                                    Vector2 p2 = Vector2.MulAdd(p1, k_impulseScale * point.totalNormalImpulse, normal);
+                                    Vector2 p2 = Vector2.MulAdd(p1, draw.forceScale * force, normal);
                                     draw.DrawSegmentFcn(p1, p2, impulseColor, draw.context);
-                                    draw.DrawStringFcn(p1, $"{1000 * point.totalNormalImpulse:F1}", HexColor.White, draw.context);
+                                    draw.DrawStringFcn(p1, $"{force:F1}", HexColor.White, draw.context);
                                 }
                                 if (draw.drawContactFeatures)
                                 {
                                     draw.DrawStringFcn(point.point, $"{point.id}", HexColor.Orange, draw.context);
                                 }
-                                if (draw.drawFrictionImpulses)
+                                if (draw.drawFrictionForces)
                                 {
+                                    float force = 0.5f * point.tangentImpulse * world.inv_h;
                                     Vector2 tangent = normal.RightPerp();
                                     Vector2 p1 = point.point;
-                                    Vector2 p2 = Vector2.MulAdd(p1, k_impulseScale * point.tangentImpulse, tangent);
+                                    Vector2 p2 = Vector2.MulAdd(p1, draw.forceScale * force, tangent);
                                     draw.DrawSegmentFcn(p1, p2, frictionColor, draw.context);
-                                    draw.DrawStringFcn(p1, $"{1000 * point.tangentImpulse:F1}", HexColor.White, draw.context);
+                                    draw.DrawStringFcn(p1, $"{force:F1}", HexColor.White, draw.context);
                                 }
                             }
                             world.debugContactSet.SetBit(contactId);
@@ -303,7 +306,8 @@ public static class WorldAPI
         return new()
         {
             beginEvents = world.contactBeginEvents,
-            endEvents = endEventArrayIndex == 1 ? world.contactEndEvents1 : world.contactEndEvents0
+            endEvents = endEventArrayIndex == 1 ? world.contactEndEvents1 : world.contactEndEvents0,
+            hitEvents = world.contactHitEvents
         };
     }
 

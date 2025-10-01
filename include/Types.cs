@@ -449,7 +449,7 @@ public struct JointDef
     /// <summary>Constraint damping ratio (advanced feature)</summary>
     public float constraintDampingRatio = 2;
     /// <summary>Debug draw scale</summary>
-    public float drawScale = 1;
+    public float drawScale = Box2D.LengthUnitsPerMeter;
     /// <summary>Set this flag to true if the attached bodies should collide</summary>
     public bool collideConnected = false;
     public JointDef() { }
@@ -1026,6 +1026,10 @@ public partial class DebugDraw
     public Action<Vector2, string, HexColor, object> DrawStringFcn;
     /// <summary>Bounds to use if restricting drawing to a rectangular region</summary>
     public AABB drawingBounds = new(new(-float.MaxValue, -float.MaxValue), new(float.MaxValue, float.MaxValue));
+    /// <summary>Scale to use when drawing forces</summary>
+    public float forceScale = 1;
+    /// <summary>Global scaling for joint drawing</summary>
+    public float jointScale;
     /// <summary>Option to draw shapes</summary>
     public bool drawShapes = true;
     /// <summary>Option to draw joints</summary>
@@ -1042,14 +1046,14 @@ public partial class DebugDraw
     public bool drawContacts;
     /// <summary>Option to visualize the graph coloring used for contacts and joints</summary>
     public bool drawGraphColors;
-    /// <summary>Option to draw contact normals</summary>
-    public bool drawContactNormals;
-    /// <summary>Option to draw contact normal impulses</summary>
-    public bool drawContactImpulses;
     /// <summary>Option to draw contact feature ids</summary>
     public bool drawContactFeatures;
-    /// <summary>Option to draw contact friction impulses</summary>
-    public bool drawFrictionImpulses;
+    /// <summary>Option to draw contact normals</summary>
+    public bool drawContactNormals;
+    /// <summary>Option to draw contact normal forces</summary>
+    public bool drawContactForces;
+    /// <summary>Option to draw contact friction forces</summary>
+    public bool drawFrictionForces;
     /// <summary>Option to draw islands as bounding boxes</summary>
     public bool drawIslands;
     /// <summary>User context that is passed as an argument to drawing callback functions</summary>

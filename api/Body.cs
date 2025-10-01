@@ -483,6 +483,17 @@ public unsafe static class BodyAPI
         }
     }
 
+    /// <summary>Clear the force and torque on this body. Forces and torques are automatically cleared after each world
+    /// step. So this only needs to be called if the application wants to remove the effect of previous
+    /// calls to apply forces and torques before the world step is called. </summary>
+    /// <param name="bodyId">The body id</param>
+    public static void ClearForces(BodyID bodyId)
+    {
+        BodySim bodySim = bodyId.world0.GetBodySim(bodyId.world0.GetBodyFullID(bodyId));
+        bodySim.force = Vector2.Zero;
+        bodySim.torque = 0;
+    }
+
     /// <summary>Apply an impulse at a point. This immediately modifies the velocity.
     /// It also modifies the angular velocity if the point of application
     /// is not at the center of mass. This optionally wakes the body.

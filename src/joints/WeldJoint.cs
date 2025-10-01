@@ -144,6 +144,10 @@ public unsafe record class WeldJoint : IJoint
             vB = Vector2.MulAdd(vB, mB, impulse);
             wB += iB * Vector2.Cross(rB, impulse);
         }
+        Debug.Assert(vA.IsValid());
+        Debug.Assert(float.IsFinite(wA));
+        Debug.Assert(vB.IsValid());
+        Debug.Assert(float.IsFinite(wB));
         if (stateA->flags.HasFlag(BodyFlags.Dynamic))
         {
             stateA->linearVelocity = vA;

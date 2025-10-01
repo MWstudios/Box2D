@@ -807,7 +807,7 @@ public unsafe partial class World
                     else if (colorContactCountSIMD > 0)
                     {
                         colorContactBlockSizes[c] = blocksPerWorker;
-                        colorContactBlockCounts[c] = ((colorContactCountSIMD - 1) >> 2) + 1;
+                        colorContactBlockCounts[c] = ((colorContactCountSIMD - 1) / blocksPerWorker) + 1;
                     }
                     else
                     {
@@ -823,7 +823,7 @@ public unsafe partial class World
                     else if (colorJointCount > 0)
                     {
                         colorJointBlockSizes[c] = blocksPerWorker;
-                        colorJointBlockCounts[c] = ((colorJointCount - 1) >> 2) + 1;
+                        colorJointBlockCounts[c] = ((colorJointCount - 1) / blocksPerWorker) + 1; //???
                     }
                     else
                     {
@@ -870,14 +870,14 @@ public unsafe partial class World
                 Debug.Assert(jointBase == awakeJointCount);
             }
             int contactBlockSize = blocksPerWorker;
-            int contactBlockCount = simdContactCount > 0 ? ((simdContactCount - 1) >> 2) + 1 : 0;
+            int contactBlockCount = simdContactCount > 0 ? ((simdContactCount - 1) / blocksPerWorker) + 1 : 0;
             if (simdContactCount > contactBlockSize * maxBlockCount)
             {
                 contactBlockSize = simdContactCount / maxBlockCount;
                 contactBlockCount = maxBlockCount;
             }
             int jointBlockSize = blocksPerWorker;
-            int jointBlockCount = awakeJointCount > 0 ? ((awakeJointCount - 1) >> 2) + 1 : 0;
+            int jointBlockCount = awakeJointCount > 0 ? ((awakeJointCount - 1) / blocksPerWorker) + 1 : 0;
             if (awakeJointCount > jointBlockSize * maxBlockCount)
             {
                 jointBlockSize = awakeJointCount / maxBlockCount;

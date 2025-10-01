@@ -160,6 +160,9 @@ public partial class World
     ///<summary> Remember type step used for reporting forces and torques</summary>
     public float inv_h;
 
+    /// <summary>inverse full-step</summary>
+    public float inv_dt;
+
     public int activeTaskCount = 0;
     public int taskCount = 0;
 

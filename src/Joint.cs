@@ -403,7 +403,7 @@ public partial class DebugDraw
         Transform transformB = world.GetBodyTransformQuick(bodyB);
         Vector2 pA = transformA.TransformPoint(jointSim.localFrameA.p);
         Vector2 pB = transformB.TransformPoint(jointSim.localFrameB.p);
-        jointSim.joint.Draw(this, jointSim, transformA, transformB, pA, pB, joint.drawScale, HexColor.DarkSeaGreen);
+        jointSim.joint.Draw(this, jointSim, transformA, transformB, pA, pB, Math.Max(0.0001f, jointScale * joint.drawScale), HexColor.DarkSeaGreen);
         if (drawGraphColors)
         {
             HexColor[] graphColors =

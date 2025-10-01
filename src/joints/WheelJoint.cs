@@ -297,8 +297,8 @@ public unsafe record class WheelJoint : IJoint
             Vector2 upper = Vector2.MulAdd(frameA.p, upperTranslation, axisA);
             Vector2 perp = axisA.LeftPerp();
             draw.DrawSegmentFcn(lower, upper, HexColor.Gray, draw.context);
-            draw.DrawSegmentFcn(Vector2.MulSub(lower, 0.1f, perp), Vector2.MulAdd(lower, 0.1f, perp), HexColor.Green, draw.context);
-            draw.DrawSegmentFcn(Vector2.MulSub(upper, 0.1f, perp), Vector2.MulAdd(upper, 0.1f, perp), HexColor.Red, draw.context);
+            draw.DrawSegmentFcn(Vector2.MulSub(lower, 0.1f * drawSize, perp), Vector2.MulAdd(lower, 0.1f * drawSize, perp), HexColor.Green, draw.context);
+            draw.DrawSegmentFcn(Vector2.MulSub(upper, 0.1f * drawSize, perp), Vector2.MulAdd(upper, 0.1f * drawSize, perp), HexColor.Red, draw.context);
         }
         else draw.DrawSegmentFcn(Vector2.MulSub(frameA.p, 1, axisA), Vector2.MulAdd(frameA.p, 1, axisA), HexColor.Gray, draw.context);
         draw.DrawPointFcn(frameA.p, 5, HexColor.Gray, draw.context);
