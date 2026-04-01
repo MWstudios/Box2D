@@ -1,6 +1,6 @@
 # Box2D 3 + LiquidFun in C#
 
-This is a near complete port of [Box2D 3](https://github.com/erincatto/box2d) (as of commit [cfa9ef1](https://github.com/erincatto/box2d/commit/cfa9ef1b76256f92ec3e26a1a20521e50dddac19))
+This is a near complete port of [Box2D 3](https://github.com/erincatto/box2d) (as of commit [c05c487](https://github.com/erincatto/box2d/commit/c05c48738fbe5c27625e36c5f0cfbdaddfc8359a))
 and [LiquidFun](https://github.com/google/liquidfun) into C#. Testing macros such as B2_VALIDATE, samples and other benchmarks are not included.
 
 **Note: Due to a missing SIMD assembly instruction in C#, the ARM64 version is incomplete and will throw exeptions.** Let me know if you have a C# replacement for `vtrnq_f32()`.
@@ -11,7 +11,6 @@ A few changes have also been made:
 - Struct unions have been turned into polymorphic classes.
 - Normal C# arrays instead of arena allocations.
 - Some LiquidFun functions are now multithreaded or have new AVX counterparts. The SIMD functions from the original have been excluded (I was unable to transcribe them to C#).
-- Box2D itself is currently single-threaded (I have yet to translate enkiTS into C# tasks).
 - LiquidFun also uses [HPCSharp](https://github.com/DragonSpit/HPCSharp) to sort arrays.
 - All fields and methods in Box2D (except integrity checks) have been made public.
 - To not get lost in the chaos, the original Box2D API has been moved to the `Box2D.API` namespace and split into classes. LiquidFun got a new one, `ParticleAPI`.
