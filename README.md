@@ -1,6 +1,6 @@
 # Box2D 3 + LiquidFun in C#
 
-This is a near complete port of [Box2D 3](https://github.com/erincatto/box2d) (as of commit [c05c487](https://github.com/erincatto/box2d/commit/c05c48738fbe5c27625e36c5f0cfbdaddfc8359a))
+This is a near complete port of [Box2D 3](https://github.com/erincatto/box2d) (as of commit [4996f6e](https://github.com/erincatto/box2d/commit/4996f6e22b59f8a9aa91fbbc7e8448926c5494d7))
 and [LiquidFun](https://github.com/google/liquidfun) into C#. Testing macros such as B2_VALIDATE, samples and other benchmarks are not included.
 
 **Note: Due to a missing SIMD assembly instruction in C#, the ARM64 version is incomplete and will throw exeptions.** Let me know if you have a C# replacement for `vtrnq_f32()`.
