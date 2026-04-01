@@ -135,6 +135,7 @@ public partial class World
     public float contactSpeed;
     public float contactHertz;
     public float contactDampingRatio;
+    public float contactRecycleDistance;
 
     public FrictionCallback frictionCallback = (frictionA, _, frictionB, _) => MathF.Sqrt(frictionA * frictionB);
     public RestitutionCallback restitutionCallback = (restitutionA, _, restitutionB, _) => Math.Max(restitutionA, restitutionB);
@@ -196,6 +197,7 @@ public partial class World
         contactSpeed = def.contactSpeed;
         contactHertz = def.contactHertz;
         contactDampingRatio = def.contactDampingRatio;
+        contactRecycleDistance = Box2D.ContactRecycleDistance;
         if (def.frictionCallback != null) frictionCallback = def.frictionCallback;
         if (def.restitutionCallback != null) restitutionCallback = def.restitutionCallback;
         enableSleep = def.enableSleep;
@@ -268,6 +270,8 @@ public partial class World
         List<Shape> shapes = world.shapes;
         List<Body> bodies = world.bodies;
         Debug.Assert(startIndex < endIndex);
+        float speculativeDistance = Box2D.SpeculativeDistance;
+        float recycleDistanceNonTouching = Math.Min(world.contactRecycleDistance, speculativeDistance);
         for (int contactIndex = startIndex; contactIndex < endIndex; contactIndex++)
         {
             ContactSim contactSim = contactSims[contactIndex];
@@ -285,13 +289,51 @@ public partial class World
                 bool wasTouching = contactSim.simFlags.HasFlag(ContactSimFlags.Touching);
                 Body bodyA = bodies[shapeA.bodyId], bodyB = bodies[shapeB.bodyId];
                 BodySim bodySimA = world.GetBodySim(bodyA), bodySimB = world.GetBodySim(bodyB);
+                Transform transformA = bodySimA.transform, transformB = bodySimB.transform;
                 contactSim.bodySimIndexA = bodyA.setIndex == (int)SetType.Awake ? bodyA.localIndex : -1;
                 contactSim.invMassA = bodySimA.invMass;
                 contactSim.invIA = bodySimA.invInertia;
                 contactSim.bodySimIndexB = bodyB.setIndex == (int)SetType.Awake ? bodyB.localIndex : -1;
                 contactSim.invMassB = bodySimB.invMass;
                 contactSim.invIB = bodySimB.invInertia;
-                Transform transformA = bodySimA.transform, transformB = bodySimB.transform;
+                if (world.contactRecycleDistance > 0 && contactSim.simFlags.HasFlag(ContactSimFlags.RelativeTransformValid))
+                {
+                    Transform xf = Transform.InvMulTransforms(transformA, transformB);
+                    Transform xfc = Transform.InvMulTransforms(contactSim.cachedTransformA, contactSim.cachedTransformB);
+                    float maxExtentA = bodyA.type == BodyType.Static ? 0 : bodySimA.maxExtent;
+                    float maxExtentB = bodyB.type == BodyType.Static ? 0 : bodySimB.maxExtent;
+                    float maxExtent = Math.Max(maxExtentA, maxExtentB);
+                    float distance = Vector2.Distance(xf.p, xfc.p);
+                    Rotation qr = Rotation.InvMulRot(xf.q, xfc.q);
+                    float tolerance = wasTouching ? world.contactRecycleDistance : recycleDistanceNonTouching;
+                    if (distance + maxExtent * Math.Abs(qr.s) < tolerance)
+                    {
+                        Rotation dqA = transformA.q * contactSim.cachedTransformA.q.Invert();
+                        Rotation dqB = transformB.q * contactSim.cachedTransformB.q.Invert();
+                        Vector2 normal = contactSim.manifold.normal;
+                        Vector2 dc = bodySimB.center - bodySimA.center;
+                        if (contactSim.manifold.pointCount > 0)
+                        {
+                            ref ManifoldPoint mp = ref contactSim.manifold.point0;
+                            Vector2 rA = dqA * mp.anchorA;
+                            Vector2 rB = dqB * mp.anchorB;
+                            Vector2 dp = dc + (rB - rA);
+                            mp.separation = mp.baseSeparation + Vector2.Dot(dp, normal);
+                            mp.persisted = true;
+                            if (contactSim.manifold.pointCount > 1)
+                            {
+                                mp = ref contactSim.manifold.point1;
+                                rA = dqA * mp.anchorA;
+                                rB = dqB * mp.anchorB;
+                                dp = dc + (rB - rA);
+                                mp.separation = mp.baseSeparation + Vector2.Dot(dp, normal);
+                                mp.persisted = true;
+                            }
+                        }
+                        continue;
+                    }
+                }
+                contactSim.simFlags |= ContactSimFlags.RelativeTransformValid;
                 Vector2 centerOffsetA = transformA.q * bodySimA.localCenter;
                 Vector2 centerOffsetB = transformB.q * bodySimB.localCenter;
                 bool touching = world.UpdateContact(contactSim, shapeA, transformA, centerOffsetA, shapeB, transformB, centerOffsetB);
@@ -305,12 +347,16 @@ public partial class World
                     contactSim.simFlags |= ContactSimFlags.StoppedTouching;
                     taskContext.contactStateBitSet.SetBit(contactId);
                 }
+                contactSim.cachedTransformA = transformA;
+                contactSim.cachedTransformB = transformB;
+                if (contactSim.manifold.pointCount > 0)
+                {
+                    contactSim.manifold.point0.baseSeparation = contactSim.manifold.point0.separation;
+                    if (contactSim.manifold.pointCount > 1)
+                        contactSim.manifold.point1.baseSeparation = contactSim.manifold.point1.separation;
+                }
             }
         }
-    }
-    public static void UpdateTreesTask(int startIndex, int endIndex, uint threadIndex, object context)
-    {
-        ((World)context).broadPhase.RebuildTrees();
     }
     public void AddNonTouchingContact(Contact contact, ContactSim contactSim)
     {
@@ -338,9 +384,6 @@ public partial class World
     {
         World world = context.world;
         Debug.Assert(world.workerCount > 0);
-        world.userTreeTask = world.enqueueTaskFcn(UpdateTreesTask, 1, 1, world, world.userTaskContext);
-        world.taskCount++;
-        world.activeTaskCount += world.userTreeTask == null ? 0 : 1;
         int contactCount = 0;
         GraphColor[] graphColors = world.constraintGraph.colors;
         for (int i = 0; i < Box2D.GraphColorCount; i++)

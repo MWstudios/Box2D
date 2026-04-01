@@ -19,7 +19,7 @@ public class GraphColor
     public List<JointSim> jointSims = new();
     /// <summary>transient</summary>
     public ContactConstraint[] overflowConstraints = null;
-    public IContactConstraintsSIMD simdConstraints = null;
+    public IContactConstraintsSIMD wideConstraints = null;
     public GraphColor() { }
 }
 public interface IContactConstraintsSIMD
@@ -27,44 +27,44 @@ public interface IContactConstraintsSIMD
     public static unsafe IContactConstraintsSIMD Alloc(int length)
     {
         if (Avx.IsSupported) return new ContactConstraintsAVX
-        { simdConstraints = (ContactSolverAVX.ContactConstraintSIMD*)NativeMemory.AlignedAlloc((nuint)(sizeof(ContactSolverAVX.ContactConstraintSIMD) * length), 32), owns = true };
+        { wideConstraints = (ContactSolverAVX.ContactConstraintWide*)NativeMemory.AlignedAlloc((nuint)(sizeof(ContactSolverAVX.ContactConstraintWide) * length), 32), owns = true };
         if (AdvSimd.IsSupported) return new ContactConstraintsNeon
-        { simdConstraints = (ContactSolverNeon.ContactConstraintSIMD*)NativeMemory.AlignedAlloc((nuint)(sizeof(ContactSolverNeon.ContactConstraintSIMD) * length), 32), owns = true };
+        { wideConstraints = (ContactSolverNeon.ContactConstraintWide*)NativeMemory.AlignedAlloc((nuint)(sizeof(ContactSolverNeon.ContactConstraintWide) * length), 32), owns = true };
         if (Sse.IsSupported) return new ContactConstraintsSSE
-        { simdConstraints = (ContactSolverSSE.ContactConstraintSIMD*)NativeMemory.AlignedAlloc((nuint)(sizeof(ContactSolverSSE.ContactConstraintSIMD) * length), 32), owns = true };
+        { wideConstraints = (ContactSolverSSE.ContactConstraintWide*)NativeMemory.AlignedAlloc((nuint)(sizeof(ContactSolverSSE.ContactConstraintWide) * length), 32), owns = true };
         return new ContactConstraintsFloat
-        { simdConstraints = (ContactSolverFloat.ContactConstraintSIMD*)NativeMemory.AlignedAlloc((nuint)(sizeof(ContactSolverFloat.ContactConstraintSIMD) * length), 32), owns = true };
+        { wideConstraints = (ContactSolverFloat.ContactConstraintWide*)NativeMemory.AlignedAlloc((nuint)(sizeof(ContactSolverFloat.ContactConstraintWide) * length), 32), owns = true };
     }
-    public unsafe IContactConstraintsSIMD PointTo(int offset);
+    public IContactConstraintsSIMD PointTo(int offset);
     public void Free() { }
 }
 public unsafe struct ContactConstraintsAVX : IContactConstraintsSIMD
 {
-    public ContactSolverAVX.ContactConstraintSIMD* simdConstraints;
+    public ContactSolverAVX.ContactConstraintWide* wideConstraints;
     public bool owns;
-    public IContactConstraintsSIMD PointTo(int offset) => new ContactConstraintsAVX { simdConstraints = simdConstraints + offset };
-    public void Free() { if (owns) NativeMemory.AlignedFree(simdConstraints); }
+    public IContactConstraintsSIMD PointTo(int offset) => new ContactConstraintsAVX { wideConstraints = wideConstraints + offset };
+    public void Free() { if (owns) NativeMemory.AlignedFree(wideConstraints); }
 }
 public unsafe struct ContactConstraintsNeon : IContactConstraintsSIMD
 {
-    public ContactSolverNeon.ContactConstraintSIMD* simdConstraints;
+    public ContactSolverNeon.ContactConstraintWide* wideConstraints;
     public bool owns;
-    public IContactConstraintsSIMD PointTo(int offset) => new ContactConstraintsNeon { simdConstraints = simdConstraints + offset };
-    public void Free() { if (owns) NativeMemory.AlignedFree(simdConstraints); }
+    public IContactConstraintsSIMD PointTo(int offset) => new ContactConstraintsNeon { wideConstraints = wideConstraints + offset };
+    public void Free() { if (owns) NativeMemory.AlignedFree(wideConstraints); }
 }
 public unsafe struct ContactConstraintsSSE : IContactConstraintsSIMD
 {
-    public ContactSolverSSE.ContactConstraintSIMD* simdConstraints;
+    public ContactSolverSSE.ContactConstraintWide* wideConstraints;
     public bool owns;
-    public IContactConstraintsSIMD PointTo(int offset) => new ContactConstraintsSSE { simdConstraints = simdConstraints + offset };
-    public void Free() { if (owns) NativeMemory.AlignedFree(simdConstraints); }
+    public IContactConstraintsSIMD PointTo(int offset) => new ContactConstraintsSSE { wideConstraints = wideConstraints + offset };
+    public void Free() { if (owns) NativeMemory.AlignedFree(wideConstraints); }
 }
 public unsafe struct ContactConstraintsFloat : IContactConstraintsSIMD
 {
-    public ContactSolverFloat.ContactConstraintSIMD* simdConstraints;
+    public ContactSolverFloat.ContactConstraintWide* wideConstraints;
     public bool owns;
-    public IContactConstraintsSIMD PointTo(int offset) => new ContactConstraintsFloat { simdConstraints = simdConstraints + offset };
-    public void Free() { if (owns) NativeMemory.AlignedFree(simdConstraints); }
+    public IContactConstraintsSIMD PointTo(int offset) => new ContactConstraintsFloat { wideConstraints = wideConstraints + offset };
+    public void Free() { if (owns) NativeMemory.AlignedFree(wideConstraints); }
 }
 public class ConstraintGraph
 {
@@ -88,6 +88,8 @@ public class ConstraintGraph
             colors[i].bodySet.Destroy();
         }
     }
+    /// <summary>Notice that a joint cannot share the same color as a contact between the same two bodies. This means I can solve contacts and
+    /// joints in parallel with each other within each color.</summary>
     public int AssignJointColor(int bodyIdA, int bodyIdB, BodyType typeA, BodyType typeB)
     {
         Debug.Assert(typeA == BodyType.Dynamic || typeB == BodyType.Dynamic);
@@ -129,7 +131,7 @@ public class ConstraintGraph
 }
 public partial class World
 {
-    /// <summary>Contacts are always created as non-touching. They get cloned into the constraint
+    /// <summary>Contacts are always created as non-touching. They get moved into the constraint
     /// graph once they are found to be touching.
     /// todo maybe kinematic bodies should not go into graph</summary>
     public void AddContactToGraph(ContactSim contactSim, Contact contact)

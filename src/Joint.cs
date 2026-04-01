@@ -35,8 +35,10 @@ public class Joint
 
     public int jointId;
     public int islandId;
-    public int islandPrev;
-    public int islandNext;
+
+    /// <summary>Index into the island's joints array for O(1) swap-removal.
+	/// B2_NULL_INDEX when not in an island.</summary>
+    public int islandIndex;
 
     public float drawScale;
 
@@ -202,8 +204,7 @@ public partial class World
         joint.colorIndex = -1;
         joint.localIndex = -1;
         joint.islandId = -1;
-        joint.islandPrev = -1;
-        joint.islandNext = -1;
+        joint.islandIndex = -1;
         joint.drawScale = def.drawScale;
         joint.type = type;
         joint.collideConnected = def.collideConnected;
@@ -226,7 +227,7 @@ public partial class World
         if (bodyB.headJointKey != -1)
         {
             Joint jointB = joints[bodyB.headJointKey >> 1];
-            if ((bodyA.headJointKey & 1) != 0) jointB.edge1.prevKey = keyB;
+            if ((bodyB.headJointKey & 1) != 0) jointB.edge1.prevKey = keyB;
             else jointB.edge0.prevKey = keyB;
         }
         bodyB.headJointKey = keyB;

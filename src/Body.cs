@@ -64,9 +64,8 @@ public class Body
     ///<summary>All enabled dynamic and kinematic bodies are in an island.</summary>
     public int islandId;
 
-    ///<summary>doubly-linked island list</summary>
-    public int islandPrev;
-    public int islandNext;
+    ///<summary>Need this island index for faster union-find</summary>
+    public int islandIndex;
 
     public float mass;
 
@@ -186,51 +185,52 @@ public unsafe partial class World
     public BodyID MakeBodyID(int bodyId) => new() { index1 = bodyId + 1, world0 = this, generation = bodies[bodyId].generation };
     public BodySim GetBodySim(Body body) => solverSets[body.setIndex].bodySims[body.localIndex];
     public unsafe BodyState* GetBodyState(Body body) => body.setIndex == (int)SetType.Awake ? solverSets[(int)SetType.Awake].bodyStates.Data + body.localIndex : (BodyState*)null;
+    public static void RemoveBodySim(System.Collections.Generic.List<BodySim> bodySims, System.Collections.Generic.List<Body> bodies, int localIndex)
+    {
+        Debug.Assert(0 <= localIndex && localIndex < bodySims.Count);
+        int lastIndex = bodySims.Count - 1;
+        bodySims[localIndex] = bodySims[lastIndex];
+        Body movedBody = bodies[bodySims[localIndex].bodyId];
+        Debug.Assert(movedBody.localIndex == lastIndex);
+        movedBody.localIndex = localIndex;
+        bodySims.RemoveAt(bodySims.Count - 1);
+    }
     public void CreateIslandForBody(int setIndex, Body body)
     {
         Debug.Assert(body.islandId == -1);
-        Debug.Assert(body.islandPrev == -1);
-        Debug.Assert(body.islandNext == -1);
         Debug.Assert(setIndex != (int)SetType.Disabled);
         Island island = CreateIsland(setIndex);
+        island.bodies.Add(body.id);
         body.islandId = island.islandId;
-        island.headBody = body.id;
-        island.tailBody = body.id;
-        island.bodyCount = 1;
+        body.islandIndex = 0;
+        ValidateIsland(island.islandId);
     }
     public void RemoveBodyFromIsland(Body body)
     {
         if (body.islandId == -1)
         {
-            Debug.Assert(body.islandPrev == -1);
-            Debug.Assert(body.islandNext == -1);
+            Debug.Assert(body.islandIndex == -1);
             return;
         }
         int islandId = body.islandId;
         Island island = islands[islandId];
-        if (body.islandPrev != -1) bodies[body.islandPrev].islandNext = body.islandNext;
-        if (body.islandNext != -1) bodies[body.islandNext].islandPrev = body.islandPrev;
-        Debug.Assert(island.bodyCount > 0);
-        island.bodyCount--;
-        bool islandDestroyed = false;
-        if (island.headBody == body.id)
         {
-            island.headBody = body.islandNext;
-            if (island.headBody == -1)
-            {
-                Debug.Assert(island.tailBody == body.id);
-                Debug.Assert(island.bodyCount == 0);
-                Debug.Assert(island.contactCount == 0);
-                Debug.Assert(island.jointCount == 0);
-                DestroyIsland(island.islandId);
-                islandDestroyed = true;
-            }
+            int localIndex = body.islandIndex;
+            int movedBodyId = island.bodies[^1];
+            island.bodies[localIndex] = movedBodyId;
+            Debug.Assert(bodies[movedBodyId].islandIndex == island.bodies.Count - 1);
+            bodies[movedBodyId].islandIndex = localIndex;
+            island.bodies.RemoveAt(island.bodies.Count - 1);
         }
-        else if (island.tailBody == body.id) island.tailBody = body.islandPrev;
-        if (!islandDestroyed) ValidateIsland(islandId);
+        if (island.bodies.Count == 0)
+        {
+            Debug.Assert(island.contacts.Count == 0);
+            Debug.Assert(island.joints.Count == 0);
+            DestroyIsland(island.islandId);
+        }
+        else ValidateIsland(islandId);
         body.islandId = -1;
-        body.islandPrev = -1;
-        body.islandNext = -1;
+        body.islandIndex = -1;
     }
     public void DestroyBodyContacts(Body body, bool wakeBodies)
     {

@@ -337,4 +337,10 @@ public static partial class Box2D
     /// forces.</summary>
     /// <remarks>This must be modified before any calls to Box2D</remarks>
     public static float LengthUnitsPerMeter { get; set; } = 1;
+    /// <summary>https://en.wikipedia.org/wiki/Floor_and_ceiling_functions</summary>
+    public static int ClampInt(int numerator, int denominator)
+    {
+        Debug.Assert(denominator > 0 && numerator >= 0);
+        return (numerator + denominator - 1) / denominator;
+    }
 }

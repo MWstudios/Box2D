@@ -20,8 +20,8 @@ public struct ContactConstraintPoint
 
 public struct ContactConstraint
 {
-    public int indexA;
-    public int indexB;
+    /// <summary>base-1, 0 for null</summary>
+    public int indexA, indexB;
     public ContactConstraintPoint point0, point1;
     public Vector2 normal;
     public float invMassA, invMassB;
@@ -54,8 +54,8 @@ public unsafe partial class StepContext
             int indexA = contactSim.bodySimIndexA, indexB = contactSim.bodySimIndexB;
 
             ref ContactConstraint constraint = ref constraints[i];
-            constraint.indexA = indexA;
-            constraint.indexB = indexB;
+            constraint.indexA = indexA + 1;
+            constraint.indexB = indexB + 1;
             constraint.normal = manifold.normal;
             constraint.friction = contactSim.friction;
             constraint.restitution = contactSim.restitution;
@@ -124,7 +124,7 @@ public unsafe partial class StepContext
         for (int i = 0; i < contactCount; i++)
         {
             ref ContactConstraint constraint = ref constraints[i];
-            int indexA = constraint.indexA, indexB = constraint.indexB;
+            int indexA = constraint.indexA - 1, indexB = constraint.indexB - 1;
             BodyState* stateA = &dummyState; if (indexA != -1) stateA = states.Data + indexA;
             BodyState* stateB = &dummyState; if (indexB != -1) stateB = states.Data + indexB;
             Vector2 vA = stateA->linearVelocity;
@@ -179,11 +179,12 @@ public unsafe partial class StepContext
             float iA = constraint.invIA;
             float mB = constraint.invMassB;
             float iB = constraint.invIB;
-            BodyState* stateA = &dummyState; if (constraint.indexA != -1) stateA = states.Data + constraint.indexA;
+            int indexA = constraint.indexA - 1, indexB = constraint.indexB - 1;
+            BodyState* stateA = &dummyState; if (indexA != -1) stateA = states.Data + indexA;
             Vector2 vA = stateA->linearVelocity;
             float wA = stateA->angularVelocity;
             Rotation dqA = stateA->deltaRotation;
-            BodyState* stateB = &dummyState; if (constraint.indexB != -1) stateB = states.Data + constraint.indexA;
+            BodyState* stateB = &dummyState; if (indexB != -1) stateB = states.Data + indexB;
             Vector2 vB = stateB->linearVelocity;
             float wB = stateB->angularVelocity;
             Rotation dqB = stateB->deltaRotation;
@@ -281,10 +282,11 @@ public unsafe partial class StepContext
             float iA = constraint.invIA;
             float mB = constraint.invMassB;
             float iB = constraint.invIB;
-            BodyState* stateA = &dummyState; if (constraint.indexA != -1) stateA = states.Data + constraint.indexA;
+            int indexA = constraint.indexA - 1, indexB = constraint.indexB - 1;
+            BodyState* stateA = &dummyState; if (indexA != -1) stateA = states.Data + indexA;
             Vector2 vA = stateA->linearVelocity;
             float wA = stateA->angularVelocity;
-            BodyState* stateB = &dummyState; if (constraint.indexB != -1) stateB = states.Data + constraint.indexA;
+            BodyState* stateB = &dummyState; if (indexB != -1) stateB = states.Data + indexB;
             Vector2 vB = stateB->linearVelocity;
             float wB = stateB->angularVelocity;
             Vector2 normal = constraint.normal;
@@ -376,7 +378,7 @@ public class ContactSolverAVX : IContactSolverW
     static Vector256<float> CrossW(Vector2W a, Vector2W b) => Avx.Subtract(Avx.Multiply(a.X, b.Y), Avx.Multiply(a.Y, b.X));
     static Vector2W RotateVectorW(RotationW q, Vector2W v) =>
         new() { X = Avx.Subtract(Avx.Multiply(q.C, v.X), Avx.Multiply(q.S, v.Y)), Y = Avx.Add(Avx.Multiply(q.S, v.X), Avx.Multiply(q.C, v.Y)) };
-    public struct ContactConstraintSIMD
+    public struct ContactConstraintWide
     {
         public Vector256<int> indexA, indexB;
         public Vector256<float> invMassA, invMassB;
@@ -417,14 +419,16 @@ public class ContactSolverAVX : IContactSolverW
     {
         Debug.Assert(((nuint)states & 0x1F) == 0);
         Vector256<float> identity = Vector256.Create(0f, 0, 0, 0, 0, 0, 1, 0);
-        Vector256<float> b0 = indices[0] == -1 ? identity : Avx.LoadAlignedVector256((float*)(states + indices[0]));
-        Vector256<float> b1 = indices[1] == -1 ? identity : Avx.LoadAlignedVector256((float*)(states + indices[1]));
-        Vector256<float> b2 = indices[2] == -1 ? identity : Avx.LoadAlignedVector256((float*)(states + indices[2]));
-        Vector256<float> b3 = indices[3] == -1 ? identity : Avx.LoadAlignedVector256((float*)(states + indices[3]));
-        Vector256<float> b4 = indices[4] == -1 ? identity : Avx.LoadAlignedVector256((float*)(states + indices[4]));
-        Vector256<float> b5 = indices[5] == -1 ? identity : Avx.LoadAlignedVector256((float*)(states + indices[5]));
-        Vector256<float> b6 = indices[6] == -1 ? identity : Avx.LoadAlignedVector256((float*)(states + indices[6]));
-        Vector256<float> b7 = indices[7] == -1 ? identity : Avx.LoadAlignedVector256((float*)(states + indices[7]));
+        int i1 = indices[0] - 1, i2 = indices[1] - 1, i3 = indices[2] - 1, i4 = indices[3] - 1,
+            i5 = indices[4] - 1, i6 = indices[5] - 1, i7 = indices[6] - 1, i8 = indices[7] - 1;
+        Vector256<float> b0 = i1 == -1 ? identity : Avx.LoadAlignedVector256((float*)(states + i1));
+        Vector256<float> b1 = i2 == -1 ? identity : Avx.LoadAlignedVector256((float*)(states + i2));
+        Vector256<float> b2 = i3 == -1 ? identity : Avx.LoadAlignedVector256((float*)(states + i3));
+        Vector256<float> b3 = i4 == -1 ? identity : Avx.LoadAlignedVector256((float*)(states + i4));
+        Vector256<float> b4 = i5 == -1 ? identity : Avx.LoadAlignedVector256((float*)(states + i5));
+        Vector256<float> b5 = i6 == -1 ? identity : Avx.LoadAlignedVector256((float*)(states + i6));
+        Vector256<float> b6 = i7 == -1 ? identity : Avx.LoadAlignedVector256((float*)(states + i7));
+        Vector256<float> b7 = i8 == -1 ? identity : Avx.LoadAlignedVector256((float*)(states + i8));
         Vector256<float> t0 = Avx.UnpackLow(b0, b1);
         Vector256<float> t1 = Avx.UnpackHigh(b0, b1);
         Vector256<float> t2 = Avx.UnpackLow(b2, b3);
@@ -469,14 +473,16 @@ public class ContactSolverAVX : IContactSolverW
         Vector256<float> tt5 = Avx.Shuffle(t4, t6, 0b11101110);
         Vector256<float> tt6 = Avx.Shuffle(t5, t7, 0b01000100);
         Vector256<float> tt7 = Avx.Shuffle(t5, t7, 0b11101110);
-        if (indices[0] != -1 && states[indices[0]].flags.HasFlag(BodyFlags.Dynamic)) Avx.StoreAligned((float*)(states + indices[0]), Avx.Permute2x128(tt0, tt4, 0x20));
-        if (indices[1] != -1 && states[indices[1]].flags.HasFlag(BodyFlags.Dynamic)) Avx.StoreAligned((float*)(states + indices[1]), Avx.Permute2x128(tt1, tt5, 0x20));
-        if (indices[2] != -1 && states[indices[2]].flags.HasFlag(BodyFlags.Dynamic)) Avx.StoreAligned((float*)(states + indices[2]), Avx.Permute2x128(tt2, tt6, 0x20));
-        if (indices[3] != -1 && states[indices[3]].flags.HasFlag(BodyFlags.Dynamic)) Avx.StoreAligned((float*)(states + indices[3]), Avx.Permute2x128(tt3, tt7, 0x20));
-        if (indices[4] != -1 && states[indices[4]].flags.HasFlag(BodyFlags.Dynamic)) Avx.StoreAligned((float*)(states + indices[4]), Avx.Permute2x128(tt0, tt4, 0x31));
-        if (indices[5] != -1 && states[indices[5]].flags.HasFlag(BodyFlags.Dynamic)) Avx.StoreAligned((float*)(states + indices[5]), Avx.Permute2x128(tt1, tt5, 0x31));
-        if (indices[6] != -1 && states[indices[6]].flags.HasFlag(BodyFlags.Dynamic)) Avx.StoreAligned((float*)(states + indices[6]), Avx.Permute2x128(tt2, tt6, 0x31));
-        if (indices[7] != -1 && states[indices[7]].flags.HasFlag(BodyFlags.Dynamic)) Avx.StoreAligned((float*)(states + indices[7]), Avx.Permute2x128(tt3, tt7, 0x31));
+        int i1 = indices[0] - 1, i2 = indices[1] - 1, i3 = indices[2] - 1, i4 = indices[3] - 1,
+            i5 = indices[4] - 1, i6 = indices[5] - 1, i7 = indices[6] - 1, i8 = indices[7] - 1;
+        if (i1 != -1 && states[i1].flags.HasFlag(BodyFlags.Dynamic)) Avx.StoreAligned((float*)(states + i1), Avx.Permute2x128(tt0, tt4, 0x20));
+        if (i2 != -1 && states[i2].flags.HasFlag(BodyFlags.Dynamic)) Avx.StoreAligned((float*)(states + i2), Avx.Permute2x128(tt1, tt5, 0x20));
+        if (i3 != -1 && states[i3].flags.HasFlag(BodyFlags.Dynamic)) Avx.StoreAligned((float*)(states + i3), Avx.Permute2x128(tt2, tt6, 0x20));
+        if (i4 != -1 && states[i4].flags.HasFlag(BodyFlags.Dynamic)) Avx.StoreAligned((float*)(states + i4), Avx.Permute2x128(tt3, tt7, 0x20));
+        if (i5 != -1 && states[i5].flags.HasFlag(BodyFlags.Dynamic)) Avx.StoreAligned((float*)(states + i5), Avx.Permute2x128(tt0, tt4, 0x31));
+        if (i6 != -1 && states[i6].flags.HasFlag(BodyFlags.Dynamic)) Avx.StoreAligned((float*)(states + i6), Avx.Permute2x128(tt1, tt5, 0x31));
+        if (i7 != -1 && states[i7].flags.HasFlag(BodyFlags.Dynamic)) Avx.StoreAligned((float*)(states + i7), Avx.Permute2x128(tt2, tt6, 0x31));
+        if (i8 != -1 && states[i8].flags.HasFlag(BodyFlags.Dynamic)) Avx.StoreAligned((float*)(states + i8), Avx.Permute2x128(tt3, tt7, 0x31));
     }
     public unsafe void PrepareContactsTask(int startIndex, int endIndex, StepContext context)
     {
@@ -489,7 +495,7 @@ public class ContactSolverAVX : IContactSolverW
         float warmStartScale = world.enableWarmStarting ? 1 : 0;
         for (int i = startIndex; i < endIndex; i++)
         {
-            var constraint = ((ContactConstraintsAVX)context.simdContactConstraints).simdConstraints + i;
+            var constraint = ((ContactConstraintsAVX)context.wideContactConstraints).wideConstraints + i;
             for (int j = 0; j < 8; j++)
             {
                 ref ContactSim contactSim = ref contacts[8 * i + j];
@@ -498,8 +504,8 @@ public class ContactSolverAVX : IContactSolverW
                     Manifold manifold = contactSim.manifold;
                     int indexA = contactSim.bodySimIndexA, indexB = contactSim.bodySimIndexB;
 
-                    ((int*)&constraint->indexA)[j] = indexA;
-                    ((int*)&constraint->indexB)[j] = indexB;
+                    ((int*)&constraint->indexA)[j] = indexA + 1;
+                    ((int*)&constraint->indexB)[j] = indexB + 1;
                     Vector2 vA = Vector2.Zero;
                     float wA = 0, mA = contactSim.invMassA, iA = contactSim.invIA;
                     if (indexA != -1)
@@ -636,8 +642,8 @@ public class ContactSolverAVX : IContactSolverW
                 }
                 else
                 {
-                    ((int*)&constraint->indexA)[j] = -1;
-                    ((int*)&constraint->indexB)[j] = -1;
+                    ((int*)&constraint->indexA)[j] = 0;
+                    ((int*)&constraint->indexB)[j] = 0;
 
                     ((float*)&constraint->invMassA)[j] = 0.0f;
                     ((float*)&constraint->invMassB)[j] = 0.0f;
@@ -687,11 +693,11 @@ public class ContactSolverAVX : IContactSolverW
     public unsafe void WarmStartContactsTask(int startIndex, int endIndex, StepContext context, int colorIndex)
     {
         var states = context.states.Data;
-        var constraints = ((ContactConstraintsAVX)context.graph.colors[colorIndex].simdConstraints).simdConstraints;
+        var constraints = ((ContactConstraintsAVX)context.graph.colors[colorIndex].wideConstraints).wideConstraints;
         {
             for (int i = startIndex; i < endIndex; i++)
             {
-                ContactConstraintSIMD* c = constraints + i;
+                ContactConstraintWide* c = constraints + i;
                 BodyStateW bA = GatherBodies(states, (int*)&c->indexA);
                 BodyStateW bB = GatherBodies(states, (int*)&c->indexB);
                 Vector256<float> tangentX = c->normal.Y;
@@ -748,14 +754,14 @@ public class ContactSolverAVX : IContactSolverW
     public unsafe void SolveContactsTask(int startIndex, int endIndex, StepContext context, int colorIndex, bool useBias)
     {
         var states = context.states.Data;
-        var constraints = ((ContactConstraintsAVX)context.graph.colors[colorIndex].simdConstraints).simdConstraints;
+        var constraints = ((ContactConstraintsAVX)context.graph.colors[colorIndex].wideConstraints).wideConstraints;
         {
             Vector256<float> inv_h = Vector256.Create(context.inv_h);
             Vector256<float> contactSpeed = Vector256.Create(-context.world.contactSpeed);
             Vector256<float> oneW = Vector256<float>.One;
-            for (int i = startIndex; i < endIndex; i++)
+            for (int wideIndex = startIndex; wideIndex < endIndex; wideIndex++)
             {
-                ContactConstraintSIMD* c = constraints + i;
+                ContactConstraintWide* c = constraints + wideIndex;
                 BodyStateW bA = GatherBodies(states, (int*)&c->indexA);
                 BodyStateW bB = GatherBodies(states, (int*)&c->indexB);
                 Vector256<float> biasRate, massScale, impulseScale;
@@ -916,13 +922,13 @@ public class ContactSolverAVX : IContactSolverW
     public unsafe void ApplyRestitutionTask(int startIndex, int endIndex, StepContext context, int colorIndex)
     {
         var states = context.states.Data;
-        var constraints = ((ContactConstraintsAVX)context.graph.colors[colorIndex].simdConstraints).simdConstraints;
+        var constraints = ((ContactConstraintsAVX)context.graph.colors[colorIndex].wideConstraints).wideConstraints;
         {
             Vector256<float> threshold = Vector256.Create(context.world.restitutionThreshold);
             Vector256<float> zero = Vector256<float>.Zero;
             for (int i = startIndex; i < endIndex; i++)
             {
-                ContactConstraintSIMD* c = constraints + i;
+                ContactConstraintWide* c = constraints + i;
                 if (AllZeroW(c->restitution)) continue;
                 Vector256<float> restitutionMask = Avx.CompareEqual(c->restitution, zero);
                 BodyStateW bA = GatherBodies(states, (int*)&c->indexA);
@@ -994,11 +1000,11 @@ public class ContactSolverAVX : IContactSolverW
     {
         ContactSim[] contacts = context.contacts;
         Manifold dummy = new();
-        ContactConstraintSIMD* constraints = ((ContactConstraintsAVX)context.simdContactConstraints).simdConstraints;
+        ContactConstraintWide* constraints = ((ContactConstraintsAVX)context.wideContactConstraints).wideConstraints;
         {
             for (int constraintIndex = startIndex; constraintIndex < endIndex; constraintIndex++)
             {
-                ContactConstraintSIMD* c = constraints + constraintIndex;
+                ContactConstraintWide* c = constraints + constraintIndex;
                 float* rollingImpulse = (float*)&c->rollingImpulse;
                 float* normalImpulse1 = (float*)&c->normalImpulse1;
                 float* normalImpulse2 = (float*)&c->normalImpulse2;
@@ -1061,7 +1067,7 @@ public class ContactSolverNeon : IContactSolverW
         Vector64<float> a1 = a.GetUpper(), b1 = b.GetUpper();
         return Vector128.Create(a1, b1);
     }
-    public struct ContactConstraintSIMD
+    public struct ContactConstraintWide
     {
         public Vector128<int> indexA, indexB;
         public Vector128<float> invMassA, invMassB;
@@ -1102,22 +1108,23 @@ public class ContactSolverNeon : IContactSolverW
     {
         Debug.Assert(((nuint)states & 0x1F) == 0);
         Vector128<float> identityA = Vector128.Create(0f, 0, 0, 0), identityB = Vector128.Create(0f, 0, 1, 0);
-        Vector128<float> b1a = indices[0] == -1 ? identityA : AdvSimd.LoadVector128((float*)(states + indices[0]));
-        Vector128<float> b1b = indices[0] == -1 ? identityB : AdvSimd.LoadVector128((float*)(states + indices[0]));
-        Vector128<float> a = indices[1] == -1 ? identityA : AdvSimd.LoadVector128((float*)(states + indices[1]));
-        Vector128<float> b = indices[1] == -1 ? identityB : AdvSimd.LoadVector128((float*)(states + indices[1]));
-        Vector128<float> b3a = indices[2] == -1 ? identityA : AdvSimd.LoadVector128((float*)(states + indices[2]));
-        Vector128<float> b3b = indices[2] == -1 ? identityB : AdvSimd.LoadVector128((float*)(states + indices[2]));
-        Vector128<float> b4a = indices[3] == -1 ? identityA : AdvSimd.LoadVector128((float*)(states + indices[3]));
-        Vector128<float> b4b = indices[3] == -1 ? identityB : AdvSimd.LoadVector128((float*)(states + indices[3]));
+        int i1 = indices[0] - 1, i2 = indices[1] - 1, i3 = indices[2] - 1, i4 = indices[3] - 1;
+        Vector128<float> b1a = i1 == -1 ? identityA : AdvSimd.LoadVector128((float*)(states + i1));
+        Vector128<float> b1b = i1 == -1 ? identityB : AdvSimd.LoadVector128((float*)(states + i1));
+        Vector128<float> b2a = i2 == -1 ? identityA : AdvSimd.LoadVector128((float*)(states + i2));
+        Vector128<float> b2b = i2 == -1 ? identityB : AdvSimd.LoadVector128((float*)(states + i2));
+        Vector128<float> b3a = i3 == -1 ? identityA : AdvSimd.LoadVector128((float*)(states + i3));
+        Vector128<float> b3b = i3 == -1 ? identityB : AdvSimd.LoadVector128((float*)(states + i3));
+        Vector128<float> b4a = i4 == -1 ? identityA : AdvSimd.LoadVector128((float*)(states + i4));
+        Vector128<float> b4b = i4 == -1 ? identityB : AdvSimd.LoadVector128((float*)(states + i4));
         Vector128<float> t1a = UnpackLoW(b1a, b3a);
-        Vector128<float> t2a = UnpackLoW(a, b4a);
+        Vector128<float> t2a = UnpackLoW(b2a, b4a);
         Vector128<float> t3a = UnpackHiW(b1a, b3a);
-        Vector128<float> t4a = UnpackHiW(a, b4a);
+        Vector128<float> t4a = UnpackHiW(b2a, b4a);
         Vector128<float> t1b = UnpackLoW(b1b, b3b);
-        Vector128<float> t2b = UnpackLoW(b, b4b);
+        Vector128<float> t2b = UnpackLoW(b2b, b4b);
         Vector128<float> t3b = UnpackHiW(b1b, b3b);
-        Vector128<float> t4b = UnpackHiW(b, b4b);
+        Vector128<float> t4b = UnpackHiW(b2b, b4b);
         return new()
         {
             v = new() { X = UnpackLoW(t1a, t2a), Y = UnpackHiW(t1a, t2a) },
@@ -1159,13 +1166,14 @@ public class ContactSolverNeon : IContactSolverW
             state->angularVelocity = simdBody.w.GetElement(3);
         }
         Debug.Assert(((nuint)states & 0x1F) == 0);
+        int i1 = indices[0] - 1, i2 = indices[1] - 1, i3 = indices[2] - 1, i4 = indices[3] - 1;
         throw new NotImplementedException("vtrnq instruction is not in C#");
         /*Vector256<float> r1 = AdvSimd.Arm64.TransposeEven(simdBody.v.X, simdBody.v.Y);
         Vector256<float> r2 = AdvSimd.Arm64.TransposeOdd(simdBody.w, simdBody.flags);
-        if (indices[0] != -1 && states[indices[0]].flags.HasFlag(BodyFlags.Dynamic)) AdvSimd.Store((float*)(states + indices[0]), Vector128.Create(r1.GetLower().GetLower(), r2.GetLower().GetLower()));
-        if (indices[1] != -1 && states[indices[1]].flags.HasFlag(BodyFlags.Dynamic)) AdvSimd.Store((float*)(states + indices[1]), Vector128.Create(r1.GetUpper().GetLower(), r2.GetUpper().GetLower()));
-        if (indices[2] != -1 && states[indices[2]].flags.HasFlag(BodyFlags.Dynamic)) AdvSimd.Store((float*)(states + indices[2]), Vector128.Create(r1.GetLower().GetUpper(), r2.GetLower().GetUpper()));
-        if (indices[3] != -1 && states[indices[3]].flags.HasFlag(BodyFlags.Dynamic)) AdvSimd.Store((float*)(states + indices[3]), Vector128.Create(r1.GetUpper().GetUpper(), r2.GetUpper().GetUpper()));*/
+        if (i1 != -1 && states[i1].flags.HasFlag(BodyFlags.Dynamic)) AdvSimd.Store((float*)(states + i1), Vector128.Create(r1.GetLower().GetLower(), r2.GetLower().GetLower()));
+        if (i2 != -1 && states[i2].flags.HasFlag(BodyFlags.Dynamic)) AdvSimd.Store((float*)(states + i2), Vector128.Create(r1.GetUpper().GetLower(), r2.GetUpper().GetLower()));
+        if (i3 != -1 && states[i3].flags.HasFlag(BodyFlags.Dynamic)) AdvSimd.Store((float*)(states + i3), Vector128.Create(r1.GetLower().GetUpper(), r2.GetLower().GetUpper()));
+        if (i4 != -1 && states[i4].flags.HasFlag(BodyFlags.Dynamic)) AdvSimd.Store((float*)(states + i4), Vector128.Create(r1.GetUpper().GetUpper(), r2.GetUpper().GetUpper()));*/
 
     }
     public unsafe void PrepareContactsTask(int startIndex, int endIndex, StepContext context)
@@ -1179,7 +1187,7 @@ public class ContactSolverNeon : IContactSolverW
         float warmStartScale = world.enableWarmStarting ? 1 : 0;
         for (int i = startIndex; i < endIndex; i++)
         {
-            var constraint = ((ContactConstraintsNeon)context.simdContactConstraints).simdConstraints + i;
+            var constraint = ((ContactConstraintsNeon)context.wideContactConstraints).wideConstraints + i;
             for (int j = 0; j < 4; j++)
             {
                 ref ContactSim contactSim = ref contacts[4 * i + j];
@@ -1188,8 +1196,8 @@ public class ContactSolverNeon : IContactSolverW
                     Manifold manifold = contactSim.manifold;
                     int indexA = contactSim.bodySimIndexA, indexB = contactSim.bodySimIndexB;
 
-                    ((int*)&constraint->indexA)[j] = indexA;
-                    ((int*)&constraint->indexB)[j] = indexB;
+                    ((int*)&constraint->indexA)[j] = indexA + 1;
+                    ((int*)&constraint->indexB)[j] = indexB + 1;
                     Vector2 vA = Vector2.Zero;
                     float wA = 0, mA = contactSim.invMassA, iA = contactSim.invIA;
                     if (indexA != -1)
@@ -1326,8 +1334,8 @@ public class ContactSolverNeon : IContactSolverW
                 }
                 else
                 {
-                    ((int*)&constraint->indexA)[j] = -1;
-                    ((int*)&constraint->indexB)[j] = -1;
+                    ((int*)&constraint->indexA)[j] = 0;
+                    ((int*)&constraint->indexB)[j] = 0;
 
                     ((float*)&constraint->invMassA)[j] = 0.0f;
                     ((float*)&constraint->invMassB)[j] = 0.0f;
@@ -1377,11 +1385,11 @@ public class ContactSolverNeon : IContactSolverW
     public unsafe void WarmStartContactsTask(int startIndex, int endIndex, StepContext context, int colorIndex)
     {
         var states = context.states.Data;
-        var constraints = ((ContactConstraintsNeon)context.graph.colors[colorIndex].simdConstraints).simdConstraints;
+        var constraints = ((ContactConstraintsNeon)context.graph.colors[colorIndex].wideConstraints).wideConstraints;
         {
-            for (int i = startIndex; i < endIndex; i++)
+            for (int wideIndex = startIndex; wideIndex < endIndex; wideIndex++)
             {
-                ContactConstraintSIMD* c = constraints + i;
+                ContactConstraintWide* c = constraints + wideIndex;
                 BodyStateW bA = GatherBodies(states, (int*)&c->indexA);
                 BodyStateW bB = GatherBodies(states, (int*)&c->indexB);
                 Vector128<float> tangentX = c->normal.Y;
@@ -1438,14 +1446,14 @@ public class ContactSolverNeon : IContactSolverW
     public unsafe void SolveContactsTask(int startIndex, int endIndex, StepContext context, int colorIndex, bool useBias)
     {
         var states = context.states.Data;
-        var constraints = ((ContactConstraintsNeon)context.graph.colors[colorIndex].simdConstraints).simdConstraints;
+        var constraints = ((ContactConstraintsNeon)context.graph.colors[colorIndex].wideConstraints).wideConstraints;
         {
             Vector128<float> inv_h = Vector128.Create(context.inv_h);
             Vector128<float> contactSpeed = Vector128.Create(-context.world.contactSpeed);
             Vector128<float> oneW = Vector128<float>.One;
             for (int i = startIndex; i < endIndex; i++)
             {
-                ContactConstraintSIMD* c = constraints + i;
+                ContactConstraintWide* c = constraints + i;
                 BodyStateW bA = GatherBodies(states, (int*)&c->indexA);
                 BodyStateW bB = GatherBodies(states, (int*)&c->indexB);
                 Vector128<float> biasRate, massScale, impulseScale;
@@ -1606,13 +1614,13 @@ public class ContactSolverNeon : IContactSolverW
     public unsafe void ApplyRestitutionTask(int startIndex, int endIndex, StepContext context, int colorIndex)
     {
         var states = context.states.Data;
-        var constraints = ((ContactConstraintsNeon)context.graph.colors[colorIndex].simdConstraints).simdConstraints;
+        var constraints = ((ContactConstraintsNeon)context.graph.colors[colorIndex].wideConstraints).wideConstraints;
         {
             Vector128<float> threshold = Vector128.Create(context.world.restitutionThreshold);
             Vector128<float> zero = Vector128<float>.Zero;
             for (int i = startIndex; i < endIndex; i++)
             {
-                ContactConstraintSIMD* c = constraints + i;
+                ContactConstraintWide* c = constraints + i;
                 if (AllZeroW(c->restitution)) continue;
                 Vector128<float> restitutionMask = AdvSimd.CompareEqual(c->restitution, zero);
                 BodyStateW bA = GatherBodies(states, (int*)&c->indexA);
@@ -1684,11 +1692,11 @@ public class ContactSolverNeon : IContactSolverW
     {
         ContactSim[] contacts = context.contacts;
         Manifold dummy = new();
-        ContactConstraintSIMD* constraints = ((ContactConstraintsNeon)context.simdContactConstraints).simdConstraints;
+        ContactConstraintWide* constraints = ((ContactConstraintsNeon)context.wideContactConstraints).wideConstraints;
         {
             for (int constraintIndex = startIndex; constraintIndex < endIndex; constraintIndex++)
             {
-                ContactConstraintSIMD* c = constraints + constraintIndex;
+                ContactConstraintWide* c = constraints + constraintIndex;
                 float* rollingImpulse = (float*)&c->rollingImpulse;
                 float* normalImpulse1 = (float*)&c->normalImpulse1;
                 float* normalImpulse2 = (float*)&c->normalImpulse2;
@@ -1734,7 +1742,7 @@ public class ContactSolverSSE : IContactSolverW
     static Vector128<float> CrossW(Vector2W a, Vector2W b) => Sse.Subtract(Sse.Multiply(a.X, b.Y), Sse.Multiply(a.Y, b.X));
     static Vector2W RotateVectorW(RotationW q, Vector2W v) =>
         new() { X = Sse.Subtract(Sse.Multiply(q.C, v.X), Sse.Multiply(q.S, v.Y)), Y = Sse.Add(Sse.Multiply(q.S, v.X), Sse.Multiply(q.C, v.Y)) };
-    public struct ContactConstraintSIMD
+    public struct ContactConstraintWide
     {
         public Vector128<int> indexA, indexB;
         public Vector128<float> invMassA, invMassB;
@@ -1775,22 +1783,23 @@ public class ContactSolverSSE : IContactSolverW
     {
         Debug.Assert(((nuint)states & 0x1F) == 0);
         Vector128<float> identityA = Vector128.Create(0f, 0, 0, 0), identityB = Vector128.Create(0f, 0, 1, 0);
-        Vector128<float> b1a = indices[0] == -1 ? identityA : Sse.LoadAlignedVector128((float*)(states + indices[0]));
-        Vector128<float> b1b = indices[0] == -1 ? identityB : Sse.LoadAlignedVector128((float*)(states + indices[0]));
-        Vector128<float> a = indices[1] == -1 ? identityA : Sse.LoadAlignedVector128((float*)(states + indices[1]));
-        Vector128<float> b = indices[1] == -1 ? identityB : Sse.LoadAlignedVector128((float*)(states + indices[1]));
-        Vector128<float> b3a = indices[2] == -1 ? identityA : Sse.LoadAlignedVector128((float*)(states + indices[2]));
-        Vector128<float> b3b = indices[2] == -1 ? identityB : Sse.LoadAlignedVector128((float*)(states + indices[2]));
-        Vector128<float> b4a = indices[3] == -1 ? identityA : Sse.LoadAlignedVector128((float*)(states + indices[3]));
-        Vector128<float> b4b = indices[3] == -1 ? identityB : Sse.LoadAlignedVector128((float*)(states + indices[3]));
+        int i1 = indices[0] - 1, i2 = indices[1] - 1, i3 = indices[2] - 1, i4 = indices[3] - 1;
+        Vector128<float> b1a = i1 == -1 ? identityA : Sse.LoadAlignedVector128((float*)(states + i1));
+        Vector128<float> b1b = i1 == -1 ? identityB : Sse.LoadAlignedVector128((float*)(states + i1));
+        Vector128<float> b2a = i2 == -1 ? identityA : Sse.LoadAlignedVector128((float*)(states + i2));
+        Vector128<float> b2b = i2 == -1 ? identityB : Sse.LoadAlignedVector128((float*)(states + i2));
+        Vector128<float> b3a = i3 == -1 ? identityA : Sse.LoadAlignedVector128((float*)(states + i3));
+        Vector128<float> b3b = i3 == -1 ? identityB : Sse.LoadAlignedVector128((float*)(states + i3));
+        Vector128<float> b4a = i4 == -1 ? identityA : Sse.LoadAlignedVector128((float*)(states + i4));
+        Vector128<float> b4b = i4 == -1 ? identityB : Sse.LoadAlignedVector128((float*)(states + i4));
         Vector128<float> t1a = Sse.UnpackLow(b1a, b3a);
-        Vector128<float> t2a = Sse.UnpackLow(a, b4a);
+        Vector128<float> t2a = Sse.UnpackLow(b2a, b4a);
         Vector128<float> t3a = Sse.UnpackHigh(b1a, b3a);
-        Vector128<float> t4a = Sse.UnpackHigh(a, b4a);
+        Vector128<float> t4a = Sse.UnpackHigh(b2a, b4a);
         Vector128<float> t1b = Sse.UnpackLow(b1b, b3b);
-        Vector128<float> t2b = Sse.UnpackLow(b, b4b);
+        Vector128<float> t2b = Sse.UnpackLow(b2b, b4b);
         Vector128<float> t3b = Sse.UnpackHigh(b1b, b3b);
-        Vector128<float> t4b = Sse.UnpackHigh(b, b4b);
+        Vector128<float> t4b = Sse.UnpackHigh(b2b, b4b);
         return new()
         {
             v = new() { X = Sse.UnpackLow(t1a, t2a), Y = Sse.UnpackHigh(t1a, t2a) },
@@ -1806,10 +1815,11 @@ public class ContactSolverSSE : IContactSolverW
         Vector128<float> t2 = Sse.UnpackHigh(simdBody.v.X, simdBody.v.Y);
         Vector128<float> t3 = Sse.UnpackLow(simdBody.w, simdBody.flags);
         Vector128<float> t4 = Sse.UnpackHigh(simdBody.w, simdBody.flags);
-        if (indices[0] != -1 && states[indices[0]].flags.HasFlag(BodyFlags.Dynamic)) Sse.StoreAligned((float*)(states + indices[0]), Sse.Shuffle(t1, t3, 0b01000100));
-        if (indices[1] != -1 && states[indices[1]].flags.HasFlag(BodyFlags.Dynamic)) Sse.StoreAligned((float*)(states + indices[1]), Sse.Shuffle(t1, t3, 0b11101110));
-        if (indices[2] != -1 && states[indices[2]].flags.HasFlag(BodyFlags.Dynamic)) Sse.StoreAligned((float*)(states + indices[2]), Sse.Shuffle(t2, t4, 0b01000100));
-        if (indices[3] != -1 && states[indices[3]].flags.HasFlag(BodyFlags.Dynamic)) Sse.StoreAligned((float*)(states + indices[3]), Sse.Shuffle(t2, t4, 0b11101110));
+        int i1 = indices[0] - 1, i2 = indices[1] - 1, i3 = indices[2] - 1, i4 = indices[3] - 1;
+        if (i1 != -1 && states[i1].flags.HasFlag(BodyFlags.Dynamic)) Sse.StoreAligned((float*)(states + i1), Sse.Shuffle(t1, t3, 0b01000100));
+        if (i2 != -1 && states[i2].flags.HasFlag(BodyFlags.Dynamic)) Sse.StoreAligned((float*)(states + i2), Sse.Shuffle(t1, t3, 0b11101110));
+        if (i3 != -1 && states[i3].flags.HasFlag(BodyFlags.Dynamic)) Sse.StoreAligned((float*)(states + i3), Sse.Shuffle(t2, t4, 0b01000100));
+        if (i4 != -1 && states[i4].flags.HasFlag(BodyFlags.Dynamic)) Sse.StoreAligned((float*)(states + i4), Sse.Shuffle(t2, t4, 0b11101110));
     }
     public unsafe void PrepareContactsTask(int startIndex, int endIndex, StepContext context)
     {
@@ -1822,7 +1832,7 @@ public class ContactSolverSSE : IContactSolverW
         float warmStartScale = world.enableWarmStarting ? 1 : 0;
         for (int i = startIndex; i < endIndex; i++)
         {
-            var constraint = ((ContactConstraintsSSE)context.simdContactConstraints).simdConstraints + i;
+            var constraint = ((ContactConstraintsSSE)context.wideContactConstraints).wideConstraints + i;
             for (int j = 0; j < 4; j++)
             {
                 ref ContactSim contactSim = ref contacts[4 * i + j];
@@ -1831,8 +1841,8 @@ public class ContactSolverSSE : IContactSolverW
                     Manifold manifold = contactSim.manifold;
                     int indexA = contactSim.bodySimIndexA, indexB = contactSim.bodySimIndexB;
 
-                    ((int*)&constraint->indexA)[j] = indexA;
-                    ((int*)&constraint->indexB)[j] = indexB;
+                    ((int*)&constraint->indexA)[j] = indexA + 1;
+                    ((int*)&constraint->indexB)[j] = indexB + 1;
                     Vector2 vA = Vector2.Zero;
                     float wA = 0, mA = contactSim.invMassA, iA = contactSim.invIA;
                     if (indexA != -1)
@@ -1969,8 +1979,8 @@ public class ContactSolverSSE : IContactSolverW
                 }
                 else
                 {
-                    ((int*)&constraint->indexA)[j] = -1;
-                    ((int*)&constraint->indexB)[j] = -1;
+                    ((int*)&constraint->indexA)[j] = 0;
+                    ((int*)&constraint->indexB)[j] = 0;
 
                     ((float*)&constraint->invMassA)[j] = 0.0f;
                     ((float*)&constraint->invMassB)[j] = 0.0f;
@@ -2020,11 +2030,11 @@ public class ContactSolverSSE : IContactSolverW
     public unsafe void WarmStartContactsTask(int startIndex, int endIndex, StepContext context, int colorIndex)
     {
         var states = context.states.Data;
-        var constraints = ((ContactConstraintsSSE)context.graph.colors[colorIndex].simdConstraints).simdConstraints;
+        var constraints = ((ContactConstraintsSSE)context.graph.colors[colorIndex].wideConstraints).wideConstraints;
         {
-            for (int i = startIndex; i < endIndex; i++)
+            for (int wideIndex = startIndex; wideIndex < endIndex; wideIndex++)
             {
-                ContactConstraintSIMD* c = constraints + i;
+                ContactConstraintWide* c = constraints + wideIndex;
                 BodyStateW bA = GatherBodies(states, (int*)&c->indexA);
                 BodyStateW bB = GatherBodies(states, (int*)&c->indexB);
                 Vector128<float> tangentX = c->normal.Y;
@@ -2081,14 +2091,14 @@ public class ContactSolverSSE : IContactSolverW
     public unsafe void SolveContactsTask(int startIndex, int endIndex, StepContext context, int colorIndex, bool useBias)
     {
         var states = context.states.Data;
-        var constraints = ((ContactConstraintsSSE)context.graph.colors[colorIndex].simdConstraints).simdConstraints;
+        var constraints = ((ContactConstraintsSSE)context.graph.colors[colorIndex].wideConstraints).wideConstraints;
         {
             Vector128<float> inv_h = Vector128.Create(context.inv_h);
             Vector128<float> contactSpeed = Vector128.Create(-context.world.contactSpeed);
             Vector128<float> oneW = Vector128<float>.One;
             for (int i = startIndex; i < endIndex; i++)
             {
-                ContactConstraintSIMD* c = constraints + i;
+                ContactConstraintWide* c = constraints + i;
                 BodyStateW bA = GatherBodies(states, (int*)&c->indexA);
                 BodyStateW bB = GatherBodies(states, (int*)&c->indexB);
                 Vector128<float> biasRate, massScale, impulseScale;
@@ -2249,13 +2259,13 @@ public class ContactSolverSSE : IContactSolverW
     public unsafe void ApplyRestitutionTask(int startIndex, int endIndex, StepContext context, int colorIndex)
     {
         var states = context.states.Data;
-        var constraints = ((ContactConstraintsSSE)context.graph.colors[colorIndex].simdConstraints).simdConstraints;
+        var constraints = ((ContactConstraintsSSE)context.graph.colors[colorIndex].wideConstraints).wideConstraints;
         {
             Vector128<float> threshold = Vector128.Create(context.world.restitutionThreshold);
             Vector128<float> zero = Vector128<float>.Zero;
             for (int i = startIndex; i < endIndex; i++)
             {
-                ContactConstraintSIMD* c = constraints + i;
+                ContactConstraintWide* c = constraints + i;
                 if (AllZeroW(c->restitution)) continue;
                 Vector128<float> restitutionMask = Sse.CompareEqual(c->restitution, zero);
                 BodyStateW bA = GatherBodies(states, (int*)&c->indexA);
@@ -2327,11 +2337,11 @@ public class ContactSolverSSE : IContactSolverW
     {
         ContactSim[] contacts = context.contacts;
         Manifold dummy = new();
-        ContactConstraintSIMD* constraints = ((ContactConstraintsSSE)context.simdContactConstraints).simdConstraints;
+        ContactConstraintWide* constraints = ((ContactConstraintsSSE)context.wideContactConstraints).wideConstraints;
         {
             for (int constraintIndex = startIndex; constraintIndex < endIndex; constraintIndex++)
             {
-                ContactConstraintSIMD* c = constraints + constraintIndex;
+                ContactConstraintWide* c = constraints + constraintIndex;
                 float* rollingImpulse = (float*)&c->rollingImpulse;
                 float* normalImpulse1 = (float*)&c->normalImpulse1;
                 float* normalImpulse2 = (float*)&c->normalImpulse2;
@@ -2398,7 +2408,7 @@ public class ContactSolverFloat : IContactSolverW
     static FloatW DotW(Vector2W a, Vector2W b) => a.X * b.X + a.Y * b.Y;
     static FloatW CrossW(Vector2W a, Vector2W b) => a.X * b.Y - a.Y * b.X;
     static Vector2W RotateVectorW(RotationW q, Vector2W v) => new() { X = q.C * v.X - q.S * v.Y, Y = q.S * v.X + q.C * v.Y };
-    public struct ContactConstraintSIMD
+    public struct ContactConstraintWide
     {
         public Vector128<int> indexA, indexB;
         public FloatW invMassA, invMassB;
@@ -2438,10 +2448,11 @@ public class ContactSolverFloat : IContactSolverW
     unsafe BodyStateW GatherBodies(BodyState* states, int* indices)
     {
         BodyState identity = new();
-        BodyState s1 = indices[0] == -1 ? identity : states[indices[0]];
-        BodyState s2 = indices[1] == -1 ? identity : states[indices[1]];
-        BodyState s3 = indices[2] == -1 ? identity : states[indices[2]];
-        BodyState s4 = indices[3] == -1 ? identity : states[indices[3]];
+        int i1 = indices[0] - 1, i2 = indices[1] - 1, i3 = indices[2] - 1, i4 = indices[3] - 1;
+        BodyState s1 = i1 == -1 ? identity : states[i1];
+        BodyState s2 = i2 == -1 ? identity : states[i2];
+        BodyState s3 = i3 == -1 ? identity : states[i3];
+        BodyState s4 = i4 == -1 ? identity : states[i4];
 
         return new()
         {
@@ -2466,30 +2477,31 @@ public class ContactSolverFloat : IContactSolverW
     }
     unsafe void ScatterBodies(BodyState* states, int* indices, ref BodyStateW simdBody)
     {
-        if (indices[0] != -1 && states[indices[0]].flags.HasFlag(BodyFlags.Dynamic))
+        int i1 = indices[0] - 1, i2 = indices[1] - 1, i3 = indices[2] - 1, i4 = indices[3] - 1;
+        if (i1 != -1 && states[i1].flags.HasFlag(BodyFlags.Dynamic))
         {
-            BodyState* state = states + indices[0];
+            BodyState* state = states + i1;
             state->linearVelocity.x = simdBody.v.X.x;
             state->linearVelocity.y = simdBody.v.Y.x;
             state->angularVelocity = simdBody.w.x;
         }
-        if (indices[1] != -1 && states[indices[1]].flags.HasFlag(BodyFlags.Dynamic))
+        if (i2 != -1 && states[i2].flags.HasFlag(BodyFlags.Dynamic))
         {
-            BodyState* state = states + indices[1];
+            BodyState* state = states + i2;
             state->linearVelocity.x = simdBody.v.X.y;
             state->linearVelocity.y = simdBody.v.Y.y;
             state->angularVelocity = simdBody.w.y;
         }
-        if (indices[2] != -1 && states[indices[2]].flags.HasFlag(BodyFlags.Dynamic))
+        if (i3 != -1 && states[i3].flags.HasFlag(BodyFlags.Dynamic))
         {
-            BodyState* state = states + indices[2];
+            BodyState* state = states + i3;
             state->linearVelocity.x = simdBody.v.X.z;
             state->linearVelocity.y = simdBody.v.Y.z;
             state->angularVelocity = simdBody.w.z;
         }
-        if (indices[3] != -1 && states[indices[3]].flags.HasFlag(BodyFlags.Dynamic))
+        if (i4 != -1 && states[i4].flags.HasFlag(BodyFlags.Dynamic))
         {
-            BodyState* state = states + indices[3];
+            BodyState* state = states + i4;
             state->linearVelocity.x = simdBody.v.X.w;
             state->linearVelocity.y = simdBody.v.Y.w;
             state->angularVelocity = simdBody.w.w;
@@ -2506,7 +2518,7 @@ public class ContactSolverFloat : IContactSolverW
         float warmStartScale = world.enableWarmStarting ? 1 : 0;
         for (int i = startIndex; i < endIndex; i++)
         {
-            var constraint = ((ContactConstraintsFloat)context.simdContactConstraints).simdConstraints + i;
+            var constraint = ((ContactConstraintsFloat)context.wideContactConstraints).wideConstraints + i;
             for (int j = 0; j < 4; j++)
             {
                 ref ContactSim contactSim = ref contacts[4 * i + j];
@@ -2515,8 +2527,8 @@ public class ContactSolverFloat : IContactSolverW
                     Manifold manifold = contactSim.manifold;
                     int indexA = contactSim.bodySimIndexA, indexB = contactSim.bodySimIndexB;
 
-                    ((int*)&constraint->indexA)[j] = indexA;
-                    ((int*)&constraint->indexB)[j] = indexB;
+                    ((int*)&constraint->indexA)[j] = indexA + 1;
+                    ((int*)&constraint->indexB)[j] = indexB + 1;
                     Vector2 vA = Vector2.Zero;
                     float wA = 0, mA = contactSim.invMassA, iA = contactSim.invIA;
                     if (indexA != -1)
@@ -2653,8 +2665,8 @@ public class ContactSolverFloat : IContactSolverW
                 }
                 else
                 {
-                    ((int*)&constraint->indexA)[j] = -1;
-                    ((int*)&constraint->indexB)[j] = -1;
+                    ((int*)&constraint->indexA)[j] = 0;
+                    ((int*)&constraint->indexB)[j] = 0;
 
                     ((float*)&constraint->invMassA)[j] = 0.0f;
                     ((float*)&constraint->invMassB)[j] = 0.0f;
@@ -2704,11 +2716,11 @@ public class ContactSolverFloat : IContactSolverW
     public unsafe void WarmStartContactsTask(int startIndex, int endIndex, StepContext context, int colorIndex)
     {
         var states = context.states.Data;
-        var constraints = ((ContactConstraintsFloat)context.graph.colors[colorIndex].simdConstraints).simdConstraints;
+        var constraints = ((ContactConstraintsFloat)context.graph.colors[colorIndex].wideConstraints).wideConstraints;
         {
-            for (int i = startIndex; i < endIndex; i++)
+            for (int wideIndex = startIndex; wideIndex < endIndex; wideIndex++)
             {
-                ContactConstraintSIMD* c = constraints + i;
+                ContactConstraintWide* c = constraints + wideIndex;
                 BodyStateW bA = GatherBodies(states, (int*)&c->indexA);
                 BodyStateW bB = GatherBodies(states, (int*)&c->indexB);
                 FloatW tangentX = c->normal.Y;
@@ -2765,14 +2777,14 @@ public class ContactSolverFloat : IContactSolverW
     public unsafe void SolveContactsTask(int startIndex, int endIndex, StepContext context, int colorIndex, bool useBias)
     {
         var states = context.states.Data;
-        var constraints = ((ContactConstraintsFloat)context.graph.colors[colorIndex].simdConstraints).simdConstraints;
+        var constraints = ((ContactConstraintsFloat)context.graph.colors[colorIndex].wideConstraints).wideConstraints;
         {
             FloatW inv_h = new(context.inv_h);
             FloatW contactSpeed = new(-context.world.contactSpeed);
             FloatW oneW = new(1);
             for (int i = startIndex; i < endIndex; i++)
             {
-                ContactConstraintSIMD* c = constraints + i;
+                ContactConstraintWide* c = constraints + i;
                 BodyStateW bA = GatherBodies(states, (int*)&c->indexA);
                 BodyStateW bB = GatherBodies(states, (int*)&c->indexB);
                 FloatW biasRate, massScale, impulseScale;
@@ -2933,13 +2945,13 @@ public class ContactSolverFloat : IContactSolverW
     public unsafe void ApplyRestitutionTask(int startIndex, int endIndex, StepContext context, int colorIndex)
     {
         var states = context.states.Data;
-        var constraints = ((ContactConstraintsFloat)context.graph.colors[colorIndex].simdConstraints).simdConstraints;
+        var constraints = ((ContactConstraintsFloat)context.graph.colors[colorIndex].wideConstraints).wideConstraints;
         {
             FloatW threshold = new(context.world.restitutionThreshold);
             FloatW zero = FloatW.Zero;
             for (int i = startIndex; i < endIndex; i++)
             {
-                ContactConstraintSIMD* c = constraints + i;
+                ContactConstraintWide* c = constraints + i;
                 if (AllZeroW(c->restitution)) continue;
                 FloatW restitutionMask = EqualsW(c->restitution, zero);
                 BodyStateW bA = GatherBodies(states, (int*)&c->indexA);
@@ -3011,11 +3023,11 @@ public class ContactSolverFloat : IContactSolverW
     {
         ContactSim[] contacts = context.contacts;
         Manifold dummy = new();
-        ContactConstraintSIMD* constraints = ((ContactConstraintsFloat)context.simdContactConstraints).simdConstraints;
+        ContactConstraintWide* constraints = ((ContactConstraintsFloat)context.wideContactConstraints).wideConstraints;
         {
             for (int constraintIndex = startIndex; constraintIndex < endIndex; constraintIndex++)
             {
-                ContactConstraintSIMD* c = constraints + constraintIndex;
+                ContactConstraintWide* c = constraints + constraintIndex;
                 float* rollingImpulse = (float*)&c->rollingImpulse;
                 float* normalImpulse1 = (float*)&c->normalImpulse1;
                 float* normalImpulse2 = (float*)&c->normalImpulse2;

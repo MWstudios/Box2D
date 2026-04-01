@@ -96,7 +96,7 @@ public unsafe record class WeldJoint : IJoint
     }
     public void Solve(JointSim joint, StepContext context, bool useBias)
     {
-        Debug.Assert(joint.type == JointType.Motor);
+        Debug.Assert(joint.type == JointType.Weld);
         float mA = joint.invMassA, mB = joint.invMassB;
         float iA = joint.invIA, iB = joint.invIB;
         BodyState dummyState = new();

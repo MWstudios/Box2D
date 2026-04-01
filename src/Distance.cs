@@ -556,10 +556,8 @@ public static class Distance
         };
         while (true)
         {
-            Transform xfA = sweepA.GetSweepTransform(t1);
-            Transform xfB = sweepB.GetSweepTransform(t1);
-            distanceInput.transformA = xfA;
-            distanceInput.transformB = xfB;
+            distanceInput.transformA = sweepA.GetSweepTransform(t1);
+            distanceInput.transformB = sweepB.GetSweepTransform(t1);
             DistanceOutput distanceOutput = distanceInput.ShapeDistance(ref cache, null);
             distanceIterations++;
             if (distanceOutput.distance <= 0)

@@ -86,7 +86,7 @@ public static class WorldAPI
             World.Collide(context);
             pairTicks.Stop();
         }
-        if (context.dt > 0)
+        if (timeStep > 0)
         {
             pairTicks.Restart();
             for (int i = 0; i < world.particleSystemList.Count; i++) world.particleSystemList[i].Solve(context.dt, context.inv_dt, 4);
@@ -118,12 +118,12 @@ public static class WorldAPI
         World world = worldId.index1; //Debug.Assert(!world.locked); if (world.locked) return;
         Debug.Assert(draw.drawingBounds.IsValid());
         const float k_axisScale = 0.3f;
-        HexColor speculativeColor = HexColor.Gainsboro;
-        HexColor addColor = HexColor.Green;
-        HexColor persistColor = HexColor.Blue;
-        HexColor normalColor = HexColor.DimGray;
-        HexColor impulseColor = HexColor.Magenta;
-        HexColor frictionColor = HexColor.Yellow;
+        const HexColor speculativeColor = HexColor.Gainsboro;
+        const HexColor addColor = HexColor.Green;
+        const HexColor persistColor = HexColor.Blue;
+        const HexColor normalColor = HexColor.DimGray;
+        const HexColor impulseColor = HexColor.Magenta;
+        const HexColor frictionColor = HexColor.Yellow;
         HexColor[] graphColors =
         [
             HexColor.Red, HexColor.Orange, HexColor.Yellow, HexColor.Green, HexColor.Cyan, HexColor.Blue,
@@ -196,44 +196,53 @@ public static class WorldAPI
                         if (!world.debugContactSet.GetBit(contactId))
                         {
                             ContactSim contactSim = world.GetContactSim(contact);
+                            Body bodyA = world.bodies[contact.edge0.bodyId], bodyB = world.bodies[contact.edge1.bodyId];
+                            BodySim bodySimA = world.GetBodySim(bodyA), bodySimB = world.GetBodySim(bodyB);
                             int pointCount = contactSim.manifold.pointCount;
                             Vector2 normal = contactSim.manifold.normal;
                             for (int j = 0; j < pointCount; j++)
                             {
-                                ref ManifoldPoint point = ref contactSim.manifold.point0;
-                                if (j == 1) point = ref contactSim.manifold.point1;
+                                ref ManifoldPoint mp = ref contactSim.manifold.point0;
+                                if (j == 1) mp = ref contactSim.manifold.point1;
+                                Vector2 p = draw.contactDrawType switch
+                                {
+                                    ContactDrawType.AnchorA => mp.clipPoint + mp.anchorA,
+                                    ContactDrawType.AnchorB => mp.clipPoint + mp.anchorB,
+                                    ContactDrawType.Average => Vector2.Lerp(bodySimA.center + mp.anchorA, bodySimB.center + mp.anchorB, 0.5f),
+                                    _ => mp.clipPoint
+                                };
                                 if (draw.drawGraphColors && contact.colorIndex != -1)
                                 {
                                     float pointSize = contact.colorIndex == Box2D.GraphColorCount - 1 ? 7.5f : 5;
-                                    draw.DrawPointFcn(point.point, pointSize, graphColors[contact.colorIndex], draw.context);
+                                    draw.DrawPointFcn(p, pointSize, graphColors[contact.colorIndex], draw.context);
                                 }
-                                else if (point.separation > Box2D.LinearSlop)
-                                    draw.DrawPointFcn(point.point, 5, speculativeColor, draw.context);
-                                else if (!point.persisted) draw.DrawPointFcn(point.point, 10, addColor, draw.context);
-                                else if (point.persisted) draw.DrawPointFcn(point.point, 5, persistColor, draw.context);
+                                else if (mp.separation > Box2D.LinearSlop)
+                                    draw.DrawPointFcn(p, 5, speculativeColor, draw.context);
+                                else if (!mp.persisted) draw.DrawPointFcn(p, 10, addColor, draw.context);
+                                else if (mp.persisted) draw.DrawPointFcn(p, 5, persistColor, draw.context);
                                 if (draw.drawContactNormals)
                                 {
-                                    Vector2 p1 = point.point;
+                                    Vector2 p1 = p;
                                     Vector2 p2 = Vector2.MulAdd(p1, k_axisScale, normal);
                                     draw.DrawSegmentFcn(p1, p2, normalColor, draw.context);
                                 }
                                 else if (draw.drawContactForces)
                                 {
-                                    float force = 0.5f * point.totalNormalImpulse * world.inv_dt;
-                                    Vector2 p1 = point.point;
+                                    float force = 0.5f * mp.totalNormalImpulse * world.inv_dt;
+                                    Vector2 p1 = p;
                                     Vector2 p2 = Vector2.MulAdd(p1, draw.forceScale * force, normal);
                                     draw.DrawSegmentFcn(p1, p2, impulseColor, draw.context);
                                     draw.DrawStringFcn(p1, $"{force:F1}", HexColor.White, draw.context);
                                 }
                                 if (draw.drawContactFeatures)
                                 {
-                                    draw.DrawStringFcn(point.point, $"{point.id}", HexColor.Orange, draw.context);
+                                    draw.DrawStringFcn(p, $"{mp.id}", HexColor.Orange, draw.context);
                                 }
                                 if (draw.drawFrictionForces)
                                 {
-                                    float force = 0.5f * point.tangentImpulse * world.inv_h;
+                                    float force = 0.5f * mp.tangentImpulse * world.inv_h;
                                     Vector2 tangent = normal.RightPerp();
-                                    Vector2 p1 = point.point;
+                                    Vector2 p1 = p;
                                     Vector2 p2 = Vector2.MulAdd(p1, draw.forceScale * force, tangent);
                                     draw.DrawSegmentFcn(p1, p2, frictionColor, draw.context);
                                     draw.DrawStringFcn(p1, $"{force:F1}", HexColor.White, draw.context);
@@ -253,10 +262,9 @@ public static class WorldAPI
                         if (island.setIndex == -1) continue;
                         int shapeCount = 0;
                         AABB aabb = new(new(float.MaxValue, float.MaxValue), new(-float.MaxValue, -float.MaxValue));
-                        int islandBodyId = island.headBody;
-                        while (islandBodyId != -1)
+                        for (int bodyIndex = 0; bodyIndex < island.bodies.Count; bodyIndex++)
                         {
-                            Body islandBody = world.bodies[islandBodyId];
+                            Body islandBody = world.bodies[island.bodies[bodyIndex]];
                             int shapeId = islandBody.headShapeId;
                             while (shapeId != -1)
                             {
@@ -265,7 +273,6 @@ public static class WorldAPI
                                 shapeCount++;
                                 shapeId = shape.nextShapeId;
                             }
-                            islandBodyId = islandBody.islandNext;
                         }
                         if (shapeCount > 0)
                         {
@@ -784,6 +791,17 @@ public static class WorldAPI
         world.contactDampingRatio = Math.Clamp(dampingRatio, 0, float.MaxValue);
         world.contactSpeed = Math.Clamp(pushSpeed, 0, float.MaxValue);
     }
+
+    /// <summary>Set the contact point recycling distance. Setting this to zero disables contact point recycling.
+    /// Usually in meters.</summary>
+    public static void SetContactRecycleDistance(WorldID worldId, float recycleDistance)
+    {
+        World world = worldId.index1; Debug.Assert(!world.locked); if (world.locked) return;
+        world.contactRecycleDistance = Math.Clamp(recycleDistance, 0, float.MaxValue);
+    }
+
+    /// <summary>Get the contact point recycling distance. Usually in meters.</summary>
+    public static float GetContactRecycleDistance(WorldID worldId) => worldId.index1.contactRecycleDistance;
 
     ///<summary> Set the maximum linear speed. Usually in m/s.</summary>
     public static void SetMaximumLinearSpeed(WorldID worldId, float maximumLinearSpeed)

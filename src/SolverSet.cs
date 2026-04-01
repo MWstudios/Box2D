@@ -1,5 +1,6 @@
 ﻿using System.Collections.Generic;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 
 namespace Box2D;
 
@@ -137,24 +138,25 @@ public partial class World
     {
         Island island = islands[islandId];
         Debug.Assert(island.setIndex == (int)SetType.Awake);
-        if (island.constraintRemoveCount > 0) return;
+        if (island.constraintRemoveCount > 0 && island.bodies.Count > 1) return;
         int sleepSetId = solverSetIdPool.AllocId();
         if (sleepSetId == solverSets.Count) solverSets.Add(new() { setIndex = -1 });
         SolverSet sleepSet = solverSets[sleepSetId];
         SolverSet awakeSet = solverSets[(int)SetType.Awake];
         Debug.Assert(0 <= island.localIndex && island.localIndex < awakeSet.islandSims.Count);
         sleepSet.setIndex = sleepSetId;
-        sleepSet.bodySims = new(island.bodyCount);
-        sleepSet.contactSims = new(island.contactCount);
-        sleepSet.jointSims = new(island.jointCount);
+        sleepSet.bodySims = new(island.bodies.Count);
+        sleepSet.contactSims = new(island.contacts.Count);
+        sleepSet.jointSims = new(island.joints.Count);
         {
             SolverSet disabledSet = solverSets[(int)SetType.Disabled];
-            int bodyId = island.headBody;
-            while (bodyId != -1)
+            for (int i = 0; i < island.bodies.Count; i++)
             {
+                int bodyId = island.bodies[i];
                 Body body = bodies[bodyId];
                 Debug.Assert(body.setIndex == (int)SetType.Awake);
                 Debug.Assert(body.islandId == islandId);
+                Debug.Assert(body.islandIndex == i);
                 if (body.bodyMoveIndex != -1)
                 {
                     ref BodyMoveEvent moveEvent = ref System.Runtime.InteropServices.CollectionsMarshal.AsSpan(bodyMoveEvents)[body.bodyMoveIndex];
@@ -168,15 +170,7 @@ public partial class World
                 int sleepBodyIndex = sleepSet.bodySims.Count;
                 BodySim sleepBodySim = awakeSim with { };
                 sleepSet.bodySims.Add(sleepBodySim);
-                int movedIndex = awakeSet.bodySims.RemoveSwap(awakeBodyIndex);
-                if (movedIndex != -1)
-                {
-                    BodySim movedSim = awakeSet.bodySims[awakeBodyIndex];
-                    int movedId = movedSim.bodyId;
-                    Body movedBody = bodies[movedId];
-                    Debug.Assert(movedBody.localIndex == movedIndex);
-                    movedBody.localIndex = awakeBodyIndex;
-                }
+                RemoveBodySim(awakeSet.bodySims, bodies, awakeBodyIndex);
                 awakeSet.bodyStates.RemoveSwap(awakeBodyIndex);
                 body.setIndex = sleepSetId;
                 body.localIndex = sleepBodyIndex;
@@ -215,14 +209,13 @@ public partial class World
                         movedContact.localIndex = localIndex;
                     }
                 }
-                bodyId = body.islandNext;
             }
         }
         {
-            int contactId = island.headContact;
-            while (contactId != -1)
+            for (int i = 0; i < island.contacts.Count; i++)
             {
-                Contact contact = contacts[contactId];
+                ref ContactLink link = ref CollectionsMarshal.AsSpan(island.contacts)[i];
+                Contact contact = contacts[link.contactId];
                 Debug.Assert(contact.setIndex == (int)SetType.Awake);
                 Debug.Assert(contact.islandId == islandId);
                 int colorIndex = contact.colorIndex;
@@ -249,14 +242,13 @@ public partial class World
                 contact.setIndex = sleepSetId;
                 contact.colorIndex = -1;
                 contact.localIndex = sleepContactIndex;
-                contactId = contact.islandNext;
             }
         }
         {
-            int jointId = island.headJoint;
-            while (jointId != -1)
+            for (int i = 0; i < island.joints.Count; i++)
             {
-                Joint joint = joints[jointId];
+                ref JointLink link = ref CollectionsMarshal.AsSpan(island.joints)[i];
+                Joint joint = joints[link.jointId];
                 Debug.Assert(joint.setIndex == (int)SetType.Awake);
                 Debug.Assert(joint.islandId == islandId);
                 int colorIndex = joint.colorIndex;
@@ -284,7 +276,6 @@ public partial class World
                 joint.setIndex = sleepSetId;
                 joint.colorIndex = -1;
                 joint.localIndex = sleepJointIndex;
-                jointId = joint.islandNext;
             }
         }
         {
@@ -304,6 +295,7 @@ public partial class World
             island.setIndex = sleepSetId;
             island.localIndex = 0;
         }
+        if (splitIslandId == islandId) splitIslandId = -1;
         ValidateSolverSets();
     }
     public void MergeSolverSets(int setId1, int setId2)
@@ -359,15 +351,7 @@ public partial class World
         int targetIndex = targetSet.bodySims.Count;
         BodySim targetSim = sourceSim with { }; targetSet.bodySims.Add(targetSim);
         targetSim.flags &= ~(BodyFlags.IsFast | BodyFlags.IsSpeedCapped | BodyFlags.HadTimeOfImpact);
-        int movedIndex = sourceSet.bodySims.RemoveSwap(sourceIndex);
-        if (movedIndex != -1)
-        {
-            BodySim movedSim = sourceSet.bodySims[sourceIndex];
-            int movedId = movedSim.bodyId;
-            Body movedBody = bodies[movedId];
-            Debug.Assert(movedBody.localIndex == movedIndex);
-            movedBody.localIndex = sourceIndex;
-        }
+        RemoveBodySim(sourceSet.bodySims, bodies, sourceIndex);
         if (sourceSet.setIndex == (int)SetType.Awake) sourceSet.bodyStates.RemoveSwap(sourceIndex);
         else if (targetSet.setIndex == (int)SetType.Awake)
             targetSet.bodyStates.Add(new() { flags = body.flags });

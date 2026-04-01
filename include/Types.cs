@@ -333,11 +333,14 @@ public struct ShapeDef
     /// Sensors still contribute to the body mass if they have non-zero density.</summary>
     /// <remarks>Sensor events are disabled by default.</remarks>
     public bool isSensor = false;
-    /// <summary>Enable sensor events for this shape. This applies to sensors and non-sensors. False by default, even for sensors.</summary>
+    /// <summary>Enable sensor events for this shape. This applies to sensors and non-sensors. Both shapes involved must have this flag set to true.
+	/// False by default, even for sensors.</summary>
     public bool enableSensorEvents = false;
-    /// <summary>Enable contact events for this shape. Only applies to kinematic and dynamic bodies. Ignored for sensors. False by default.</summary>
+    /// <summary>Enable contact events for this shape. Only applies to kinematic and dynamic bodies. Only one shape involved needs this flag set to true.
+	/// Ignored for sensors. False by default.</summary>
     public bool enableContactEvents = false;
-    /// <summary>Enable hit events for this shape. Only applies to kinematic and dynamic bodies. Ignored for sensors. False by default.</summary>
+    /// <summary>Enable hit events for this shape. Only applies to kinematic and dynamic bodies. Only one shape involved needs this flag set to true.
+	/// Ignored for sensors. False by default.</summary>
     public bool enableHitEvents = false;
     /// <summary>Enable pre-solve contact events for this shape. Only applies to dynamic bodies. These are expensive
     /// and must be carefully handled due to multithreading. Ignored for sensors.</summary>
@@ -1017,6 +1020,8 @@ public enum HexColor
     Box2DGreen = 0x8CC924,
     Box2DYellow = 0xFFEE8C
 }
+/// <summary>The type of contact point drawing</summary>
+public enum ContactDrawType { None, Clip, AnchorA, AnchorB, Average }
 /// <summary>This struct holds callbacks you can implement to draw a Box2D world.
 /// This structure should be zero initialized.</summary>
 public partial class DebugDraw
@@ -1045,6 +1050,8 @@ public partial class DebugDraw
     public float forceScale = 1;
     /// <summary>Global scaling for joint drawing</summary>
     public float jointScale;
+    /// <summary>Option to draw contact points</summary>
+    public ContactDrawType contactDrawType;
     /// <summary>Option to draw shapes</summary>
     public bool drawShapes = true;
     /// <summary>Option to draw joints</summary>

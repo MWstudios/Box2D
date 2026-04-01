@@ -88,8 +88,7 @@ public unsafe static class BodyAPI
         body.headJointKey = -1;
         body.jointCount = 0;
         body.islandId = -1;
-        body.islandPrev = -1;
-        body.islandNext = -1;
+        body.islandIndex = -1;
         body.bodyMoveIndex = -1;
         body.id = bodyId;
         body.mass = 0;
@@ -140,20 +139,8 @@ public unsafe static class BodyAPI
         }
         world.RemoveBodyFromIsland(body);
         SolverSet set = world.solverSets[body.setIndex];
-        int movedIndex = set.bodySims.RemoveSwap(body.localIndex);
-        if (movedIndex != -1)
-        {
-            BodySim movedSim = set.bodySims[body.localIndex];
-            int movedId = movedSim.bodyId;
-            Body movedBody = world.bodies[movedId];
-            Debug.Assert(movedBody.localIndex == movedIndex);
-            movedBody.localIndex = body.localIndex;
-        }
-        if (body.setIndex == (int)_SetType.Awake)
-        {
-            int result = set.bodyStates.RemoveSwap(body.localIndex);
-            Debug.Assert(result == movedIndex);
-        }
+        World.RemoveBodySim(set.bodySims, world.bodies, body.localIndex);
+        if (body.setIndex == (int)_SetType.Awake) set.bodyStates.RemoveSwap(body.localIndex);
         else if (set.setIndex >= (int)_SetType.FirstSleeping && set.bodySims.Count == 0)
             world.DestroySolverSet(set.setIndex);
         world.bodyIdPool.FreeId(body.id);
@@ -316,8 +303,8 @@ public unsafe static class BodyAPI
             shape.aabb = aabb;
             if (!shape.fatAABB.Contains(aabb))
             {
-                AABB fatAABB = new(new(aabb.lowerBound.x - Box2D.AABBMargin, aabb.lowerBound.y - Box2D.AABBMargin),
-                    new(aabb.upperBound.x + Box2D.AABBMargin, aabb.upperBound.y + Box2D.AABBMargin));
+                AABB fatAABB = new(new(aabb.lowerBound.x - shape.aabbMargin, aabb.lowerBound.y - shape.aabbMargin),
+                    new(aabb.upperBound.x + shape.aabbMargin, aabb.upperBound.y + shape.aabbMargin));
                 shape.fatAABB = fatAABB;
                 if (shape.proxyKey != -1) broadPhase.MoveProxy(shape.proxyKey, fatAABB);
             }

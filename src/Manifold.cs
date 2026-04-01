@@ -38,7 +38,7 @@ public static class Collision
         ref ManifoldPoint mp = ref manifold.point0;
         mp.anchorA = xfA.q * contactPointA;
         mp.anchorB = mp.anchorA + (xfA.p - xfB.p);
-        mp.point = mp.anchorA + xfA.p;
+        mp.clipPoint = mp.anchorA + xfA.p;
         mp.separation = separation;
         mp.id = 0;
         manifold.pointCount = 1;
@@ -75,7 +75,7 @@ public static class Collision
         ref ManifoldPoint mp = ref manifold.point0;
         mp.anchorA = xfA.q * contactPointA;
         mp.anchorB = mp.anchorA + (xfA.p - xfB.p);
-        mp.point = xfA.p - mp.anchorA;
+        mp.clipPoint = xfA.p - mp.anchorA;
         mp.separation = separation;
         mp.id = 0;
         manifold.pointCount = 1;
@@ -124,7 +124,7 @@ public static class Collision
             ref ManifoldPoint mp = ref manifold.point0;
             mp.anchorA = xfA.q * contactPointA;
             mp.anchorB = mp.anchorA + (xfA.p - xfB.p);
-            mp.point = xfA.p = mp.anchorA;
+            mp.clipPoint = xfA.p = mp.anchorA;
             mp.separation = Vector2.Dot(cB - cA, normal);
             mp.id = 0;
             manifold.pointCount = 1;
@@ -141,7 +141,7 @@ public static class Collision
             ref ManifoldPoint mp = ref manifold.point0;
             mp.anchorA = xfA.q * contactPointA;
             mp.anchorB = mp.anchorA + (xfA.p - xfB.p);
-            mp.point = xfA.p + mp.anchorA;
+            mp.clipPoint = xfA.p + mp.anchorA;
             mp.separation = Vector2.Dot(cB - cA, normal);
             mp.id = 0;
             manifold.pointCount = 1;
@@ -156,7 +156,7 @@ public static class Collision
             ref ManifoldPoint mp = ref manifold.point0;
             mp.anchorA = xfA.q * contactPointA;
             mp.anchorB = mp.anchorA + (xfA.p - xfB.p);
-            mp.point = xfA.p + mp.anchorA;
+            mp.clipPoint = xfA.p + mp.anchorA;
             mp.separation = separation - radius;
             mp.id = 0;
             manifold.pointCount = 1;
@@ -302,14 +302,14 @@ public static class Collision
             ref ManifoldPoint mp = ref manifold.point0;
             mp.anchorA = xfA.q * (mp.anchorA + origin);
             mp.anchorB = mp.anchorA + (xfA.p - xfB.p);
-            mp.point = xfA.p + mp.anchorA;
+            mp.clipPoint = xfA.p + mp.anchorA;
         }
         if (manifold.pointCount > 1)
         {
             ref ManifoldPoint mp = ref manifold.point1;
             mp.anchorA = xfA.q * (mp.anchorA + origin);
             mp.anchorB = mp.anchorA + (xfA.p - xfB.p);
-            mp.point = xfA.p + mp.anchorA;
+            mp.clipPoint = xfA.p + mp.anchorA;
         }
         return manifold;
     }
@@ -549,13 +549,13 @@ public static class Collision
             ref ManifoldPoint mp = ref manifold.point0;
             mp.anchorA = xfA.q * (mp.anchorA + origin);
             mp.anchorB = mp.anchorA + (xfA.p - xfB.p);
-            mp.point = xfA.p + mp.anchorA;
+            mp.clipPoint = xfA.p + mp.anchorA;
             if (manifold.pointCount > 1)
             {
                 mp = ref manifold.point1;
                 mp.anchorA = xfA.q * (mp.anchorA + origin);
                 mp.anchorB = mp.anchorA + (xfA.p - xfB.p);
-                mp.point = xfA.p + mp.anchorA;
+                mp.clipPoint = xfA.p + mp.anchorA;
             }
         }
         return manifold;
@@ -610,7 +610,7 @@ public static class Collision
         ref ManifoldPoint mp = ref manifold.point0;
         mp.anchorA = xfA.q * contactPointA;
         mp.anchorB = mp.anchorA + (xfA.p - xfB.p);
-        mp.point = xfA.p + mp.anchorA;
+        mp.clipPoint = xfA.p + mp.anchorA;
         mp.separation = separation;
         mp.id = 0;
         manifold.pointCount = 1;
@@ -737,7 +737,7 @@ public static class Collision
                     ref ManifoldPoint cp = ref manifold.point0;
                     cp.anchorA = xfA.q * pA;
                     cp.anchorB = cp.anchorA + (xfA.p - xfB.p);
-                    cp.point = xfA.p + cp.anchorA;
+                    cp.clipPoint = xfA.p + cp.anchorA;
                     cp.separation = output.distance - radiusB;
                     cp.id = B2_MAKE_ID(cache.indexA[0], cache.indexB[0]);
                     manifold.pointCount = 1;
@@ -782,8 +782,8 @@ public static class Collision
                             Vector2 pAB = xfA.p - xfB.p;
                             manifold.point0.anchorB = manifold.point0.anchorA + pAB;
                             manifold.point1.anchorB = manifold.point1.anchorA + pAB;
-                            manifold.point0.point = xfA.p + manifold.point0.anchorA;
-                            manifold.point1.point = xfA.p + manifold.point1.anchorA;
+                            manifold.point0.clipPoint = xfA.p + manifold.point0.anchorA;
+                            manifold.point1.clipPoint = xfA.p + manifold.point1.anchorA;
                         }
                         return manifold;
                     }
@@ -860,8 +860,8 @@ public static class Collision
                     Vector2 pAB = xfA.p - xfB.p;
                     manifold.point0.anchorB = manifold.point0.anchorA + pAB;
                     manifold.point1.anchorB = manifold.point1.anchorA + pAB;
-                    manifold.point0.point = xfA.p + manifold.point0.anchorA;
-                    manifold.point1.point = xfA.p + manifold.point1.anchorA;
+                    manifold.point0.clipPoint = xfA.p + manifold.point0.anchorA;
+                    manifold.point1.clipPoint = xfA.p + manifold.point1.anchorA;
                 }
                 return manifold;
             }
@@ -908,8 +908,8 @@ public static class Collision
             Vector2 pAB = xfA.p - xfB.p;
             manifold.point0.anchorB = manifold.point0.anchorA + pAB;
             manifold.point1.anchorB = manifold.point1.anchorA + pAB;
-            manifold.point0.point = xfA.p + manifold.point0.anchorA;
-            manifold.point1.point = xfA.p + manifold.point1.anchorA;
+            manifold.point0.clipPoint = xfA.p + manifold.point0.anchorA;
+            manifold.point1.clipPoint = xfA.p + manifold.point1.anchorA;
         }
         return manifold;
     }

@@ -100,7 +100,7 @@ public unsafe partial class StepContext
     /// to constraint graph colors</summary>
     public ContactSim[] contacts;
 
-    public IContactConstraintsSIMD simdContactConstraints;
+    public IContactConstraintsSIMD wideContactConstraints;
     public int activeColorCount;
     public int workerCount;
 
@@ -369,8 +369,9 @@ public unsafe partial class World
                 shape.aabb = aabb;
                 if (!shape.fatAABB.Contains(aabb))
                 {
-                    shape.fatAABB = new(new(aabb.lowerBound.x - Box2D.AABBMargin, aabb.lowerBound.y - Box2D.AABBMargin),
-                        new(aabb.upperBound.x + Box2D.AABBMargin, aabb.upperBound.y + Box2D.AABBMargin));
+                    float margin = shape.aabbMargin;
+                    shape.fatAABB = new(new(aabb.lowerBound.x - margin, aabb.lowerBound.y - margin),
+                        new(aabb.upperBound.x + margin, aabb.upperBound.y + margin));
                     shape.enlargedAABB = true;
                     fastBodySim.flags |= BodyFlags.EnlargeBounds;
                 }
@@ -387,8 +388,9 @@ public unsafe partial class World
                 Shape shape = shapes[shapeId];
                 if (!shape.fatAABB.Contains(shape.aabb))
                 {
-                    shape.fatAABB = new(new(shape.aabb.lowerBound.x - Box2D.AABBMargin, shape.aabb.lowerBound.y - Box2D.AABBMargin),
-                        new(shape.aabb.upperBound.x + Box2D.AABBMargin, shape.aabb.upperBound.y + Box2D.AABBMargin));
+                    float margin = shape.aabbMargin;
+                    shape.fatAABB = new(new(shape.aabb.lowerBound.x - margin, shape.aabb.lowerBound.y - margin),
+                        new(shape.aabb.upperBound.x + margin, shape.aabb.upperBound.y + margin));
                     shape.enlargedAABB = true;
                     fastBodySim.flags |= BodyFlags.EnlargeBounds;
                 }
@@ -492,8 +494,9 @@ public unsafe partial class World
                     Debug.Assert(!shape.enlargedAABB);
                     if (!shape.fatAABB.Contains(aabb))
                     {
-                        shape.fatAABB = new(new(aabb.lowerBound.x - Box2D.AABBMargin, aabb.lowerBound.y - Box2D.AABBMargin),
-                            new(aabb.upperBound.x + Box2D.AABBMargin, aabb.upperBound.y + Box2D.AABBMargin));
+                        float margin = shape.aabbMargin;
+                        shape.fatAABB = new(new(aabb.lowerBound.x - margin, aabb.lowerBound.y - margin),
+                            new(aabb.upperBound.x + margin, aabb.upperBound.y + margin));
                         shape.enlargedAABB = true;
                         enlargedSimBitSet.SetBit(simIndex);
                     }
@@ -622,23 +625,23 @@ public unsafe partial class World
             context.PrepareOverflowContacts();
             profile.prepareConstraints += (float)ticks.Elapsed.TotalMilliseconds;
             ticks.Restart();
-            for (int i = 0; i < context.subStepCount; i++)
+            for (int subStepIndex = 0; subStepIndex < context.subStepCount; subStepIndex++)
             {
-                int iterStageIndex = stageIndex;
-                syncBits = ((uint)bodySyncIndex << 16) | (uint)iterStageIndex;
-                Debug.Assert(stages[iterStageIndex].type == SolverStageType.IntegrateVelocities);
-                ExecuteMainStage(stages[iterStageIndex], context, syncBits);
-                iterStageIndex++; bodySyncIndex++;
+                int iterationStageIndex = stageIndex;
+                syncBits = ((uint)bodySyncIndex << 16) | (uint)iterationStageIndex;
+                Debug.Assert(stages[iterationStageIndex].type == SolverStageType.IntegrateVelocities);
+                ExecuteMainStage(stages[iterationStageIndex], context, syncBits);
+                iterationStageIndex++; bodySyncIndex++;
                 profile.integrateVelocities += (float)ticks.Elapsed.TotalMilliseconds;
                 ticks.Restart();
                 context.WarmStartOverflowJoints();
                 context.WarmStartOverflowContacts();
                 for (int colorIndex = 0; colorIndex < context.activeColorCount; colorIndex++)
                 {
-                    syncBits = ((uint)graphSyncIndex << 16) | (uint)iterStageIndex;
-                    Debug.Assert(stages[iterStageIndex].type == SolverStageType.WarmStart);
-                    ExecuteMainStage(stages[iterStageIndex], context, syncBits);
-                    iterStageIndex++;
+                    syncBits = ((uint)graphSyncIndex << 16) | (uint)iterationStageIndex;
+                    Debug.Assert(stages[iterationStageIndex].type == SolverStageType.WarmStart);
+                    ExecuteMainStage(stages[iterationStageIndex], context, syncBits);
+                    iterationStageIndex++;
                 }
                 graphSyncIndex++;
                 profile.warmStart += (float)ticks.Elapsed.TotalMilliseconds;
@@ -650,19 +653,19 @@ public unsafe partial class World
                     context.SolveOverflowContacts(useBias);
                     for (int colorIndex = 0; colorIndex < context.activeColorCount; colorIndex++)
                     {
-                        syncBits = ((uint)graphSyncIndex << 16) | (uint)iterStageIndex;
-                        Debug.Assert(stages[iterStageIndex].type == SolverStageType.Solve);
-                        ExecuteMainStage(stages[iterStageIndex], context, syncBits);
-                        iterStageIndex++;
+                        syncBits = ((uint)graphSyncIndex << 16) | (uint)iterationStageIndex;
+                        Debug.Assert(stages[iterationStageIndex].type == SolverStageType.Solve);
+                        ExecuteMainStage(stages[iterationStageIndex], context, syncBits);
+                        iterationStageIndex++;
                     }
                     graphSyncIndex++;
                 }
                 profile.solveImpulses += (float)ticks.Elapsed.TotalMilliseconds;
                 ticks.Restart();
-                Debug.Assert(stages[iterStageIndex].type == SolverStageType.IntegratePositions);
-                syncBits = ((uint)bodySyncIndex << 16) | (uint)iterStageIndex;
-                ExecuteMainStage(stages[iterStageIndex], context, syncBits);
-                iterStageIndex++; bodySyncIndex++;
+                Debug.Assert(stages[iterationStageIndex].type == SolverStageType.IntegratePositions);
+                syncBits = ((uint)bodySyncIndex << 16) | (uint)iterationStageIndex;
+                ExecuteMainStage(stages[iterationStageIndex], context, syncBits);
+                iterationStageIndex++; bodySyncIndex++;
                 profile.integratePositions += (float)ticks.Elapsed.TotalMilliseconds;
                 ticks.Restart();
                 for (int j = 0; j < RELAX_ITERATIONS; j++)
@@ -671,10 +674,10 @@ public unsafe partial class World
                     context.SolveOverflowContacts(useBias);
                     for (int colorIndex = 0; colorIndex < context.activeColorCount; colorIndex++)
                     {
-                        syncBits = ((uint)graphSyncIndex << 16) | (uint)iterStageIndex;
-                        Debug.Assert(stages[iterStageIndex].type == SolverStageType.Relax);
-                        ExecuteMainStage(stages[iterStageIndex], context, syncBits);
-                        iterStageIndex++;
+                        syncBits = ((uint)graphSyncIndex << 16) | (uint)iterationStageIndex;
+                        Debug.Assert(stages[iterationStageIndex].type == SolverStageType.Relax);
+                        ExecuteMainStage(stages[iterationStageIndex], context, syncBits);
+                        iterationStageIndex++;
                     }
                     graphSyncIndex++;
                 }
@@ -851,10 +854,10 @@ public unsafe partial class World
                     int j = activeColorIndices[i];
                     GraphColor color = constraintGraph.colors[j];
                     int colorContactCount = color.contactSims.Count;
-                    if (colorContactCount == 0) color.simdConstraints = null;
+                    if (colorContactCount == 0) color.wideConstraints = null;
                     else
                     {
-                        color.simdConstraints = simdContactConstraints.PointTo(contactBase);
+                        color.wideConstraints = simdContactConstraints.PointTo(contactBase);
                         for (int k = 0; k < colorContactCount; ++k)
                             contacts[SIMD_WIDTH * contactBase + k] = color.contactSims[k];
                         int colorContactCountSIMD = ((colorContactCount - 1) >> SIMD_SHIFT) + 1;
@@ -1067,7 +1070,7 @@ public unsafe partial class World
             stepContext.graph = constraintGraph;
             stepContext.joints = joints;
             stepContext.contacts = contacts;
-            stepContext.simdContactConstraints = simdContactConstraints;
+            stepContext.wideContactConstraints = simdContactConstraints;
             stepContext.activeColorCount = activeColorCount;
             stepContext.workerCount = workerCount;
             stepContext.stages = stages;
@@ -1167,14 +1170,14 @@ public unsafe partial class World
                         ref ManifoldPoint mp = ref contactSim.manifold.point0;
                         float approachSpeed = -mp.normalVelocity;
                         if (approachSpeed > event_.approachSpeed && mp.totalNormalImpulse > 0)
-                        { event_.approachSpeed = approachSpeed; event_.point = mp.point; hit = true; }
+                        { event_.approachSpeed = approachSpeed; event_.point = mp.clipPoint; hit = true; }
                     }
                     if (contactSim.manifold.pointCount > 1)
                     {
                         ref ManifoldPoint mp = ref contactSim.manifold.point1;
                         float approachSpeed = -mp.normalVelocity;
                         if (approachSpeed > event_.approachSpeed && mp.totalNormalImpulse > 0)
-                        { event_.approachSpeed = approachSpeed; event_.point = mp.point; hit = true; }
+                        { event_.approachSpeed = approachSpeed; event_.point = mp.clipPoint; hit = true; }
                     }
                     if (hit)
                     {

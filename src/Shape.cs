@@ -12,6 +12,7 @@ public interface IShape
     public float GetProjectedPerimeter(Vector2 line) => 0;
     public MassData ComputeMass(float density) => new();
     public ShapeExtent ComputeExtent(Vector2 localCenter) => new();
+    public float ComputeMargin() => Box2D.MaxAABBMargin;
     public CastOutput RayCast(ref RayCastInput input) => new();
     public CastOutput ShapeCast(ref ShapeCastInput input) => new();
     public PlaneResult CollideMover(ref Capsule mover) => new();
@@ -31,7 +32,7 @@ public class Shape
     public ShapeType type;
     public SurfaceMaterial material;
     public float density;
-
+    public float aabbMargin;
     public AABB aabb;
     public AABB fatAABB;
     public Vector2 localCentroid;
@@ -69,7 +70,7 @@ public class Shape
         aabb.upperBound.x += Box2D.SpeculativeDistance;
         aabb.upperBound.y += Box2D.SpeculativeDistance;
         this.aabb = aabb;
-        float margin = proxyType == BodyType.Static ? Box2D.SpeculativeDistance : Box2D.AABBMargin;
+        float margin = proxyType == BodyType.Static ? Box2D.SpeculativeDistance : aabbMargin;
         fatAABB = new(new(aabb.lowerBound.x - margin, aabb.lowerBound.y - margin),
             new(aabb.upperBound.x + margin, aabb.upperBound.y + margin));
     }
@@ -79,6 +80,7 @@ public class Shape
     public float GetProjectedPerimeter(Vector2 line) => shape.GetProjectedPerimeter(line);
     public MassData ComputeMass() => shape.ComputeMass(density);
     public ShapeExtent ComputeExtent(Vector2 localCenter) => shape.ComputeExtent(localCenter);
+    public float ComputeMargin() => System.Math.Min(Box2D.MaxAABBMargin, Box2D.AABBMarginFraction * shape.ComputeMargin());
     public CastOutput RayCast(ref RayCastInput input, Transform transform)
     {
         RayCastInput localInput = new()
@@ -190,6 +192,7 @@ public partial class World
         shape.enablePreSolveEvents = def.enablePreSolveEvents;
         shape.proxyKey = -1;
         shape.localCentroid = shape.GetCentroid();
+        shape.aabbMargin = shape.ComputeMargin();
         shape.aabb = new();
         shape.fatAABB = new();
         shape.generation++;

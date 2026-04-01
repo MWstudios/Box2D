@@ -40,8 +40,8 @@ public class BroadPhase
     public HashSet<int> moveSet = new(16);
     public List<int> moveArray = new(16);
     /// <summary>These are the results from the pair query and are used to create new contacts
-    /// in deterministic order.
-    /// todo these could be in the step context</summary>
+    /// in deterministic order. There is a move result linked list for each moving shape and
+	/// these follow the dynamic tree query order for determinism.</summary>
     public MoveResult[] moveResults = null;
     public MovePair[] movePairs = null;
     public int movePairIndex = 0;
@@ -230,6 +230,7 @@ public partial class World
             stats.leafVisits += statsDynamic.leafVisits;
         }
     }
+    static void UpdateTreesTask(int startIndex, int endIndex, uint threadIndex, object context) => ((World)context).broadPhase.RebuildTrees();
     public void UpdateBroadPhasePairs()
     {
         BroadPhase bp = broadPhase;
@@ -238,7 +239,7 @@ public partial class World
         if (moveCount == 0) return;
         bp.moveResults = new MoveResult[moveCount];
         for (int i = 0; i < bp.moveResults.Length; i++) bp.moveResults[i] = new();
-        bp.movePairs = new MovePair[moveCount * 16];
+        bp.movePairs = new MovePair[moveCount * 8];
         for (int i = 0; i < bp.movePairs.Length; i++) bp.movePairs[i] = new();
         Interlocked.Exchange(ref bp.movePairIndex, 0);
         int minRange = 64;
@@ -248,6 +249,9 @@ public partial class World
             finishTaskFcn(userPairTask, userTaskContext);
             taskCount++;
         }
+        userTreeTask = enqueueTaskFcn(UpdateTreesTask, 1, 1, this, userTaskContext);
+        taskCount++;
+        activeTaskCount += userTreeTask == null ? 0 : 1;
         for (int i = 0; i < moveCount; i++)
         {
             MoveResult result = bp.moveResults[i];

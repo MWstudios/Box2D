@@ -293,6 +293,7 @@ public static class ShapeAPI
         World world = World.GetWorldLocked(shapeId.world0); if (world == null) return;
         Shape shape = world.GetShape(shapeId);
         shape.shape = circle; shape.type = ShapeType.Circle;
+        shape.aabbMargin = shape.ComputeMargin();
         world.ResetProxy(shape, true, true);
     }
 
@@ -305,6 +306,7 @@ public static class ShapeAPI
         if (Vector2.DistanceSquared(capsule.center1, capsule.center2) <= Box2D.LinearSlop * Box2D.LinearSlop) return;
         Shape shape = world.GetShape(shapeId);
         shape.shape = capsule; shape.type = ShapeType.Capsule;
+        shape.aabbMargin = shape.ComputeMargin();
         world.ResetProxy(shape, true, true);
     }
 
@@ -314,6 +316,7 @@ public static class ShapeAPI
         World world = World.GetWorldLocked(shapeId.world0); if (world == null) return;
         Shape shape = world.GetShape(shapeId);
         shape.shape = segment; shape.type = ShapeType.Segment;
+        shape.aabbMargin = shape.ComputeMargin();
         world.ResetProxy(shape, true, true);
     }
 
@@ -325,6 +328,7 @@ public static class ShapeAPI
         World world = World.GetWorldLocked(shapeId.world0); if (world == null) return;
         Shape shape = world.GetShape(shapeId);
         shape.shape = polygon; shape.type = ShapeType.Polygon;
+        shape.aabbMargin = shape.ComputeMargin();
         world.ResetProxy(shape, true, true);
     }
 
@@ -394,7 +398,7 @@ public static class ShapeAPI
     /// <summary>Get the maximum capacity required for retrieving all the overlapped shapes on a sensor shape.
     /// This returns 0 if the provided shape is not a sensor.</summary>
     /// <param name="shapeID">the id of a sensor shape</param>
-    /// <returns>the required capacity to get all the overlaps in GetSensorOverlaps</returns>
+    /// <returns>the required capacity to get all the overlaps in <see cref="GetSensorData(ShapeID, ShapeID[])"/></returns>
     public static int GetSensorCapacity(ShapeID shapeId)
     {
         World world = World.GetWorldLocked(shapeId.world0); if (world == null) return 0;
@@ -403,7 +407,7 @@ public static class ShapeAPI
         return world.sensors[shape.bodyId].overlaps2.Count;
     }
 
-    /// <summary>Get the overlap data for a sensor shape.</summary>
+    /// <summary>Get the overlap data for a sensor shape computed the previous world step.</summary>
     /// <param name="shapeID">the id of a sensor shape</param>
     /// <param name="visitorIds">a user allocated array that is filled with the overlapping shapes (visitors)</param>
     /// <returns> the number of elements filled in the provided array<br/>

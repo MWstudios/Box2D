@@ -31,6 +31,15 @@ public struct ContactEdge
 /// connectivity.</summary>
 public class Contact
 {
+    public ContactEdge edge0, edge1;
+
+    /// <summary>A contact only belongs to an island if touching, otherwise B2_NULL_INDEX.</summary>
+    public int islandId;
+
+    /// <summary>Index into the island's contacts array for O(1) swap-removal.
+	// B2_NULL_INDEX when not in an island.</summary>
+    public int islandIndex;
+
     /// <summary>index of simulation set stored in World
     /// B2_NULL_INDEX when slot is free</summary>
     public int setIndex;
@@ -44,15 +53,9 @@ public class Contact
     /// B2_NULL_INDEX when slot is free</summary>
     public int localIndex;
 
-    public ContactEdge edge0, edge1;
     public int shapeIdA;
     public int shapeIdB;
     public int contactId;
-
-    /// <summary>A contact only belongs to an island if touching, otherwise B2_NULL_INDEX.</summary>
-    public int islandPrev;
-    public int islandNext;
-    public int islandId;
 
     /// <summary>ContactFlags</summary>
     public ContactFlags flags;
@@ -82,6 +85,9 @@ public class Contact
 
     /// <summary>This contact wants pre-solve events</summary>
     EnablePreSolveEvents = 0x00200000,
+
+    /// <summary>This contact has a cached relative transform</summary>
+    RelativeTransformValid = 0x00400000,
 };
 
 /// <summary>The class manages contact between two shapes. A contact exists for each overlapping
@@ -91,16 +97,15 @@ public record class ContactSim
 {
     public int contactId;
 
+    public Transform cachedTransformA, cachedTransformB;
+
 #if B2_VALIDATE
-    public int bodyIdA;
-    public int bodyIdB;
+    public int bodyIdA, bodyIdB;
 #endif
 
-    public int bodySimIndexA;
-    public int bodySimIndexB;
+    public int bodySimIndexA, bodySimIndexB;
 
-    public int shapeIdA;
-    public int shapeIdB;
+    public int shapeIdA, shapeIdB;
 
     public float invMassA;
     public float invIA;
@@ -131,6 +136,7 @@ public partial class World
         Debug.Assert(contact.contactId == id && contact.generation == contactId.generation);
         return contact;
     }
+    /// <summary>WARNING: this should never fail to create a contact because the pair already exists in the pairSet.</summary>
     public void CreateContact(Shape shapeA, Shape shapeB)
     {
         ShapeType type1 = shapeA.type, type2 = shapeB.type;
@@ -160,8 +166,7 @@ public partial class World
         contact.colorIndex = -1;
         contact.localIndex = set.contactSims.Count;
         contact.islandId = -1;
-        contact.islandPrev = -1;
-        contact.islandNext = -1;
+        contact.islandIndex = -1;
         contact.shapeIdA = shapeIdA;
         contact.shapeIdB = shapeIdB;
         contact.flags = 0;
@@ -344,14 +349,14 @@ public partial class World
             ShapeID shapeIdB = new() { index1 = shapeB.id + 1, world0 = this, generation = shapeB.generation };
             ref Manifold manifold = ref contactSim.manifold;
             float bestSeparation = manifold.point0.separation;
-            Vector2 bestPoint = manifold.point0.point;
+            Vector2 bestPoint = manifold.point0.clipPoint;
             for (int i = 1; i < manifold.pointCount; i++)
             {
                 float separation = manifold.point1.separation;
                 if (separation < bestSeparation)
                 {
                     bestSeparation = separation;
-                    bestPoint = manifold.point1.point;
+                    bestPoint = manifold.point1.clipPoint;
                 }
             }
             touching = preSolveFcn(shapeIdA, shapeIdB, bestPoint, manifold.normal, preSolveContext);
@@ -446,6 +451,7 @@ public struct ContactRegister
             s_registers[(int)type2][(int)type1].primary = false;
         }
     }
+    public static bool CanCollide(ShapeType typeA, ShapeType typeB) => s_registers[(int)typeA][(int)typeB].fcn != null;
     static ContactRegister()
     {
         s_registers = new ContactRegister[Enum.GetValues<ShapeType>().Length][];

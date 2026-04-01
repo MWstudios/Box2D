@@ -24,11 +24,15 @@ public static partial class Box2D
     ///Normally this is 2cm.</summary>
     ///<remarks>modifying this can have a significant impact on performance and stability</remarks>
     public static float SpeculativeDistance = 4 * LinearSlop;
+    /// <summary>The default contact recycling distance.</summary>
+    public static float ContactRecycleDistance = 10 * LinearSlop;
     /// <summary>This is used to fatten AABBs in the dynamic tree. This allows proxies
     /// to move by a small amount without triggering a tree adjustment. This is in meters.
     /// Normally this is 5cm.</summary>
     /// <remarks> modifying this can have a significant impact on performance</remarks>
-    public static float AABBMargin = 0.05f * LengthUnitsPerMeter;
+    public static float MaxAABBMargin = 0.05f * LengthUnitsPerMeter;
+    /// <summary>For small objects the margin is limited to this fraction times the maximum extent</summary>
+    public static float AABBMarginFraction = 0.125f;
     /// <summary>The time that a body must be still before it will go to sleep. In seconds.</summary>
     public static float TimeToSleep = 0.5f;
     /// <summary>This keeps constraints involving two dynamic bodies at a lower solver priority than constraints

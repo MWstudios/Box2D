@@ -1,7 +1,20 @@
 ﻿using System.Collections.Generic;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 
 namespace Box2D;
+
+/// <summary> Cached contact data stored in the island for fast contiguous iteration.
+/// Avoids touching b2Contact during union-find in b2SplitIsland.</summary>
+public struct ContactLink
+{
+    public int contactId, bodyIdA, bodyIdB;
+}
+/// <summary>Cached joint data stored in the island for fast contiguous iteration.</summary>
+public struct JointLink
+{
+    public int jointId, bodyIdA, bodyIdB;
+}
 
 /// <summary>Deterministic solver<br/>
 ///<br/>
@@ -10,7 +23,9 @@ namespace Box2D;
 /// created in a deterministic order. bit-wise OR together bit arrays and issue changes:<br/>
 /// - start touching: merge islands - temporary linked list - mark root island dirty - wake all - largest island is root<br/>
 /// - stop touching: increment constraintRemoveCount<br/>
-/// Persistent island for awake bodies, joints, and contacts</summary>
+/// Persistent island for awake bodies, joints, and contacts.
+/// Contacts are touching.
+/// Contacts and joints may connect to static bodies, but static bodies are not in the island.</summary>
 /// https://en.wikipedia.org/wiki/Component_(graph_theory)
 /// https://en.wikipedia.org/wiki/Dynamic_connectivity
 public class Island
@@ -25,18 +40,6 @@ public class Island
 
     public int islandId;
 
-    public int headBody;
-    public int tailBody;
-    public int bodyCount;
-
-    public int headContact;
-    public int tailContact;
-    public int contactCount;
-
-    public int headJoint;
-    public int tailJoint;
-    public int jointCount;
-
     /// <summary>Union find<br/>
     /// todo this could go away if islands are merged immediately with b2LinkJoint and b2LinkContact</summary>
     public int parentIsland;
@@ -45,6 +48,16 @@ public class Island
     /// This is used to determine if an island is a candidate for splitting.</summary>
     public int constraintRemoveCount;
 
+    /// <summary>I tried using a stack array for this but the data pointer goes out of
+	/// sync when the world island array grows.</summary>
+    public List<int> bodies;
+
+    /// <summary>Contacts and joints that belong to this island. May connect to static
+    /// bodies not in the island.
+    /// Each link has the two body ids so that b2SplitIsland's union-find pass
+    /// never needs to touch b2Contact/b2Joint.</summary>
+    public List<ContactLink> contacts;
+    public List<JointLink> joints;
 }
 public record IslandSim
 {
@@ -68,15 +81,9 @@ public partial class World
             setIndex = setIndex,
             localIndex = set.islandSims.Count,
             islandId = islandId,
-            headBody = -1,
-            tailBody = -1,
-            bodyCount = 0,
-            headContact = -1,
-            tailContact = -1,
-            contactCount = 0,
-            headJoint = -1,
-            tailJoint = -1,
-            jointCount = 0,
+            bodies = new(),
+            contacts = new(),
+            joints = new(),
             parentIsland = -1,
             constraintRemoveCount = 0
         };
@@ -90,18 +97,20 @@ public partial class World
         if (splitIslandId == islandId) splitIslandId = -1;
         Island island = islands[islandId];
         SolverSet set = solverSets[island.setIndex];
-        int movedIndex = set.islandSims.RemoveSwap(island.localIndex);
-        if (movedIndex != -1)
         {
-            IslandSim movedElement = set.islandSims[island.localIndex];
-            int movedId = movedElement.islandId;
-            Island movedIsland = islands[movedId];
-            Debug.Assert(movedIsland.localIndex == movedIndex);
-            movedIsland.localIndex = island.localIndex;
+            int localIndex = island.localIndex;
+            int lastIndex = set.islandSims.Count - 1;
+            Debug.Assert(0 <= localIndex & localIndex <= lastIndex);
+            int moveIslandId = set.islandSims[lastIndex].islandId;
+            set.islandSims[localIndex] = set.islandSims[lastIndex];
+            islands[moveIslandId].localIndex = localIndex;
+            set.islandSims.RemoveAt(set.islandSims.Count - 1);
         }
+        island.constraintRemoveCount = 0;
+        island.localIndex = -1;
         island.islandId = -1;
         island.setIndex = -1;
-        island.localIndex = -1;
+        Debug.Assert(island.localIndex == -1);
         islandIdPool.FreeId(islandId);
     }
     public int MergeIslands(int islandIdA, int islandIdB)
@@ -109,98 +118,56 @@ public partial class World
         if (islandIdA == islandIdB) return islandIdA;
         if (islandIdA == -1) { Debug.Assert(islandIdB != -1); return islandIdB; }
         if (islandIdB == -1) { Debug.Assert(islandIdA != -1); return islandIdA; }
-        Island islandA = islands[islandIdA], islandB = islands[islandIdB];
-        Island big, small;
-        if (islandA.bodyCount >= islandB.bodyCount) { big = islandA; small = islandB; }
-        else { big = islandB; small = islandA; }
-        int bigId = big.islandId;
-        for (int bodyId = small.headBody; bodyId != -1;)
-        { Body body = bodies[bodyId]; body.islandId = bigId; bodyId = body.islandNext; }
-        for (int contactId = small.headContact; contactId != -1;)
-        { Contact contact = contacts[contactId]; contact.islandId = bigId; contactId = contact.islandNext; }
-        for (int jointId = small.headJoint; jointId != -1;)
-        { Joint joint = joints[jointId]; joint.islandId = bigId; jointId = joint.islandNext; }
-        Debug.Assert(big.tailBody != -1);
-        Body tailBody = bodies[big.tailBody];
-        Debug.Assert(tailBody.islandNext == -1);
-        tailBody.islandNext = small.headBody;
-        Debug.Assert(small.headBody != -1);
-        Body headBody = bodies[small.headBody];
-        Debug.Assert(headBody.islandPrev == -1);
-        headBody.islandPrev = big.tailBody;
-        big.tailBody = small.tailBody;
-        big.bodyCount += small.bodyCount;
-        if (big.headContact == -1)
+        Island smallIsland = islands[islandIdA], bigIsland = islands[islandIdB];
+        if (smallIsland.bodies.Count >= bigIsland.bodies.Count) (smallIsland, bigIsland) = (bigIsland, smallIsland);
+        int bigIslandId = bigIsland.islandId;
+        bigIsland.bodies.EnsureCapacity(bigIsland.bodies.Count + smallIsland.bodies.Count);
+        for (int i = 0; i < smallIsland.bodies.Count; i++)
         {
-            Debug.Assert(big.tailContact == -1 && big.contactCount == 0);
-            big.headContact = small.headContact;
-            big.tailContact = small.tailContact;
-            big.contactCount = small.contactCount;
+            int bodyId = smallIsland.bodies[i];
+            Body body = bodies[bodyId];
+            Debug.Assert(body.islandId == smallIsland.islandId);
+            body.islandId = bigIslandId;
+            body.islandIndex = bigIsland.bodies.Count;
+            bigIsland.bodies.Add(bodyId);
         }
-        else if (small.headContact != -1)
+        if (smallIsland.contacts.Count > 0)
         {
-            Debug.Assert(small.tailContact != -1 && small.contactCount > 0);
-            Debug.Assert(big.tailContact != -1 && big.contactCount > 0);
-            Contact tailContact = contacts[big.tailContact];
-            Debug.Assert(tailContact.islandNext == -1);
-            tailContact.islandNext = small.headContact;
-            Contact headContact = contacts[small.headContact];
-            Debug.Assert(headContact.islandPrev == -1);
-            headContact.islandPrev = big.tailContact;
-            big.tailContact = small.tailContact;
-            big.contactCount += small.contactCount;
+            bigIsland.contacts.EnsureCapacity(bigIsland.contacts.Count + smallIsland.contacts.Count);
+            for (int i = 0; i < smallIsland.contacts.Count; i++)
+            {
+                ref ContactLink link = ref CollectionsMarshal.AsSpan(smallIsland.contacts)[i];
+                Contact contact = contacts[link.contactId];
+                contact.islandId = bigIslandId;
+                contact.islandIndex = bigIsland.contacts.Count;
+                bigIsland.contacts.Add(link);
+            }
         }
-        if (big.headJoint == -1)
+        if (smallIsland.joints.Count > 0)
         {
-            Debug.Assert(big.tailJoint == -1 && big.jointCount == 0);
-            big.headJoint = small.headJoint;
-            big.tailJoint = small.tailJoint;
-            big.jointCount = small.jointCount;
+            bigIsland.joints.EnsureCapacity(bigIsland.joints.Count + smallIsland.joints.Count);
+            for (int i = 0; i < smallIsland.joints.Count; i++)
+            {
+                ref JointLink link = ref CollectionsMarshal.AsSpan(smallIsland.joints)[i];
+                Joint joint = joints[link.jointId];
+                joint.islandId = bigIslandId;
+                joint.islandIndex = bigIsland.joints.Count;
+                bigIsland.joints.Add(link);
+            }
         }
-        else if (small.headJoint != -1)
-        {
-            Debug.Assert(small.tailJoint != -1 && small.jointCount > 0);
-            Debug.Assert(big.tailJoint != -1 && big.jointCount > 0);
-            Joint tailJoint = joints[big.tailJoint];
-            Debug.Assert(tailJoint.islandNext == -1);
-            tailJoint.islandNext = small.headJoint;
-            Joint headJoint = joints[small.headJoint];
-            Debug.Assert(headJoint.islandPrev == -1);
-            headJoint.islandPrev = big.tailJoint;
-            big.tailJoint = small.tailJoint;
-            big.jointCount += small.jointCount;
-        }
-        big.constraintRemoveCount += small.constraintRemoveCount;
-        small.bodyCount = 0;
-        small.contactCount = 0;
-        small.jointCount = 0;
-        small.headBody = -1;
-        small.headContact = -1;
-        small.headJoint = -1;
-        small.tailBody = -1;
-        small.tailContact = -1;
-        small.tailJoint = -1;
-        small.constraintRemoveCount = 0;
-        DestroyIsland(small.islandId);
-        ValidateIsland(bigId);
-        return bigId;
+        bigIsland.constraintRemoveCount += smallIsland.constraintRemoveCount;
+        DestroyIsland(smallIsland.islandId);
+        ValidateIsland(bigIslandId);
+        return bigIslandId;
     }
     public void AddContactToIsland(int islandId, Contact contact)
     {
         Debug.Assert(contact.islandId == -1);
-        Debug.Assert(contact.islandPrev == -1);
-        Debug.Assert(contact.islandNext == -1);
+        Debug.Assert(contact.islandIndex == -1);
         Island island = islands[islandId];
-        if (island.headContact != -1)
-        {
-            contact.islandNext = island.headContact;
-            Contact headContact = contacts[island.headContact];
-            headContact.islandPrev = contact.contactId;
-        }
-        island.headContact = contact.contactId;
-        if (island.tailContact == -1) island.tailContact = island.headContact;
-        island.contactCount++;
         contact.islandId = islandId;
+        contact.islandIndex = island.contacts.Count;
+        island.contacts.Add(new() { contactId = contact.contactId, bodyIdA = contact.edge0.bodyId, bodyIdB = contact.edge1.bodyId });
         ValidateIsland(islandId);
     }
     /// <summary>Link a contact into an island.
@@ -230,44 +197,30 @@ public partial class World
         Debug.Assert(contact.islandId != -1);
         int islandId = contact.islandId;
         Island island = islands[islandId];
-        if (contact.islandPrev != -1)
+        int removeIndex = contact.islandIndex;
+        Debug.Assert(0 <= removeIndex && removeIndex < island.contacts.Count);
+        Debug.Assert(island.contacts[removeIndex].contactId == contact.contactId);
+        int movedIndex = island.contacts.RemoveSwap(removeIndex);
+        if (movedIndex != -1)
         {
-            Contact prevContact = contacts[contact.islandPrev];
-            Debug.Assert(prevContact.islandNext == contact.contactId);
-            prevContact.islandNext = contact.islandNext;
+            ref ContactLink movedLink = ref CollectionsMarshal.AsSpan(island.contacts)[removeIndex];
+            Contact movedContact = contacts[movedLink.contactId];
+            Debug.Assert(movedContact.islandIndex == movedIndex);
+            movedContact.islandIndex = removeIndex;
         }
-        if (contact.islandNext != -1)
-        {
-            Contact nextContact = contacts[contact.islandNext];
-            Debug.Assert(nextContact.islandPrev == contact.contactId);
-            nextContact.islandPrev = contact.islandPrev;
-        }
-        if (island.headContact == contact.contactId) island.headContact = contact.islandNext;
-        if (island.tailContact == contact.contactId) island.tailContact = contact.islandPrev;
-        Debug.Assert(island.contactCount > 0);
-        island.contactCount--;
-        island.constraintRemoveCount++;
         contact.islandId = -1;
-        contact.islandPrev = -1;
-        contact.islandNext = -1;
+        contact.islandIndex = -1;
+        island.constraintRemoveCount++;
         ValidateIsland(islandId);
     }
     public void AddJointToIsland(int islandId, Joint joint)
     {
         Debug.Assert(joint.islandId == -1);
-        Debug.Assert(joint.islandPrev == -1);
-        Debug.Assert(joint.islandNext == -1);
+        Debug.Assert(joint.islandIndex == -1);
         Island island = islands[islandId];
-        if (island.headJoint != -1)
-        {
-            joint.islandNext = island.headJoint;
-            Joint headJoint = joints[island.headJoint];
-            headJoint.islandPrev = joint.jointId;
-        }
-        island.headJoint = joint.jointId;
-        if (island.tailJoint == -1) island.tailJoint = island.headJoint;
-        island.jointCount++;
         joint.islandId = islandId;
+        joint.islandIndex = island.joints.Count;
+        island.joints.Add(new() { jointId = joint.jointId, bodyIdA = joint.edge0.bodyId, bodyIdB = joint.edge1.bodyId });
         ValidateIsland(islandId);
     }
     public void LinkJoint(Joint joint)
@@ -287,140 +240,204 @@ public partial class World
         if (joint.islandId == -1) return;
         int islandId = joint.islandId;
         Island island = islands[islandId];
-        if (joint.islandPrev != -1)
+        int removeIndex = joint.islandIndex;
+        Debug.Assert(0 <= removeIndex && removeIndex < island.joints.Count);
+        Debug.Assert(island.joints[removeIndex].jointId == joint.jointId);
+        int movedIndex = island.joints.RemoveSwap(removeIndex);
+        if (movedIndex != -1)
         {
-            Joint prevJoint = joints[joint.islandPrev];
-            Debug.Assert(prevJoint.islandNext == joint.jointId);
-            prevJoint.islandNext = joint.islandNext;
+            ref JointLink movedLink = ref CollectionsMarshal.AsSpan(island.joints)[removeIndex];
+            Joint movedJoint = joints[movedLink.jointId];
+            Debug.Assert(movedJoint.islandIndex == movedIndex);
+            movedJoint.islandIndex = removeIndex;
         }
-        if (joint.islandNext != -1)
-        {
-            Joint nextJoint = joints[joint.islandNext];
-            Debug.Assert(nextJoint.islandPrev == joint.jointId);
-            nextJoint.islandPrev = joint.islandPrev;
-        }
-        if (island.headJoint == joint.jointId) island.headJoint = joint.islandNext;
-        if (island.tailJoint == joint.jointId) island.tailJoint = joint.islandPrev;
-        Debug.Assert(island.jointCount > 0);
-        island.jointCount--;
-        island.constraintRemoveCount++;
         joint.islandId = -1;
-        joint.islandPrev = -1;
-        joint.islandNext = -1;
+        joint.islandIndex = -1;
+        island.constraintRemoveCount++;
         ValidateIsland(islandId);
+    }
+    /// <summary>Find parent of a node. Use path halving to speed up further queries.</summary>
+    static unsafe int IslandFindParent(int* parents, int node)
+    {
+        while (parents[node]!=node)
+        {
+            int grandParent = parents[parents[node]];
+            parents[node] = grandParent;
+            node = grandParent;
+        }
+        return node;
+    }
+    /// <summary>Connect the components containing node1 and node2.
+    /// Uses rank to keep tree balanced. Tracks per-component contact and joint counts.</summary>
+    static unsafe void IslandUnion(int* parents, int* ranks, int node1, int node2, int* contactCounts, int* jointCounts)
+    {
+        int root1 = IslandFindParent(parents, node1), root2 = IslandFindParent(parents, node2);
+        if (root1 != root2)
+        {
+            if (ranks[root1] < ranks[root2])
+            {
+                parents[root1] = root2;
+                contactCounts[root2] += contactCounts[root1];
+                jointCounts[root2] += jointCounts[root1];
+            }
+            else if (ranks[root1] > ranks[root2])
+            {
+                parents[root2] = root1;
+                contactCounts[root1] += contactCounts[root2];
+                jointCounts[root1] += jointCounts[root2];
+            }
+            else
+            {
+                parents[root2] = root1;
+                ranks[root1]++;
+                contactCounts[root1] += contactCounts[root2];
+                jointCounts[root1] += jointCounts[root2];
+            }
+        }
     }
     /// <summary>Possible optimizations:<br/>
     /// 1. use the body island id as the mark<br/>
     /// 2. start from the sleepy bodies and stop processing if a sleep body is connected to a non-sleepy body<br/>
     /// 3. use a sleepy flag on bodies to avoid velocity access</summary>
-    public void SplitIsland(int baseId)
+    public unsafe void SplitIsland(int baseId)
     {
         Island baseIsland = islands[baseId];
         int setIndex = baseIsland.setIndex;
         if (setIndex != (int)SetType.Awake) return;
         if (baseIsland.constraintRemoveCount == 0) return;
         ValidateIsland(baseId);
-        int bodyCount = baseIsland.bodyCount;
-        Stack<int> stack = new(bodyCount);
-        List<int> bodyIds = new(bodyCount);
-        int index = 0, nextBody = baseIsland.headBody;
-        while (nextBody != -1)
+        int baseBodyCount = baseIsland.bodies.Count;
+        var baseBodyIds = baseIsland.bodies;
+        int baseBodyCapacity = baseIsland.bodies.Capacity;
+        int baseContactCount = baseIsland.contacts.Count;
+        var baseContacts = baseIsland.contacts;
+        int baseContactCapacity = baseIsland.contacts.Capacity;
+        int baseJointCount = baseIsland.joints.Count;
+        var baseJoints = baseIsland.joints;
+        int baseJointCapacity = baseIsland.joints.Capacity;
+        int componentCount = 0;
+        int[] _parents = new int[baseBodyCount], _contactCounts = new int[baseBodyCount],
+            _jointCounts = new int[baseBodyCount], _ranks = new int[baseBodyCount];
+        fixed (int* parents = _parents, contactCounts = _contactCounts, jointCounts = _jointCounts, ranks = _ranks)
         {
-            bodyIds.Add(nextBody); index++;
-            Body body = bodies[nextBody];
-            nextBody = body.islandNext;
-        }
-        Debug.Assert(index == bodyCount);
-        for (int i = 0; i < bodyCount; i++)
-        {
-            int seedIndex = bodyIds[i];
-            Body seed = bodies[seedIndex];
-            Debug.Assert(seed.setIndex == setIndex);
-            if (seed.islandId != baseId) continue;
-            stack.Push(seedIndex);
-            Island island = CreateIsland(setIndex);
-            int islandId = island.islandId;
-            seed.islandId = islandId;
-            while (stack.Count > 0)
+            for (int i = 0; i < baseBodyCount; i++) parents[i] = i;
+            for (int i = 0; i < baseContactCount; i++)
             {
-                int bodyId = stack.Pop();
-                Body body = bodies[bodyId];
-                Debug.Assert(body.setIndex == (int)SetType.Awake);
-                Debug.Assert(body.islandId == islandId);
-                if (island.tailBody != -1)
-                    bodies[island.tailBody].islandNext = bodyId;
-                body.islandPrev = island.tailBody;
-                body.islandNext = -1;
-                island.tailBody = bodyId;
-                if (island.headBody == -1)
-                    island.headBody = bodyId;
-                island.bodyCount++;
-                int contactKey = body.headContactKey;
-                while (contactKey != -1)
+                int bodyIdA = baseContacts[i].bodyIdA, bodyIdB = baseContacts[i].bodyIdB;
+                Debug.Assert(0 <= bodyIdA && bodyIdA < bodies.Count);
+                Debug.Assert(0 <= bodyIdB && bodyIdB < bodies.Count);
+                Body bodyA = bodies[bodyIdA], bodyB = bodies[bodyIdB];
+                int islandIndexA = bodyA.islandIndex, islandIndexB = bodyB.islandIndex;
+                if (islandIndexA != -1 && islandIndexB != -1)
                 {
-                    int contactId = contactKey >> 1;
-                    int edgeIndex = contactKey & 1;
-                    Contact contact = contacts[contactId];
-                    Debug.Assert(contact.contactId == contactId);
-                    contactKey = edgeIndex == 1 ? contact.edge1.nextKey : contact.edge0.nextKey;
-                    if (contact.islandId == islandId) continue;
-                    if (!contact.flags.HasFlag(ContactFlags.Touching)) continue;
-                    int otherEdgeIndex = edgeIndex ^ 1;
-                    int otherBodyId = otherEdgeIndex == 1 ? contact.edge1.bodyId : contact.edge0.bodyId;
-                    Body otherBody = bodies[otherBodyId];
-                    if (otherBody.islandId != islandId && otherBody.setIndex != (int)SetType.Static)
-                    {
-                        Debug.Assert(stack.Count < bodyCount);
-                        stack.Push(otherBodyId);
-                        otherBody.islandId = islandId;
-                    }
-                    contact.islandId = islandId;
-                    if (island.tailContact != -1)
-                    {
-                        Contact tailContact = contacts[island.tailContact];
-                        tailContact.islandNext = contactId;
-                    }
-                    contact.islandPrev = island.tailContact;
-                    contact.islandNext = -1;
-                    island.tailContact = contactId;
-                    if (island.headContact == -1) island.headContact = contactId;
-                    island.contactCount++;
+                    Debug.Assert(0 <= islandIndexA && islandIndexA < baseBodyCount);
+                    Debug.Assert(0 <= islandIndexB && islandIndexB < baseBodyCount);
+                    IslandUnion(parents, ranks, islandIndexA, islandIndexB, contactCounts, jointCounts);
+                    int root = IslandFindParent(parents, islandIndexA);
+                    contactCounts[root]++;
                 }
-                int jointKey = body.headJointKey;
-                while (jointKey != -1)
+                else
                 {
-                    int jointId = jointKey >> 1;
-                    int edgeIndex = jointKey & 1;
-                    Joint joint = joints[jointId];
-                    Debug.Assert(joint.jointId == jointId);
-                    jointKey = edgeIndex == 1 ? joint.edge1.nextKey : joint.edge0.nextKey;
-                    if (joint.islandId == islandId) continue;
-                    if (joint.setIndex == (int)SetType.Disabled) continue;
-                    int otherEdgeIndex = edgeIndex ^ 1;
-                    int otherBodyId = otherEdgeIndex == 1 ? joint.edge1.bodyId : joint.edge0.bodyId;
-                    Body otherBody = bodies[otherBodyId];
-                    if (otherBody.setIndex == (int)SetType.Disabled) continue;
-                    if (body.type != BodyType.Dynamic && otherBody.type != BodyType.Dynamic) continue;
-                    if (otherBody.islandId != islandId && otherBody.setIndex == (int)SetType.Awake)
-                    {
-                        Debug.Assert(stack.Count < bodyCount);
-                        stack.Push(otherBodyId);
-                        otherBody.islandId = islandId;
-                    }
-                    joint.islandId = islandId;
-                    if (island.tailJoint != -1)
-                    {
-                        Joint tailJoint = joints[island.tailJoint];
-                        tailJoint.islandNext = jointId;
-                    }
-                    joint.islandPrev = island.tailJoint;
-                    joint.islandNext = -1;
-                    island.tailJoint = jointId;
-                    if (island.headJoint == -1) island.headJoint = jointId;
-                    island.jointCount++;
+                    int islandIndex = islandIndexA != -1 ? islandIndexA : islandIndexB;
+                    int root = IslandFindParent(parents, islandIndex);
+                    contactCounts[root]++;
                 }
             }
-            ValidateIsland(islandId);
+            for (int i = 0; i < baseJointCount; i++)
+            {
+                int bodyIdA = baseJoints[i].bodyIdA, bodyIdB = baseJoints[i].bodyIdB;
+                Debug.Assert(0 <= bodyIdA && bodyIdA < bodies.Count);
+                Debug.Assert(0 <= bodyIdB && bodyIdB < bodies.Count);
+                Body bodyA = bodies[bodyIdA], bodyB = bodies[bodyIdB];
+                int islandIndexA = bodyA.islandIndex, islandIndexB = bodyB.islandIndex;
+                if (islandIndexA != -1 && islandIndexB != -1)
+                {
+                    Debug.Assert(0 <= islandIndexA && islandIndexA < baseBodyCount);
+                    Debug.Assert(0 <= islandIndexB && islandIndexB < baseBodyCount);
+                    IslandUnion(parents, ranks, islandIndexA, islandIndexB, contactCounts, jointCounts);
+                    int root = IslandFindParent(parents, islandIndexA);
+                    jointCounts[root]++;
+                }
+                else
+                {
+                    int islandIndex = islandIndexA != -1 ? islandIndexA : islandIndexB;
+                    int root = IslandFindParent(parents, islandIndex);
+                    jointCounts[root]++;
+                }
+            }
+            for (int i = 0; i < baseBodyCount; i++)
+            {
+                parents[i] = IslandFindParent(parents, i);
+                if (parents[i] == i) componentCount++;
+            }
+            if (componentCount == 1)
+            {
+                baseIsland.constraintRemoveCount = 0;
+                return;
+            }
+            int[] rootMap = new int[baseBodyCount], componentBodyCounts = new int[componentCount],
+                componentContactCounts = new int[componentCount], componentJointCounts = new int[componentCount];
+            for (int i = 0; i < rootMap.Length; i++) rootMap[i] = -1;
+            int islandCount = 0;
+            for (int i = 0; i < baseBodyCount; i++)
+            {
+                int rootIndex = _parents[i];
+                if (rootMap[rootIndex] == -1)
+                {
+                    rootMap[rootIndex] = islandCount;
+                    componentBodyCounts[islandCount] = 0;
+                    componentContactCounts[islandCount] = _contactCounts[rootIndex];
+                    componentJointCounts[islandCount] = _jointCounts[rootIndex];
+                    islandCount++;
+                }
+                componentBodyCounts[rootMap[rootIndex]]++;
+            }
+            Debug.Assert(islandCount == componentCount);
+            int[] islandIds = new int[islandCount];
+            for (int i = 0; i < islandCount; i++)
+            {
+                Island newIsland = CreateIsland((int)SetType.Awake);
+                islandIds[i] = newIsland.islandId;
+                newIsland.bodies.EnsureCapacity(componentBodyCounts[i]);
+                newIsland.contacts.EnsureCapacity(componentContactCounts[i]);
+                newIsland.joints.EnsureCapacity(componentJointCounts[i]);
+            }
+            for (int i = 0; i < baseBodyCount; i++)
+            {
+                int bodyId = baseBodyIds[i];
+                int root = IslandFindParent(parents, i);
+                int newIslandId = islandIds[rootMap[root]];
+                Body body = bodies[bodyId];
+                Island newIsland = islands[newIslandId];
+                body.islandId = newIslandId;
+                body.islandIndex = newIsland.bodies.Count;
+                Debug.Assert(newIsland.bodies.Count < newIsland.bodies.Capacity);
+                newIsland.bodies.Add(bodyId);
+            }
+            for (int i = 0; i < baseContactCount; i++)
+            {
+                ref ContactLink link = ref CollectionsMarshal.AsSpan(baseContacts)[i];
+                Contact contact = contacts[link.contactId];
+                Body bodyA = bodies[link.bodyIdA], bodyB = bodies[link.bodyIdB];
+                int targetIslandId = bodyA.islandId != -1 ? bodyA.islandId : bodyB.islandId;
+                Island targetIsland = islands[targetIslandId];
+                contact.islandId = targetIslandId;
+                contact.islandIndex = targetIsland.contacts.Count;
+                Debug.Assert(targetIsland.contacts.Count < targetIsland.contacts.Capacity);
+                targetIsland.contacts.Add(link);
+            }
+            for (int i = 0; i < baseJointCount; i++)
+            {
+                ref JointLink link = ref CollectionsMarshal.AsSpan(baseJoints)[i];
+                Joint joint = joints[link.jointId];
+                Body bodyA = bodies[link.bodyIdA], bodyB = bodies[link.bodyIdB];
+                int targetIslandId = bodyA.islandId != -1 ? bodyA.islandId : bodyB.islandId;
+                Island targetIsland = islands[targetIslandId];
+                joint.islandId = targetIslandId;
+                joint.islandIndex = targetIsland.joints.Count;
+                Debug.Assert(targetIsland.joints.Count < targetIsland.joints.Capacity);
+                targetIsland.joints.Add(link);
+            }
         }
         DestroyIsland(baseId);
     }
@@ -444,67 +461,40 @@ public partial class World
         Island island = islands[islandId];
         Debug.Assert(island.islandId == islandId);
         Debug.Assert(island.setIndex != -1);
-        Debug.Assert(island.headBody != -1);
         {
-            Debug.Assert(island.tailBody != -1);
-            Debug.Assert(island.bodyCount > 0);
-            if (island.bodyCount > 1) Debug.Assert(island.tailBody != island.headBody);
-            int count = 0, bodyId = island.headBody;
-            while (bodyId != -1)
+            Debug.Assert(island.bodies.Count > 0);
+            Debug.Assert(island.bodies.Count <= bodyIdPool.GetIdCount());
+            for (int i = 0; i < island.bodies.Count; i++)
             {
-                Body body = bodies[bodyId];
+                Body body = bodies[island.bodies[i]];
                 Debug.Assert(body.islandId == islandId);
+                Debug.Assert(body.islandIndex == i);
                 Debug.Assert(body.setIndex == island.setIndex);
-                count++;
-                if (count == island.bodyCount) Debug.Assert(bodyId == island.tailBody);
-                bodyId = body.islandNext;
             }
-            Debug.Assert(count == island.bodyCount);
         }
-        if (island.headContact != -1)
+        if (island.contacts.Count > 0)
         {
-            Debug.Assert(island.tailContact != -1);
-            Debug.Assert(island.contactCount > 0);
-            if (island.contactCount > 1) Debug.Assert(island.tailContact != island.headContact);
-            Debug.Assert(island.contactCount <= contactIdPool.GetIdCount());
-            int count = 0, contactId = island.headContact;
-            while (contactId != -1)
+            Debug.Assert(island.contacts.Count <= contactIdPool.GetIdCount());
+            for (int i = 0; i < island.contacts.Count; i++)
             {
-                Contact contact = contacts[contactId];
+                ref ContactLink link = ref CollectionsMarshal.AsSpan(island.contacts)[i];
+                Contact contact = contacts[link.contactId];
                 Debug.Assert(contact.setIndex == island.setIndex);
                 Debug.Assert(contact.islandId == islandId);
-                count++;
-                if (count == island.contactCount) Debug.Assert(contactId == island.tailContact);
-                contactId = contact.islandNext;
+                Debug.Assert(contact.islandIndex == i);
             }
-            Debug.Assert(count == island.contactCount);
         }
-        else
+        if (island.joints.Count > 0)
         {
-            Debug.Assert(island.tailContact == -1);
-            Debug.Assert(island.contactCount == 0);
-        }
-        if (island.headJoint != -1)
-        {
-            Debug.Assert(island.tailJoint != -1);
-            Debug.Assert(island.jointCount > 0);
-            if (island.jointCount > 1) Debug.Assert(island.tailJoint != island.headJoint);
-            Debug.Assert(island.jointCount <= jointIdPool.GetIdCount());
-            int count = 0, jointId = island.headJoint;
-            while (jointId != -1)
+            Debug.Assert(island.joints.Count <= jointIdPool.GetIdCount());
+            for (int i = 0; i < island.joints.Count; i++)
             {
-                Joint joint = joints[jointId];
+                ref JointLink link = ref CollectionsMarshal.AsSpan(island.joints)[i];
+                Joint joint = joints[link.jointId];
                 Debug.Assert(joint.setIndex == island.setIndex);
-                count++;
-                if (count == island.jointCount) Debug.Assert(jointId == island.tailJoint);
-                jointId = joint.islandNext;
+                Debug.Assert(joint.islandId == islandId);
+                Debug.Assert(joint.islandIndex == i);
             }
-            Debug.Assert(count == island.jointCount);
-        }
-        else
-        {
-            Debug.Assert(island.tailJoint == -1);
-            Debug.Assert(island.jointCount == 0);
         }
 #endif
     }

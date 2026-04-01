@@ -90,6 +90,7 @@ public record Circle : IShape
         };
     }
     public ShapeExtent ComputeExtent(Vector2 localCenter) => new() { minExtent = radius, maxExtent = Vector2.Distance(center, localCenter) + radius };
+    public float ComputeMargin() => radius;
     ///<summary>Ray cast versus circle shape in local space.</summary>
     public CastOutput RayCast(ref RayCastInput input)
     {
@@ -226,6 +227,7 @@ public record Capsule : IShape
         minExtent = radius,
         maxExtent = MathF.Sqrt(Math.Max(Vector2.DistanceSquared(center1, localCenter), Vector2.DistanceSquared(center2, localCenter))) + radius
     };
+    public float ComputeMargin() => 0.5f * Vector2.Distance(center2, center1) + radius;
     ///<summary>Ray cast versus capsule shape in local space.</summary>
     public CastOutput RayCast(ref RayCastInput input)
     {
@@ -494,6 +496,16 @@ public record Polygon : IShape
         }
         return new() { minExtent = minExtent + radius, maxExtent = MathF.Sqrt(maxExtentSqr) + radius };
     }
+    public float ComputeMargin()
+    {
+        float maxExtentSqr = 0;
+        for (int i = 0; i < vertices.Length; i++)
+        {
+            float distanceSqr = Vector2.DistanceSquared(vertices[i], centroid);
+            maxExtentSqr = Math.Max(maxExtentSqr, distanceSqr);
+        }
+        return MathF.Sqrt(maxExtentSqr);
+    }
     ///<summary>Ray cast versus polygon shape in local space.</summary>
     public CastOutput RayCast(ref RayCastInput input)
     {
@@ -651,6 +663,7 @@ public record Segment : IShape
         minExtent = 0,
         maxExtent = MathF.Sqrt(Math.Max(Vector2.DistanceSquared(point1, localCenter), Vector2.DistanceSquared(point2, localCenter)))
     };
+    public float ComputeMargin() => 0.5f * Vector2.DistanceSquared(point2, point1);
     ///<summary>Ray cast versus segment shape in local space. Optionally treat the segment as one-sided with hits from
     ///the left side being treated as a miss.</summary>
     public CastOutput RayCast(ref RayCastInput input, bool oneSided)
@@ -739,6 +752,7 @@ public record ChainSegment : IShape
     public float GetPerimeter() => segment.GetPerimeter();
     public float GetProjectedPerimeter(Vector2 line) => segment.GetProjectedPerimeter(line);
     public ShapeExtent ComputeExtent(Vector2 localCenter) => segment.ComputeExtent(localCenter);
+    public float ComputeMargin() => segment.ComputeMargin();
     public CastOutput RayCast(ref RayCastInput input) => segment.RayCast(ref input, true);
     public CastOutput ShapeCast(ref ShapeCastInput input)
     {
@@ -915,17 +929,24 @@ public struct TOIOutput
 /// the time step.</summary>
 public struct ManifoldPoint
 {
-    /// <summary>Location of the contact point in world space. Subject to precision loss at large coordinates.
-    /// Should only be used for debugging.</summary>
-    public Vector2 point;
-    /// <summary>Location of the contact point relative to shapeA's origin in world space
-    /// When used internally to the Box2D solver, this is relative to the body center of mass.</summary>
+    /// <summary>Location of the contact point in world space when first clipped. Subject to precision
+	/// loss at large coordinates. This point lags behind when contact recycling is used.</summary>
+    /// <remarks>Should only be used for debugging. Use anchorA and/or anchorB for game logic.</remarks>
+    public Vector2 clipPoint;
+    /// <summary>Location of the contact point relative to shapeA's origin in world space.
+	/// This can be converted to a world point using:
+	/// <code>b2Vec2 worldPointA = b2Add(b2Body_GetCenter(myBodyIdA), anchorA);</code></summary>
+    /// <remarks>When used internally to the Box2D solver, this is relative to the body center of mass.</remarks>
     public Vector2 anchorA;
     /// <summary>Location of the contact point relative to shapeB's origin in world space
-    /// When used internally to the Box2D solver, this is relative to the body center of mass.</summary>
+    /// This can be converted to a world point using:
+	/// <code>b2Vec2 worldPointB = b2Add(b2Body_GetCenter(myBodyIdB), anchorB);</code></summary>
+    /// <remarks>When used internally to the Box2D solver, this is relative to the body center of mass.</remarks>
     public Vector2 anchorB;
     /// <summary>The separation of the contact point, negative if penetrating</summary>
     public float separation;
+    /// <summary>Cached separation used for contact recycling</summary>
+    public float baseSeparation;
     /// <summary>The impulse along the manifold normal vector.</summary>
     public float normalImpulse;
     /// <summary>The friction impulse</summary>
@@ -941,7 +962,7 @@ public struct ManifoldPoint
     public ushort id;
     /// <summary>Did this contact point exist the previous step?</summary>
     public bool persisted;
-    public override string ToString() => $"point={point} A={anchorA} B={anchorB} separation={separation} normalImpulse={normalImpulse} tangentImpulse={tangentImpulse} totalNormalImpulse={totalNormalImpulse} normalVelocity={normalVelocity} id={id}";
+    public override string ToString() => $"p={clipPoint} A={anchorA} B={anchorB} separation={separation} normalImpulse={normalImpulse} tangentImpulse={tangentImpulse} totalNormalImpulse={totalNormalImpulse} normalVelocity={normalVelocity} id={id}";
 }
 /// <summary>A contact manifold describes the contact points between colliding shapes.
 /// Box2D uses speculative collision so some contact points may be separated.</summary>
