@@ -29,6 +29,9 @@ namespace Box2D;
     /// cache coherence problem even when the values are not changing.
     /// Used for b2BodyState flags.</summary>
     Dynamic = 0x200,
+    /// <summary>Flag to indicate the user has used the updateBodyMass option to defer mass
+    /// computation but b2Body_ApplyMassFromShapes was not called before the world step.</summary>
+    DirtyMass = 0x400,
     /// <summary>All lock flags</summary>
     AllLocks = LockLinearX | LockLinearY | LockAngularZ,
 }
@@ -255,6 +258,7 @@ public unsafe partial class World
     public void UpdateBodyMassData(Body body)
     {
         BodySim bodySim = GetBodySim(body);
+        body.flags &= ~BodyFlags.DirtyMass;
         body.mass = 0;
         body.inertia = 0;
         bodySim.invMass = 0;
@@ -306,7 +310,7 @@ public unsafe partial class World
             {
                 Shape s = shapes[shapeId];
                 shapeId = s.nextShapeId;
-                if (s.density == 0) { masses[shapeIndex] = new(); continue; }
+                if (s.density == 0) { masses[shapeIndex++] = new(); continue; }
                 MassData massData = s.ComputeMass();
                 body.mass += massData.mass;
                 localCenter = Vector2.MulAdd(localCenter, massData.mass, massData.center);

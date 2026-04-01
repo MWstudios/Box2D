@@ -375,15 +375,20 @@ public unsafe static class BodyAPI
         if (state != null) state->angularVelocity = angularVelocity;
     }
 
-    ///<summary>Set the velocity to reach the given transform after a given time step.
+    /// <summary>Set the velocity to reach the given transform after a given time step.
     /// The result will be close but maybe not exact. This is meant for kinematic bodies.
-    /// The target is not applied if the velocity would be below the sleep threshold.
-    /// This will automatically wake the body if asleep.</summary>
-    public static void SetTargetTransform(BodyID bodyId, Transform target, float timeStep)
+    /// The target is not applied if the velocity would be below the sleep threshold and
+    /// the body is currently asleep.</summary>
+    /// <param name="bodyId">The body id</param>
+    /// <param name="target">The target transform for the body</param>
+    /// <param name="timeStep">The time step of the next call to b2World_Step</param>
+    /// <param name="wake">Option to wake the body or not</param>
+    public static void SetTargetTransform(BodyID bodyId, Transform target, float timeStep, bool wake)
     {
         World world = bodyId.world0; Body body = world.GetBodyFullID(bodyId);
         if (body.setIndex == (int)_SetType.Disabled) return;
         if (body.type == (int)_SetType.Static || timeStep <= 0) return;
+        if (body.setIndex != (int)_SetType.Awake && !wake) return;
         BodySim sim = world.GetBodySim(body);
         Vector2 center1 = sim.center, center2 = target.TransformPoint(sim.localCenter);
         float invTimeStep = 1 / timeStep;
@@ -938,13 +943,11 @@ public unsafe static class BodyAPI
             if (contact.flags.HasFlag(ContactFlags.Touching))
             {
                 Shape shapeA = world.shapes[contact.shapeIdA], shapeB = world.shapes[contact.shapeIdB];
-                contactData[index] = new()
-                {
-                    contactId = new() { index1 = contact.contactId + 1, world0 = bodyId.world0, generation = contact.generation },
-                    shapeIdA = new() { index1 = shapeA.id + 1, world0 = bodyId.world0, generation = shapeA.generation },
-                    shapeIdB = new() { index1 = shapeB.id + 1, world0 = bodyId.world0, generation = shapeB.generation },
-                    manifold = world.GetContactSim(contact).manifold
-                };
+                ref ContactData data = ref contactData[index];
+                data.contactId = new() { index1 = contact.contactId + 1, world0 = bodyId.world0, generation = contact.generation };
+                data.shapeIdA = new() { index1 = shapeA.id + 1, world0 = bodyId.world0, generation = shapeA.generation };
+                data.shapeIdB = new() { index1 = shapeB.id + 1, world0 = bodyId.world0, generation = shapeB.generation };
+                data.manifold = world.GetContactSim(contact).manifold;
                 index++;
             }
             contactKey = edgeIndex == 1 ? contact.edge1.nextKey : contact.edge0.nextKey;

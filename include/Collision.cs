@@ -931,7 +931,8 @@ public struct ManifoldPoint
     /// <summary>The friction impulse</summary>
     public float tangentImpulse;
     /// <summary>The total normal impulse applied across sub-stepping and restitution. This is important
-    /// to identify speculative contact points that had an interaction in the time step.</summary>
+    /// to identify speculative contact points that had an interaction in the time step.
+    /// This includes the warm starting impulse, the sub-step delta impulse, and the restitution impulse.</summary>
     public float totalNormalImpulse;
     /// <summary>Relative normal velocity pre-solve. Used for hit events. If the normal impulse is
     /// zero then there was no hit. Negative means shapes are approaching.</summary>

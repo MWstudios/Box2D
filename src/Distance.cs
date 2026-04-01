@@ -141,7 +141,7 @@ public static class Distance
         if (simplex.count > 1) { cache.indexA[1] = (byte)simplex.v2.indexA; cache.indexB[1] = (byte)simplex.v2.indexB; }
         if (simplex.count > 2) { cache.indexA[2] = (byte)simplex.v3.indexA; cache.indexB[2] = (byte)simplex.v3.indexB; }
     }
-    public static void ComputeSimplexWitnessPoints(out Vector2 a, out Vector2 b, ref Simplex s)
+    public static void ComputeWitnessPoints(ref Simplex s, out Vector2 a, out Vector2 b)
     {
         switch (s.count)
         {
@@ -256,7 +256,7 @@ public static class Distance
             };
             if (simplex.count == 3)
             {
-                ComputeSimplexWitnessPoints(out Vector2 localPointA, out Vector2 localPointB, ref simplex);
+                ComputeWitnessPoints(ref simplex, out Vector2 localPointA, out Vector2 localPointB);
                 output.pointA = input.transformA.TransformPoint(localPointA);
                 output.pointB = input.transformB.TransformPoint(localPointB);
                 return output;
@@ -264,7 +264,7 @@ public static class Distance
 
             if (Vector2.Dot(d, d) < Box2D.FLT_EPSILON * Box2D.FLT_EPSILON)
             {
-                ComputeSimplexWitnessPoints(out Vector2 localPointA, out Vector2 localPointB, ref simplex);
+                ComputeWitnessPoints(ref simplex, out Vector2 localPointA, out Vector2 localPointB);
                 output.pointA = input.transformA.TransformPoint(localPointA);
                 output.pointB = input.transformB.TransformPoint(localPointB);
                 return output;
@@ -299,7 +299,7 @@ public static class Distance
         Debug.Assert(normal.IsNormalized());
         normal = input.transformA.q * normal;
         {
-            ComputeSimplexWitnessPoints(out Vector2 localPointA, out Vector2 localPointB, ref simplex);
+            ComputeWitnessPoints(ref simplex, out Vector2 localPointA, out Vector2 localPointB);
             output.normal = normal;
             output.distance = Vector2.Distance(localPointA, localPointB);
             output.pointA = input.transformA.TransformPoint(localPointA);

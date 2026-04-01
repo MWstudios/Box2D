@@ -178,6 +178,19 @@ public unsafe record class DistanceJoint : IJoint
                 vA = Vector2.MulSub(vA, mA, P); wA -= iA * Vector2.Cross(rA, P);
                 vB = Vector2.MulAdd(vB, mB, P); wB += iB * Vector2.Cross(rB, P);
             }
+            if (enableMotor)
+            {
+                Vector2 vr = vB - vA + (Vector2.CrossSV(wB, rB) - Vector2.CrossSV(wA, rA));
+                float Cdot = Vector2.Dot(axis, vr);
+                float impulse = axialMass * (motorSpeed - Cdot);
+                float oldImpulse = motorImpulse;
+                float maxImpulse = context.h * maxMotorForce;
+                motorImpulse = Math.Clamp(motorImpulse + impulse, -maxImpulse, maxImpulse);
+                impulse = motorImpulse - oldImpulse;
+                Vector2 P = impulse * axis;
+                vA = Vector2.MulSub(vA, mA, P); wA -= iA * Vector2.Cross(rA, P);
+                vB = Vector2.MulAdd(vB, mB, P); wB += iB * Vector2.Cross(rB, P);
+            }
             if (enableLimit)
             {
                 {
@@ -220,19 +233,6 @@ public unsafe record class DistanceJoint : IJoint
                     vA = Vector2.MulSub(vA, mA, P); wA -= iA * Vector2.Cross(rA, P);
                     vB = Vector2.MulAdd(vB, mB, P); wB += iB * Vector2.Cross(rB, P);
                 }
-            }
-            if (enableMotor)
-            {
-                Vector2 vr = vB - vA + (Vector2.CrossSV(wB, rB) - Vector2.CrossSV(wA, rA));
-                float Cdot = Vector2.Dot(axis, vr);
-                float impulse = axialMass * (motorSpeed - Cdot);
-                float oldImpulse = motorImpulse;
-                float maxImpulse = context.h * maxMotorForce;
-                motorImpulse = Math.Clamp(motorImpulse + impulse, -maxImpulse, maxImpulse);
-                impulse = motorImpulse - oldImpulse;
-                Vector2 P = impulse * axis;
-                vA = Vector2.MulSub(vA, mA, P); wA -= iA * Vector2.Cross(rA, P);
-                vB = Vector2.MulAdd(vB, mB, P); wB += iB * Vector2.Cross(rB, P);
             }
         }
         else

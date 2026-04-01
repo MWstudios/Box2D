@@ -143,6 +143,7 @@ public unsafe partial class StepContext
                 if (j == 1) cp = ref constraint.point1;
                 Vector2 rA = cp.anchorA, rB = cp.anchorB;
                 Vector2 P = cp.normalImpulse * normal + cp.tangentImpulse * tangent;
+                cp.totalNormalImpulse += cp.normalImpulse;
                 wA -= iA * Vector2.Cross(rA, P);
                 vA = Vector2.MulAdd(vA, -mA, P);
                 wB += iB * Vector2.Cross(rB, P);
@@ -214,7 +215,7 @@ public unsafe partial class StepContext
                 float newImpulse = Math.Max(cp.normalImpulse + impulse, 0);
                 impulse = newImpulse - cp.normalImpulse;
                 cp.normalImpulse = newImpulse;
-                cp.totalNormalImpulse += newImpulse;
+                cp.totalNormalImpulse += impulse;
                 totalNormalImpulse += newImpulse;
                 Vector2 P = impulse * normal;
                 vA = Vector2.MulSub(vA, mA, P);
@@ -714,6 +715,7 @@ public class ContactSolverAVX : IContactSolverW
                         X = Avx.Add(bB.v.X, Avx.Multiply(c->invMassB, P.X)),
                         Y = Avx.Add(bB.v.Y, Avx.Multiply(c->invMassB, P.Y))
                     };
+                    c->totalNormalImpulse1 = Avx.Add(c->totalNormalImpulse1, c->normalImpulse1);
                 }
                 {
                     Vector2W rA = c->anchorA2, rB = c->anchorB2;
@@ -734,6 +736,7 @@ public class ContactSolverAVX : IContactSolverW
                         X = Avx.Add(bB.v.X, Avx.Multiply(c->invMassB, P.X)),
                         Y = Avx.Add(bB.v.Y, Avx.Multiply(c->invMassB, P.Y))
                     };
+                    c->totalNormalImpulse2 = Avx.Add(c->totalNormalImpulse2, c->normalImpulse2);
                 }
                 bA.w = Avx.Subtract(bA.w, Avx.Multiply(c->invIA, c->rollingImpulse));
                 bB.w = Avx.Add(bB.w, Avx.Multiply(c->invIB, c->rollingImpulse));
@@ -787,7 +790,7 @@ public class ContactSolverAVX : IContactSolverW
                     Vector256<float> newImpulse = Avx.Max(Avx.Subtract(c->normalImpulse1, negImpulse), Vector256<float>.Zero);
                     Vector256<float> impulse = Avx.Subtract(newImpulse, c->normalImpulse1);
                     c->normalImpulse1 = newImpulse;
-                    c->totalNormalImpulse1 = Avx.Add(c->totalNormalImpulse1, newImpulse);
+                    c->totalNormalImpulse1 = Avx.Add(c->totalNormalImpulse1, impulse);
                     totalNormalImpulse = Avx.Add(totalNormalImpulse, newImpulse);
                     Vector256<float> Px = Avx.Multiply(impulse, c->normal.X);
                     Vector256<float> Py = Avx.Multiply(impulse, c->normal.Y);
@@ -822,7 +825,7 @@ public class ContactSolverAVX : IContactSolverW
                     Vector256<float> newImpulse = Avx.Max(Avx.Subtract(c->normalImpulse2, negImpulse), Vector256<float>.Zero);
                     Vector256<float> impulse = Avx.Subtract(newImpulse, c->normalImpulse2);
                     c->normalImpulse2 = newImpulse;
-                    c->totalNormalImpulse2 = Avx.Add(c->totalNormalImpulse2, newImpulse);
+                    c->totalNormalImpulse2 = Avx.Add(c->totalNormalImpulse2, impulse);
                     totalNormalImpulse = Avx.Add(totalNormalImpulse, newImpulse);
                     Vector256<float> Px = Avx.Multiply(impulse, c->normal.X);
                     Vector256<float> Py = Avx.Multiply(impulse, c->normal.Y);
@@ -1402,6 +1405,7 @@ public class ContactSolverNeon : IContactSolverW
                         X = AdvSimd.Add(bB.v.X, AdvSimd.Multiply(c->invMassB, P.X)),
                         Y = AdvSimd.Add(bB.v.Y, AdvSimd.Multiply(c->invMassB, P.Y))
                     };
+                    c->totalNormalImpulse1 = AdvSimd.Add(c->totalNormalImpulse1, c->normalImpulse1);
                 }
                 {
                     Vector2W rA = c->anchorA2, rB = c->anchorB2;
@@ -1422,6 +1426,7 @@ public class ContactSolverNeon : IContactSolverW
                         X = AdvSimd.Add(bB.v.X, AdvSimd.Multiply(c->invMassB, P.X)),
                         Y = AdvSimd.Add(bB.v.Y, AdvSimd.Multiply(c->invMassB, P.Y))
                     };
+                    c->totalNormalImpulse2 = AdvSimd.Add(c->totalNormalImpulse2, c->normalImpulse2);
                 }
                 bA.w = AdvSimd.Subtract(bA.w, AdvSimd.Multiply(c->invIA, c->rollingImpulse));
                 bB.w = AdvSimd.Add(bB.w, AdvSimd.Multiply(c->invIB, c->rollingImpulse));
@@ -1475,7 +1480,7 @@ public class ContactSolverNeon : IContactSolverW
                     Vector128<float> newImpulse = AdvSimd.Max(AdvSimd.Subtract(c->normalImpulse1, negImpulse), Vector128<float>.Zero);
                     Vector128<float> impulse = AdvSimd.Subtract(newImpulse, c->normalImpulse1);
                     c->normalImpulse1 = newImpulse;
-                    c->totalNormalImpulse1 = AdvSimd.Add(c->totalNormalImpulse1, newImpulse);
+                    c->totalNormalImpulse1 = AdvSimd.Add(c->totalNormalImpulse1, impulse);
                     totalNormalImpulse = AdvSimd.Add(totalNormalImpulse, newImpulse);
                     Vector128<float> Px = AdvSimd.Multiply(impulse, c->normal.X);
                     Vector128<float> Py = AdvSimd.Multiply(impulse, c->normal.Y);
@@ -1510,7 +1515,7 @@ public class ContactSolverNeon : IContactSolverW
                     Vector128<float> newImpulse = AdvSimd.Max(AdvSimd.Subtract(c->normalImpulse2, negImpulse), Vector128<float>.Zero);
                     Vector128<float> impulse = AdvSimd.Subtract(newImpulse, c->normalImpulse2);
                     c->normalImpulse2 = newImpulse;
-                    c->totalNormalImpulse2 = AdvSimd.Add(c->totalNormalImpulse2, newImpulse);
+                    c->totalNormalImpulse2 = AdvSimd.Add(c->totalNormalImpulse2, impulse);
                     totalNormalImpulse = AdvSimd.Add(totalNormalImpulse, newImpulse);
                     Vector128<float> Px = AdvSimd.Multiply(impulse, c->normal.X);
                     Vector128<float> Py = AdvSimd.Multiply(impulse, c->normal.Y);
@@ -2043,6 +2048,7 @@ public class ContactSolverSSE : IContactSolverW
                         X = Sse.Add(bB.v.X, Sse.Multiply(c->invMassB, P.X)),
                         Y = Sse.Add(bB.v.Y, Sse.Multiply(c->invMassB, P.Y))
                     };
+                    c->totalNormalImpulse1 = Sse.Add(c->totalNormalImpulse1, c->normalImpulse1);
                 }
                 {
                     Vector2W rA = c->anchorA2, rB = c->anchorB2;
@@ -2063,6 +2069,7 @@ public class ContactSolverSSE : IContactSolverW
                         X = Sse.Add(bB.v.X, Sse.Multiply(c->invMassB, P.X)),
                         Y = Sse.Add(bB.v.Y, Sse.Multiply(c->invMassB, P.Y))
                     };
+                    c->totalNormalImpulse2 = Sse.Add(c->totalNormalImpulse2, c->normalImpulse2);
                 }
                 bA.w = Sse.Subtract(bA.w, Sse.Multiply(c->invIA, c->rollingImpulse));
                 bB.w = Sse.Add(bB.w, Sse.Multiply(c->invIB, c->rollingImpulse));
@@ -2116,7 +2123,7 @@ public class ContactSolverSSE : IContactSolverW
                     Vector128<float> newImpulse = Sse.Max(Sse.Subtract(c->normalImpulse1, negImpulse), Vector128<float>.Zero);
                     Vector128<float> impulse = Sse.Subtract(newImpulse, c->normalImpulse1);
                     c->normalImpulse1 = newImpulse;
-                    c->totalNormalImpulse1 = Sse.Add(c->totalNormalImpulse1, newImpulse);
+                    c->totalNormalImpulse1 = Sse.Add(c->totalNormalImpulse1, impulse);
                     totalNormalImpulse = Sse.Add(totalNormalImpulse, newImpulse);
                     Vector128<float> Px = Sse.Multiply(impulse, c->normal.X);
                     Vector128<float> Py = Sse.Multiply(impulse, c->normal.Y);
@@ -2151,7 +2158,7 @@ public class ContactSolverSSE : IContactSolverW
                     Vector128<float> newImpulse = Sse.Max(Sse.Subtract(c->normalImpulse2, negImpulse), Vector128<float>.Zero);
                     Vector128<float> impulse = Sse.Subtract(newImpulse, c->normalImpulse2);
                     c->normalImpulse2 = newImpulse;
-                    c->totalNormalImpulse2 = Sse.Add(c->totalNormalImpulse2, newImpulse);
+                    c->totalNormalImpulse2 = Sse.Add(c->totalNormalImpulse2, impulse);
                     totalNormalImpulse = Sse.Add(totalNormalImpulse, newImpulse);
                     Vector128<float> Px = Sse.Multiply(impulse, c->normal.X);
                     Vector128<float> Py = Sse.Multiply(impulse, c->normal.Y);
@@ -2725,6 +2732,7 @@ public class ContactSolverFloat : IContactSolverW
                         X = MulAddW(bB.v.X, c->invMassB, P.X),
                         Y = MulAddW(bB.v.Y, c->invMassB, P.Y)
                     };
+                    c->totalNormalImpulse1 = c->totalNormalImpulse1 + c->normalImpulse1;
                 }
                 {
                     Vector2W rA = c->anchorA2, rB = c->anchorB2;
@@ -2745,6 +2753,7 @@ public class ContactSolverFloat : IContactSolverW
                         X = MulAddW(bB.v.X, c->invMassB, P.X),
                         Y = MulAddW(bB.v.Y, c->invMassB, P.Y)
                     };
+                    c->totalNormalImpulse2 = c->totalNormalImpulse2 + c->normalImpulse2;
                 }
                 bA.w = MulSubW(bA.w, c->invIA, c->rollingImpulse);
                 bB.w = MulAddW(bB.w, c->invIB, c->rollingImpulse);
@@ -2798,7 +2807,7 @@ public class ContactSolverFloat : IContactSolverW
                     FloatW newImpulse = MaxW(c->normalImpulse1 - negImpulse, FloatW.Zero);
                     FloatW impulse = newImpulse - c->normalImpulse1;
                     c->normalImpulse1 = newImpulse;
-                    c->totalNormalImpulse1 = c->totalNormalImpulse1 + newImpulse;
+                    c->totalNormalImpulse1 = c->totalNormalImpulse1 + impulse;
                     totalNormalImpulse += newImpulse;
                     FloatW Px = impulse * c->normal.X;
                     FloatW Py = impulse * c->normal.Y;
@@ -2833,7 +2842,7 @@ public class ContactSolverFloat : IContactSolverW
                     FloatW newImpulse = MaxW(c->normalImpulse2 - negImpulse, FloatW.Zero);
                     FloatW impulse = newImpulse - c->normalImpulse2;
                     c->normalImpulse2 = newImpulse;
-                    c->totalNormalImpulse2 = c->totalNormalImpulse2 + newImpulse;
+                    c->totalNormalImpulse2 = c->totalNormalImpulse2 + impulse;
                     totalNormalImpulse += newImpulse;
                     FloatW Px = impulse * c->normal.X;
                     FloatW Py = impulse * c->normal.Y;

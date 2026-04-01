@@ -209,8 +209,18 @@ public struct BodyDef
     public bool isAwake = true;
     /// <summary>Treat this body as high speed object that performs continuous collision detection
     /// against dynamic and kinematic bodies, but not other bullet bodies.
-    /// Bullets should be used sparingly. They are not a solution for general dynamic-versus-dynamic
-    /// continuous collision.</summary>
+    /// <br/>Bullets should be used sparingly. They are not a solution for general dynamic-versus-dynamic
+    /// continuous collision. They do not guarantee accurate collision if both bodies are fast moving because
+    /// the bullet does a continuous check after all non-bullet bodies have moved. You could get unlucky and have
+    /// the bullet body end a time step very close to a non-bullet body and the non-bullet body then moves over
+    /// the bullet body. In continuous collision, initial overlap is ignored to avoid freezing bodies in place.
+    /// I do not recommend using them for game projectiles if precise collision timing is needed. Instead consider
+    /// using a ray or shape cast. You can use a marching ray or shape cast for projectile that moves over time.
+    /// If you want a fast moving projectile to collide with a fast moving target, you need to consider the relative
+    /// movement in your ray or shape cast. This is out of the scope of Box2D.
+    /// <br/>So what are good use cases for bullets? Pinball games or games with dynamic containers that hold other objects.
+    /// It should be a use case where it doesn't break the game if there is a collision missed, but the having them
+    /// captured improves the quality of the game.</summary>
     public bool isBullet = false;
     /// <summary>Used to disable a body. A disabled body does not move or collide.</summary>
     public bool isEnabled = true;
@@ -336,7 +346,8 @@ public struct ShapeDef
     /// static body creation when there are many static shapes.
     /// This is flag is ignored for dynamic and kinematic shapes which always invoke contact creation.</summary>
     public bool invokeContactCreation = true;
-    /// <summary>Should the body update the mass properties when this shape is created. Default is true.</summary>
+    /// <summary>Should the body update the mass properties when this shape is created. Default is true.
+    /// Warning: if this is true, you MUST call b2Body_ApplyMassFromShapes before simulating the world.</summary>
     public bool updateBodyMass = true;
     /// <summary>Used internally to detect a valid definition. DO NOT SET.</summary>
     internal int internalValue = Box2D.SECRET_COOKIE;
@@ -362,7 +373,8 @@ public struct ChainDef
     public object userData = null;
     /// <summary>An array of at least 4 points. These are cloned and may be temporary.</summary>
     public Vector2[] points = null;
-    /// <summary>Surface materials for each segment. These are cloned.</summary>
+    /// <summary>Surface materials for each segment. These are cloned. For open
+    /// chains, the material on the ghost segments are place holders.</summary>
     public SurfaceMaterial[] materials = [new()];
     /// <summary>Contact filtering data.</summary>
     public Filter filter = new();
@@ -476,9 +488,9 @@ public struct DistanceJointDef
     public float dampingRatio = 0;
     /// <summary>Enable/disable the joint limit</summary>
     public bool enableLimit = false;
-    /// <summary>Minimum length. Clamped to a stable minimum value.</summary>
+    /// <summary>Minimum length for limit. Clamped to a stable minimum value.</summary>
     public float minLength = 0;
-    /// <summary>Maximum length. Must be greater than or equal to the minimum length.</summary>
+    /// <summary>Maximum length for limit. Must be greater than or equal to the minimum length.</summary>
     public float maxLength = Box2D.Huge;
     /// <summary>Enable/disable the joint motor</summary>
     public bool enableMotor = false;
@@ -727,6 +739,9 @@ public struct ContactHitEvent
     public ShapeID shapeIdA;
     /// <summary>Id of the second shape</summary>
     public ShapeID shapeIdB;
+    /// <summary>Id of the contact.</summary>
+    ///	<remarks>this contact may have been destroyed</remarks>
+    public ContactID contactId;
     /// <summary>Point where the shapes hit at the beginning of the time step.
     /// This is a mid-point between the two surfaces. It could be at speculative
     /// point where the two shapes were not touching at the beginning of the time step.</summary>

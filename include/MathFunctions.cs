@@ -133,6 +133,8 @@ public struct Rotation
     }
     /// <summary>Is this rotation normalized?</summary>
     public bool IsNormalized() { float qq = s * s + c * c; return 1 - 0.0006f < qq && qq < 1 + 0.0006f; }
+    /// <summary>Get the inverse of a rotation</summary>
+    public Rotation Invert() => new(c, -s);
     /// <summary>Normalized linear interpolation
     /// https://fgiesen.wordpress.com/2012/08/15/linear-interpolation-past-present-and-future/
     ///	https://web.archive.org/web/20170825184056/http://number-none.com/product/Understanding%20Slerp,%20Then%20Not%20Using%20It/</summary>

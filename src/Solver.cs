@@ -438,6 +438,7 @@ public unsafe partial class World
             };
             sim.force = Vector2.Zero;
             sim.torque = 0;
+            Debug.Assert(!body.flags.HasFlag(BodyFlags.DirtyMass));
             body.flags &= ~(BodyFlags.IsFast | BodyFlags.IsSpeedCapped | BodyFlags.HadTimeOfImpact);
             body.flags |= (sim.flags & (BodyFlags.IsSpeedCapped | BodyFlags.HadTimeOfImpact));
             sim.flags &= ~(BodyFlags.IsFast | BodyFlags.IsSpeedCapped | BodyFlags.HadTimeOfImpact);
@@ -1181,6 +1182,8 @@ public unsafe partial class World
                         Shape shapeA = shapes[contactSim.shapeIdA], shapeB = shapes[contactSim.shapeIdB];
                         event_.shapeIdA = new() { index1 = shapeA.id + 1, world0 = this, generation = shapeA.generation };
                         event_.shapeIdB = new() { index1 = shapeB.id + 1, world0 = this, generation = shapeB.generation };
+                        Contact contact = contacts[contactSim.contactId];
+                        event_.contactId = new() { index1 = contact.contactId + 1, world0 = this, generation = contact.generation };
                         contactHitEvents.Add(event_);
                     }
                 }

@@ -19,6 +19,7 @@ public static class ShapeAPI
         Transform transform = world.GetBodyTransformQuick(body);
         Shape shape = world.CreateShapeInternal(body, transform, ref def, geometry, shapeType);
         if (def.updateBodyMass) world.UpdateBodyMassData(body);
+        else body.flags |= BodyFlags.DirtyMass;
         world.ValidateSolverSets();
         return new() { index1 = shape.id + 1, world0 = world, generation = shape.generation };
     }
@@ -34,8 +35,9 @@ public static class ShapeAPI
 
     ///<summary>Create a capsule shape and attach it to a body. The shape definition and geometry are fully cloned.
     /// Contacts are not created until the next time step.</summary>
-    /// <returns>the shape id for accessing the shape</returns>
-    public static ShapeID CreateCapsuleShape(BodyID bodyId, ref ShapeDef def, Capsule capsule) => CreateShape(bodyId, ref def, capsule, ShapeType.Capsule);
+    /// <returns>the shape id for accessing the shape, this will be b2_nullShapeId if the length is too small.</returns>
+    public static ShapeID CreateCapsuleShape(BodyID bodyId, ref ShapeDef def, Capsule capsule) =>
+        Vector2.DistanceSquared(capsule.center1, capsule.center2) <= Box2D.LinearSlop * Box2D.LinearSlop ? new() : CreateShape(bodyId, ref def, capsule, ShapeType.Capsule);
 
     ///<summary>Create a polygon shape and attach it to a body. The shape definition and geometry are fully cloned.
     /// Contacts are not created until the next time step.</summary>
@@ -300,6 +302,7 @@ public static class ShapeAPI
     public static void SetCapsule(ShapeID shapeId, ref Capsule capsule)
     {
         World world = World.GetWorldLocked(shapeId.world0); if (world == null) return;
+        if (Vector2.DistanceSquared(capsule.center1, capsule.center2) <= Box2D.LinearSlop * Box2D.LinearSlop) return;
         Shape shape = world.GetShape(shapeId);
         shape.shape = capsule; shape.type = ShapeType.Capsule;
         world.ResetProxy(shape, true, true);

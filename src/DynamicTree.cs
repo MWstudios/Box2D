@@ -379,23 +379,16 @@ public partial class DynamicTree
         nodes[newParent].aabb = AABB.Union(leafAABB, nodes[sibling].aabb);
         nodes[newParent].categoryBits = nodes[leaf].categoryBits | nodes[sibling].categoryBits;
         nodes[newParent].height = (ushort)(nodes[sibling].height + 1);
+        nodes[newParent].child1 = sibling;
+        nodes[newParent].child2 = leaf;
+        nodes[sibling].parent = newParent;
+        nodes[leaf].parent = newParent;
         if (oldParent != -1)
         {
             if (nodes[oldParent].child1 == sibling) nodes[oldParent].child1 = newParent;
             else nodes[oldParent].child2 = newParent;
-            nodes[newParent].child1 = sibling;
-            nodes[newParent].child2 = leaf;
-            nodes[sibling].parent = newParent;
-            nodes[leaf].parent = newParent;
         }
-        else
-        {
-            nodes[newParent].child1 = sibling;
-            nodes[newParent].child2 = leaf;
-            nodes[sibling].parent = newParent;
-            nodes[leaf].parent = newParent;
-            root = newParent;
-        }
+        else root = newParent;
         int index = nodes[leaf].parent;
         while (index != -1)
         {

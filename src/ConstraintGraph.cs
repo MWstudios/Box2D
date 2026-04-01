@@ -92,15 +92,15 @@ public class ConstraintGraph
     {
         Debug.Assert(typeA == BodyType.Dynamic || typeB == BodyType.Dynamic);
 
-        if (typeA != BodyType.Static && typeB != BodyType.Static)
+        if (typeA == BodyType.Dynamic && typeB == BodyType.Dynamic)
         {
             for (int i = 0; i < Box2D.DynamicColorCount; i++)
             {
                 GraphColor color = colors[i];
                 if (color.bodySet.GetBit(bodyIdA) || color.bodySet.GetBit(bodyIdB))
                     continue;
-                if (typeA == BodyType.Dynamic) color.bodySet.SetBitGrow(bodyIdA);
-                if (typeB == BodyType.Dynamic) color.bodySet.SetBitGrow(bodyIdB);
+                color.bodySet.SetBitGrow(bodyIdA);
+                color.bodySet.SetBitGrow(bodyIdB);
                 return i;
             }
         }
@@ -142,15 +142,15 @@ public partial class World
         BodyType typeA = bodies[bodyIdA].type, typeB = bodies[bodyIdB].type;
         Debug.Assert(typeA == BodyType.Dynamic || typeB == BodyType.Dynamic);
 
-        if (typeA != BodyType.Static && typeB != BodyType.Static)
+        if (typeA == BodyType.Dynamic && typeB == BodyType.Dynamic)
         {
             for (int i = 0; i < Box2D.DynamicColorCount; i++)
             {
                 GraphColor color = constraintGraph.colors[i];
                 if (color.bodySet.GetBit(bodyIdA) || color.bodySet.GetBit(bodyIdB))
                     continue;
-                if (typeA == BodyType.Dynamic) color.bodySet.SetBitGrow(bodyIdA);
-                if (typeB == BodyType.Dynamic) color.bodySet.SetBitGrow(bodyIdB);
+                color.bodySet.SetBitGrow(bodyIdA);
+                color.bodySet.SetBitGrow(bodyIdB);
                 colorIndex = i;
                 break;
             }
