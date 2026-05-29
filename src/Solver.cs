@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Box2D;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.Intrinsics.Arm;
@@ -34,15 +35,55 @@ public enum SolverBlockType : short
 {
     Body, Joint, Contact, GraphJoint, GraphContact
 }
-/// <summary>Each block of work has a sync index that gets incremented when a worker claims the block. This ensures only a single worker
+/// <summary>b2_graphContactBlock
+/// Each block of work has a sync index that gets incremented when a worker claims the block. This ensures only a single worker
 /// claims a block, yet lets work be distributed dynamically across multiple workers (work stealing). This also reduces contention
 /// on a single block index atomic. For non-iterative stages the sync index is simply set to one. For iterative stages (solver
 /// iteration) the same block of work is executed once per iteration and the atomic sync index is shared across iterations, so it
-/// increases monotonically.</summary>
+/// increases monotonically.
+/// Solver work is partitioned into fixed-size blocks that worker threads claim
+/// in parallel via atomic CAS on each block's own syncIndex. Three properties
+/// of this design matter for performance:
+///
+/// 1. Distributed contention. Per-block atomic syncIndex avoids the cache line stampede
+///    that a single shared fetch_add counter would cause. Once a worker
+///    settles into a block range, its CAS targets live in its own L1.
+///
+/// 2. Monotonic syncIndex across iterations. Iterative stages (warm start,
+///    solve, relax) reuse the same block array every sub-step iteration.
+///    syncIndex grows each iteration; workers CAS (prev, prev+1), so the
+///    main thread never touches any per-block state between iterations.
+///    Non-iterative stages simply use syncIndex 1.
+///
+/// 3. L2 affinity across iterations. Each worker picks a start offset from
+///    its workerIndex, then scans forward and (after wrap) backward:
+///
+///<br/>      blocks:   [0] [1] [2] [3] [4] [5] [6] [7]
+///<br/>                 ^           ^           ^   ^
+///<br/>                 W0          W1          W2  W3   <- start offsets
+///<br/>
+///    W0 claims 0,1,2,3 (forward), W1 claims 4,5, etc. Under balanced load
+///    each worker re-hits the same block range every iteration, keeping that
+///    range's hot data resident in its L2. A failed CAS means a neighbour
+///    already claimed the block, so the stealing worker stops -- preserving
+///    locality under mild imbalance while still draining the queue.
+///
+/// A graph color stage lays out joint blocks first, then contact blocks:
+///<br/>
+///<br/>      stage->blocks ->
+///<br/>        +------+------+------+------+------+------+------+
+///<br/>        |  J0  |  J1  |  J2  |  C0  |  C1  |  C2  |  C3  |
+///<br/>        +------+------+------+------+------+------+------+
+///<br/>        &lt;-- graphJointBlocks --&gt;&lt;---- graphContactBlocks ----&gt;
+///<br/>
+/// Each block carries its type so the dispatcher routes J-blocks to the joint
+/// solver and C-blocks to the SIMD contact solver; both kinds run concurrently
+/// within the stage -- no barrier between them. The type tag lives on the
+/// block (not the stage) so that mixed-type stages can keep the concurrency.</summary>
 public struct SolverBlock
 {
     public int startIndex;
-    public short count;
+    public ushort count;
     public SolverBlockType blockType;
     public int syncIndex;
 }
@@ -54,7 +95,7 @@ public unsafe class SolverStage
     public int colorIndex;
     public int completionCount;
 }
-public unsafe partial class StepContext
+public partial class StepContext
 {
     /// <summary>time step</summary>
     public float dt;
@@ -401,12 +442,12 @@ public unsafe partial class World
             if (context.sensorFractions[i] < context.fraction)
                 taskContext.sensorHits.Add(context.sensorHits[i]);
     }
-    public static void FinalizeBodiesTask(int startIndex, int endIndex, uint threadIndex, object context)
+    public static void FinalizeBodiesTask(int startIndex, int endIndex, int threadIndex, object context)
     {
         StepContext stepContext = (StepContext)context;
         World world = stepContext.world;
         Debug.Assert(endIndex <= world.bodyMoveEvents.Count);
-        TaskContext taskContext = world.taskContexts[(int)threadIndex];
+        TaskContext taskContext = world.taskContexts[threadIndex];
         ref BitSet enlargedSimBitSet = ref taskContext.enlargedSimBitSet;
         ref BitSet awakeIslandBitSet = ref taskContext.awakeIslandBitSet;
         Debug.Assert(startIndex <= endIndex);
@@ -505,6 +546,43 @@ public unsafe partial class World
             }
         }
     }
+    /// <summary>Compute the number of work blocks needed given an item count and desired block size.
+    /// If there are too many blocks for the worker count, the block size is enlarged.</summary>
+    public static int ComputeBlockCount(int itemCount, int defaultBlockSize, int maxBlockCount)
+    {
+        if (itemCount == 0) return 0;
+        if (itemCount > defaultBlockSize * maxBlockCount) return maxBlockCount;
+        return ((itemCount - 1) / defaultBlockSize) + 1;
+    }
+    /// <summary>Initialize solver blocks for a contiguous range of items. Computes block size internally
+    /// from the same parameters used by b2ComputeBlockCount.</summary>
+    public static void InitBlocks(SolverBlock* blocks, int blockCount, int itemCount, int defaultBlockSize, int maxBlockCount, SolverBlockType blockType)
+    {
+        if (blockCount == 0) return;
+        int blockSize = itemCount > defaultBlockSize * maxBlockCount ? itemCount / maxBlockCount : defaultBlockSize;
+        Debug.Assert(blockSize <= short.MaxValue);
+        for (int i = 0; i < blockCount; i++)
+        {
+            blocks[i].startIndex = i * blockSize;
+            blocks[i].count = (ushort)blockSize;
+            blocks[i].blockType = blockType;
+            Interlocked.Exchange(ref blocks[i].syncIndex, 0);
+        }
+        blocks[blockCount - 1].count = (ushort)(itemCount - (blockCount - 1) * blockSize);
+    }
+    public static void InitStage(SolverStage[] stages, ref int stageIndex, SolverStageType type, SolverBlock* blocks, int blockCount, int colorIndex)
+    {
+        stages[stageIndex] = new() { type = type, blocks = blocks, blockCount = blockCount, colorIndex = colorIndex };
+        Interlocked.Exchange(ref stages[stageIndex].completionCount, 0);
+        stageIndex++;
+    }
+    /// <summary>Initialize one stage per color for each iteration. Used for warm start, solve, relax, and restitution.</summary>Indices"></param>
+    /// <returns></returns>
+    public static void InitColorStages(SolverStage[] stages, ref int stageIndex, SolverStageType type, int iterations, int activeColorCount, SolverBlock*[] graphColorBlocks, int[] colorBlockCounts, int[] activeColorIndices)
+    {
+        for (int j = 0; j < iterations; j++) for (int i = 0; i < activeColorCount; i++)
+            InitStage(stages, ref stageIndex, type, graphColorBlocks[i], colorBlockCounts[i], activeColorIndices[i]);
+    }
     public static void ExecuteBlock(SolverStage stage, StepContext context, ref SolverBlock block, int workerIndex)
     {
         int startIndex = block.startIndex, endIndex = startIndex + block.count;
@@ -600,7 +678,7 @@ public unsafe partial class World
             Interlocked.Exchange(ref stage.completionCount, 0);
         }
     }
-    public static void SolverTask(int startIndex, int endIndex, uint threadIndexIgnore, object taskContext)
+    public static void SolverTask(object taskContext)
     {
         WorkerContext workerContext = (WorkerContext)taskContext;
         StepContext context = workerContext.context;
@@ -729,10 +807,10 @@ public unsafe partial class World
             lastSyncBits = syncBits;
         }
     }
-    public static void BulletBodyTask(int startIndex, int endIndex, uint threadIndex, object context)
+    public static void BulletBodyTask(int startIndex, int endIndex, int threadIndex, object context)
     {
         StepContext stepContext = (StepContext)context;
-        TaskContext taskContext = stepContext.world.taskContexts[(int)threadIndex];
+        TaskContext taskContext = stepContext.world.taskContexts[threadIndex];
         Debug.Assert(startIndex <= endIndex);
         for (int i = startIndex; i < endIndex; i++)
         {
@@ -776,23 +854,13 @@ public unsafe partial class World
             for (int i = bodyMoveEvents.Count; i < awakeBodyCount; i++) bodyMoveEvents.Add(new());
             int blocksPerWorker = 4;
             int maxBlockCount = blocksPerWorker * workerCount;
-            int bodyBlockSize = 1 << 5;
-            int bodyBlockCount;
-            if (awakeBodyCount > bodyBlockSize * maxBlockCount)
-            {
-                bodyBlockSize = awakeBodyCount / maxBlockCount;
-                bodyBlockCount = maxBlockCount;
-            }
-            else bodyBlockCount = ((awakeBodyCount - 1) >> 5) + 1;
+            int bodyBlockCount = ComputeBlockCount(awakeBodyCount, 1 << 5, maxBlockCount);
             int[] activeColorIndices = new int[Box2D.GraphColorCount],
                 colorContactCounts = new int[Box2D.GraphColorCount],
-                colorContactBlockSizes = new int[Box2D.GraphColorCount],
-                colorContactBlockCounts = new int[Box2D.GraphColorCount],
                 colorJointCounts = new int[Box2D.GraphColorCount],
-                colorJointBlockSizes = new int[Box2D.GraphColorCount],
-                colorJointBlockCounts = new int[Box2D.GraphColorCount];
+                colorBlockCounts = new int[Box2D.GraphColorCount];
             int graphBlockCount = 0;
-            int simdContactCount = 0;
+            int wideContactCount = 0;
             int c = 0;
             for (int i = 0; i < Box2D.GraphColorCount - 1; i++)
             {
@@ -801,48 +869,21 @@ public unsafe partial class World
                 if (colorContactCount + colorJointCount > 0)
                 {
                     activeColorIndices[c] = i;
-                    int colorContactCountSIMD = colorContactCount > 0 ? ((colorContactCount - 1) >> SIMD_SHIFT) + 1 : 0;
-                    colorContactCounts[c] = colorContactCountSIMD;
-                    if (colorContactCountSIMD > blocksPerWorker * maxBlockCount)
-                    {
-                        colorContactBlockSizes[c] = colorContactCountSIMD / maxBlockCount;
-                        colorContactBlockCounts[c] = maxBlockCount;
-                    }
-                    else if (colorContactCountSIMD > 0)
-                    {
-                        colorContactBlockSizes[c] = blocksPerWorker;
-                        colorContactBlockCounts[c] = ((colorContactCountSIMD - 1) / blocksPerWorker) + 1;
-                    }
-                    else
-                    {
-                        colorContactBlockSizes[c] = 0;
-                        colorContactBlockCounts[c] = 0;
-                    }
+                    int colorContactCountW = colorContactCount > 0 ? ((colorContactCount - 1) >> SIMD_SHIFT) + 1 : 0;
+                    colorContactCounts[c] = colorContactCountW;
                     colorJointCounts[c] = colorJointCount;
-                    if (colorJointCount > blocksPerWorker * maxBlockCount)
-                    {
-                        colorJointBlockSizes[c] = colorJointCount / maxBlockCount;
-                        colorJointBlockCounts[c] = maxBlockCount;
-                    }
-                    else if (colorJointCount > 0)
-                    {
-                        colorJointBlockSizes[c] = blocksPerWorker;
-                        colorJointBlockCounts[c] = ((colorJointCount - 1) / blocksPerWorker) + 1; //???
-                    }
-                    else
-                    {
-                        colorJointBlockSizes[c] = 0;
-                        colorJointBlockCounts[c] = 0;
-                    }
-                    graphBlockCount += colorContactBlockCounts[c] + colorJointBlockCounts[c];
-                    simdContactCount += colorContactCountSIMD;
+                    int contactBlockCount_ = ComputeBlockCount(colorContactCountW, blocksPerWorker, maxBlockCount);
+                    int jointBlockCount_ = ComputeBlockCount(colorJointCount, blocksPerWorker, maxBlockCount);
+                    colorBlockCounts[c] = contactBlockCount_ + jointBlockCount_;
+                    graphBlockCount += colorBlockCounts[c];
+                    wideContactCount += colorContactCountW;
                     c++;
                 }
             }
             activeColorCount = c;
-            ContactSim[] contacts = new ContactSim[SIMD_WIDTH * simdContactCount];
+            ContactSim[] contacts = new ContactSim[SIMD_WIDTH * wideContactCount];
             JointSim[] joints = new JointSim[awakeJointCount];
-            IContactConstraintsSIMD simdContactConstraints = IContactConstraintsSIMD.Alloc(simdContactCount);
+            IContactConstraintsSIMD wideContactConstraints = IContactConstraintsSIMD.Alloc(wideContactCount);
             int overflowContactCount = constraintGraph.colors[Box2D.GraphColorCount - 1].contactSims.Count;
             ContactConstraint[] overflowContactConstraints = new ContactConstraint[overflowContactCount];
             constraintGraph.colors[Box2D.GraphColorCount - 1].overflowConstraints = overflowContactConstraints;
@@ -857,36 +898,24 @@ public unsafe partial class World
                     if (colorContactCount == 0) color.wideConstraints = null;
                     else
                     {
-                        color.wideConstraints = simdContactConstraints.PointTo(contactBase);
+                        color.wideConstraints = wideContactConstraints.PointTo(contactBase);
                         for (int k = 0; k < colorContactCount; ++k)
                             contacts[SIMD_WIDTH * contactBase + k] = color.contactSims[k];
-                        int colorContactCountSIMD = ((colorContactCount - 1) >> SIMD_SHIFT) + 1;
-                        for (int k = colorContactCount; k < SIMD_WIDTH * colorContactCountSIMD; ++k)
+                        int colorContactCountW = ((colorContactCount - 1) >> SIMD_SHIFT) + 1;
+                        for (int k = colorContactCount; k < SIMD_WIDTH * colorContactCountW; ++k)
                             contacts[SIMD_WIDTH * contactBase + k] = null;
-                        contactBase += colorContactCountSIMD;
+                        contactBase += colorContactCountW;
                     }
 
                     int colorJointCount = color.jointSims.Count;
                     for (int k = 0; k < colorJointCount; ++k) joints[jointBase + k] = color.jointSims[k];
                     jointBase += colorJointCount;
                 }
-                Debug.Assert(contactBase == simdContactCount);
+                Debug.Assert(contactBase == wideContactCount);
                 Debug.Assert(jointBase == awakeJointCount);
             }
-            int contactBlockSize = blocksPerWorker;
-            int contactBlockCount = simdContactCount > 0 ? ((simdContactCount - 1) / blocksPerWorker) + 1 : 0;
-            if (simdContactCount > contactBlockSize * maxBlockCount)
-            {
-                contactBlockSize = simdContactCount / maxBlockCount;
-                contactBlockCount = maxBlockCount;
-            }
-            int jointBlockSize = blocksPerWorker;
-            int jointBlockCount = awakeJointCount > 0 ? ((awakeJointCount - 1) / blocksPerWorker) + 1 : 0;
-            if (awakeJointCount > jointBlockSize * maxBlockCount)
-            {
-                jointBlockSize = awakeJointCount / maxBlockCount;
-                jointBlockCount = maxBlockCount;
-            }
+            int contactBlockCount = ComputeBlockCount(wideContactCount, blocksPerWorker, maxBlockCount);
+            int jointBlockCount = ComputeBlockCount(awakeJointCount, blocksPerWorker, maxBlockCount);
             int stageCount = 1; // b2_stagePrepareJoints
             stageCount += 1; // b2_stagePrepareContacts
             stageCount += 1; // b2_stageIntegrateVelocities
@@ -904,173 +933,47 @@ public unsafe partial class World
             object splitIslandTask = null;
             if (splitIslandId != -1)
             {
-                splitIslandTask = enqueueTaskFcn(SplitIslandTask, 1, 1, this, userTaskContext);
-                taskCount++;
-                activeTaskCount += splitIslandTask == null ? 0 : 1;
+                if (taskCount < Box2D.MaxTasks)
+                {
+                    splitIslandTask = enqueueTaskFcn(SplitIslandTask, this, userTaskContext);
+                    taskCount++;
+                    activeTaskCount += splitIslandTask == null ? 0 : 1;
+                }
+                else SplitIslandTask(this);
             }
-            for (int i = 0; i < bodyBlockCount; i++)
-            {
-                SolverBlock* block = bodyBlocks + i;
-                block->startIndex = i * bodyBlockSize;
-                block->count = (short)bodyBlockSize;
-                block->blockType = SolverBlockType.Body;
-                Interlocked.Exchange(ref block->syncIndex, 0);
-            }
-            bodyBlocks[bodyBlockCount - 1].count = (short)(awakeBodyCount - (bodyBlockCount - 1) * bodyBlockSize);
-            for (int i = 0; i < jointBlockCount; i++)
-            {
-                SolverBlock* block = jointBlocks + i;
-                block->startIndex = i * jointBlockSize;
-                block->count = (short)jointBlockSize;
-                block->blockType = SolverBlockType.Joint;
-                Interlocked.Exchange(ref block->syncIndex, 0);
-            }
-            if (jointBlockCount > 0)
-                jointBlocks[jointBlockCount - 1].count = (short)(awakeJointCount - (jointBlockCount - 1) * jointBlockSize);
-            for (int i = 0; i < contactBlockCount; i++)
-            {
-                SolverBlock* block = contactBlocks + i;
-                block->startIndex = i * contactBlockSize;
-                block->count = (short)contactBlockSize;
-                block->blockType = SolverBlockType.Contact;
-                Interlocked.Exchange(ref block->syncIndex, 0);
-            }
-            if (contactBlockCount > 0)
-                contactBlocks[contactBlockCount - 1].count = (short)(simdContactCount - (contactBlockCount - 1) * contactBlockSize);
+            InitBlocks(bodyBlocks, bodyBlockCount, awakeBodyCount, 1 << 5, maxBlockCount, SolverBlockType.Body);
+            InitBlocks(jointBlocks, jointBlockCount, awakeJointCount, blocksPerWorker, maxBlockCount, SolverBlockType.Joint);
+            InitBlocks(contactBlocks, contactBlockCount, wideContactCount, blocksPerWorker, maxBlockCount, SolverBlockType.Contact);
             SolverBlock*[] graphColorBlocks = new SolverBlock*[Box2D.GraphColorCount];
-            int baseGraphBlock = 0;
+            SolverBlock* baseGraphBlock = graphBlocks;
             for (int i = 0; i < activeColorCount; i++)
             {
-                graphColorBlocks[i] = graphBlocks + baseGraphBlock;
-                int colorJointBlockCount = colorJointBlockCounts[i];
-                int colorJointBlockSize = colorJointBlockSizes[i];
-                for (int j = 0; j < colorJointBlockCount; ++j)
-                {
-                    ref SolverBlock block = ref graphBlocks[baseGraphBlock + j];
-                    block.startIndex = j * colorJointBlockSize;
-                    block.count = (short)colorJointBlockSize;
-                    block.blockType = SolverBlockType.GraphJoint;
-                    Interlocked.Exchange(ref block.syncIndex, 0);
-                }
-                if (colorJointBlockCount > 0)
-                {
-                    graphBlocks[baseGraphBlock + colorJointBlockCount - 1].count =
-                        (short)(colorJointCounts[i] - (colorJointBlockCount - 1) * colorJointBlockSize);
-                    baseGraphBlock += colorJointBlockCount;
-                }
-                int colorContactBlockCount = colorContactBlockCounts[i];
-                int colorContactBlockSize = colorContactBlockSizes[i];
-                for (int j = 0; j < colorContactBlockCount; ++j)
-                {
-                    ref SolverBlock block = ref graphBlocks[baseGraphBlock + j];
-                    block.startIndex = j * colorContactBlockSize;
-                    block.count = (short)colorContactBlockSize;
-                    block.blockType = SolverBlockType.GraphContact;
-                    Interlocked.Exchange(ref block.syncIndex, 0);
-                }
-
-                if (colorContactBlockCount > 0)
-                {
-                    graphBlocks[baseGraphBlock + colorContactBlockCount - 1].count =
-                        (short)(colorContactCounts[i] - (colorContactBlockCount - 1) * colorContactBlockSize);
-                    baseGraphBlock += colorContactBlockCount;
-                }
+                graphColorBlocks[i] = baseGraphBlock;
+                int count = ComputeBlockCount(colorJointCounts[i], blocksPerWorker, maxBlockCount);
+                InitBlocks(baseGraphBlock, count, colorJointCounts[i], blocksPerWorker, maxBlockCount, SolverBlockType.GraphJoint);
+                baseGraphBlock += count;
+                count = ComputeBlockCount(colorContactCounts[i], blocksPerWorker, maxBlockCount);
+                InitBlocks(baseGraphBlock, count, colorContactCounts[i], blocksPerWorker, maxBlockCount, SolverBlockType.GraphContact);
+                baseGraphBlock += count;
             }
-            Debug.Assert(baseGraphBlock == graphBlockCount);
+            Debug.Assert((baseGraphBlock - graphBlocks) == graphBlockCount);
             int stageIndex = 0;
-            ref SolverStage stage = ref stages[stageIndex];
-            stage = new()
-            {
-                type = SolverStageType.PrepareJoints,
-                blocks = jointBlocks,
-                blockCount = jointBlockCount,
-                colorIndex = -1
-            };
-            Interlocked.Exchange(ref stages[stageIndex].completionCount, 0);
-            stages[++stageIndex] = new()
-            {
-                type = SolverStageType.PrepareContacts,
-                blocks = contactBlocks,
-                blockCount = contactBlockCount,
-                colorIndex = -1
-            };
-            Interlocked.Exchange(ref stages[stageIndex].completionCount, 0);
-            stages[++stageIndex] = new()
-            {
-                type = SolverStageType.IntegrateVelocities,
-                blocks = bodyBlocks,
-                blockCount = bodyBlockCount,
-                colorIndex = -1
-            };
-            Interlocked.Exchange(ref stages[stageIndex].completionCount, 0);
-            for (int i = 0; i < activeColorCount; i++)
-            {
-                stages[++stageIndex] = new()
-                {
-                    type = SolverStageType.WarmStart,
-                    blocks = graphColorBlocks[i],
-                    blockCount = colorJointBlockCounts[i] + colorContactBlockCounts[i],
-                    colorIndex = activeColorIndices[i]
-                };
-                Interlocked.Exchange(ref stages[stageIndex].completionCount, 0);
-            }
-            for (int j = 0; j < ITERATIONS; j++) for (int i = 0; i < activeColorCount; i++)
-                {
-                    stages[++stageIndex] = new()
-                    {
-                        type = SolverStageType.Solve,
-                        blocks = graphColorBlocks[i],
-                        blockCount = colorJointBlockCounts[i] + colorContactBlockCounts[i],
-                        colorIndex = activeColorIndices[i]
-                    };
-                    Interlocked.Exchange(ref stages[stageIndex].completionCount, 0);
-                }
-            stages[++stageIndex] = new()
-            {
-                type = SolverStageType.IntegratePositions,
-                blocks = bodyBlocks,
-                blockCount = bodyBlockCount,
-                colorIndex = -1
-            };
-            Interlocked.Exchange(ref stages[stageIndex].completionCount, 0);
-            for (int j = 0; j < RELAX_ITERATIONS; j++) for (int i = 0; i < activeColorCount; i++)
-                {
-                    stages[++stageIndex] = new()
-                    {
-                        type = SolverStageType.Relax,
-                        blocks = graphColorBlocks[i],
-                        blockCount = colorJointBlockCounts[i] + colorContactBlockCounts[i],
-                        colorIndex = activeColorIndices[i]
-                    };
-                    Interlocked.Exchange(ref stages[stageIndex].completionCount, 0);
-                }
-            for (int i = 0; i < activeColorCount; i++)
-            {
-                stages[++stageIndex] = new()
-                {
-                    type = SolverStageType.Restitution,
-                    blocks = graphColorBlocks[i],
-                    blockCount = colorJointBlockCounts[i] + colorContactBlockCounts[i],
-                    colorIndex = activeColorIndices[i]
-                };
-                Interlocked.Exchange(ref stages[stageIndex].completionCount, 0);
-            }
-            stages[++stageIndex] = new()
-            {
-                type = SolverStageType.StoreImpulses,
-                blocks = contactBlocks,
-                blockCount = contactBlockCount,
-                colorIndex = -1
-            };
-            Interlocked.Exchange(ref stages[stageIndex].completionCount, 0);
-            stageIndex++;
+            InitStage(stages, ref stageIndex, SolverStageType.PrepareJoints, jointBlocks, jointBlockCount, -1);
+            InitStage(stages, ref stageIndex, SolverStageType.PrepareContacts, contactBlocks, contactBlockCount, -1);
+            InitStage(stages, ref stageIndex, SolverStageType.IntegrateVelocities, bodyBlocks, bodyBlockCount, -1);
+            InitColorStages(stages, ref stageIndex, SolverStageType.WarmStart, 1, activeColorCount, graphColorBlocks, colorBlockCounts, activeColorIndices);
+            InitColorStages(stages, ref stageIndex, SolverStageType.Solve, ITERATIONS, activeColorCount, graphColorBlocks, colorBlockCounts, activeColorIndices);
+            InitStage(stages, ref stageIndex, SolverStageType.IntegratePositions, bodyBlocks, bodyBlockCount, -1);
+            InitColorStages(stages, ref stageIndex, SolverStageType.Relax, RELAX_ITERATIONS, activeColorCount, graphColorBlocks, colorBlockCounts, activeColorIndices);
+            InitColorStages(stages, ref stageIndex, SolverStageType.Restitution, 1, activeColorCount, graphColorBlocks, colorBlockCounts, activeColorIndices);
+            InitStage(stages, ref stageIndex, SolverStageType.StoreImpulses, contactBlocks, contactBlockCount, -1);
             Debug.Assert(stageIndex == stageCount);
             Debug.Assert(workerCount <= Box2D.MaxWorkers);
             WorkerContext[] workerContext = new WorkerContext[Box2D.MaxWorkers];
             stepContext.graph = constraintGraph;
             stepContext.joints = joints;
             stepContext.contacts = contacts;
-            stepContext.wideContactConstraints = simdContactConstraints;
+            stepContext.wideContactConstraints = wideContactConstraints;
             stepContext.activeColorCount = activeColorCount;
             stepContext.workerCount = workerCount;
             stepContext.stages = stages;
@@ -1088,9 +991,17 @@ public unsafe partial class World
                     context = stepContext,
                     workerIndex = i
                 };
-                workerContext[i].userTask = enqueueTaskFcn(SolverTask, 1, 1, workerContext[i], userTaskContext);
-                taskCount++;
-                activeTaskCount += workerContext[i].userTask == null ? 0 : 1;
+                if (taskCount < Box2D.MaxTasks)
+                {
+                    workerContext[i].userTask = enqueueTaskFcn(SolverTask, workerContext[i], userTaskContext);
+                    taskCount++;
+                    activeTaskCount += workerContext[i].userTask == null ? 0 : 1;
+                }
+                else
+                {
+                    workerContext[i].userTask = null;
+                    SolverTask(workerContext[i]);
+                }
             }
             if (splitIslandTask != null)
             { finishTaskFcn(splitIslandTask, userTaskContext); activeTaskCount--; }
@@ -1116,14 +1027,12 @@ public unsafe partial class World
                 taskContext.splitIslandId = -1;
                 taskContext.splitSleepTime = 0;
             }
-            object finalizeBodiesTask = enqueueTaskFcn(FinalizeBodiesTask, awakeBodyCount, 64, stepContext, userTaskContext);
-            taskCount++;
-            if (finalizeBodiesTask != null) finishTaskFcn(finalizeBodiesTask, userTaskContext);
+            ParallelFor(FinalizeBodiesTask, awakeBodyCount, 64, stepContext);
             arena.FreeArenaItem(graphBlocks);
             arena.FreeArenaItem(jointBlocks);
             arena.FreeArenaItem(contactBlocks);
             arena.FreeArenaItem(bodyBlocks);
-            simdContactConstraints.Free();
+            wideContactConstraints.Free();
             profile.transforms = (float)transformTicks.Elapsed.TotalMilliseconds;
         }
         {
@@ -1246,9 +1155,7 @@ public unsafe partial class World
         {
             Stopwatch bulletTicks = new(); bulletTicks.Start();
             int minRange = 8;
-            object userBulletBodyTask = enqueueTaskFcn(BulletBodyTask, bulletBodyCount, minRange, stepContext, userTaskContext);
-            taskCount++;
-            if (userBulletBodyTask != null) finishTaskFcn(userBulletBodyTask, userTaskContext);
+            ParallelFor(BulletBodyTask, bulletBodyCount, minRange, stepContext);
             DynamicTree dynamicTree = broadPhase.trees[(int)BodyType.Dynamic];
             var bulletBodySimIndices = stepContext.bulletBodies;
             for (int i = 0; i < bulletBodyCount; i++)

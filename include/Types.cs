@@ -6,32 +6,13 @@ using System.Threading.Tasks;
 
 namespace Box2D;
 
-/// <summary>Task interface<br/>
-/// This is prototype for a Box2D task. Your task system is expected to invoke the Box2D task with these arguments.
-/// The task spans a range of the parallel-for: [startIndex, endIndex)
-/// The worker index must correctly identify each worker in the user thread pool, expected in [0, workerCount).
-/// A worker must only exist on only one thread at a time and is analogous to the thread index.
-/// The task context is the context pointer sent from Box2D when it is enqueued.
-/// The startIndex and endIndex are expected in the range [0, itemCount) where itemCount is the argument to b2EnqueueTaskCallback
-/// below. Box2D expects startIndex &lt; endIndex and will execute a loop like this:
-/// <code>
-/// for (int i = startIndex; i &lt; endIndex; ++i)
-/// {
-/// 	DoWork();
-/// }
-/// </code></summary>
-public delegate void TaskCallback(int startIndex, int endIndex, uint workerIndex, object taskContext);
-/// <summary>These functions can be provided to Box2D to invoke a task system. These are designed to work well with enkiTS.
+/// <summary>This is the prototype for a Box2D task. Your task system is expected to run this callback on a worker thread,
+/// exactly once per enqueue, passing back the same taskContext pointer supplied to b2EnqueueTaskCallback.</summary>
+public delegate void TaskCallback(object taskContext);
+/// <summary>These functions can be provided to Box2D to invoke a task system.
 /// Returns a pointer to the user's task object. May be nullptr. A nullptr indicates to Box2D that the work was executed
-/// serially within the callback and there is no need to call b2FinishTaskCallback.
-/// The itemCount is the number of Box2D work items that are to be partitioned among workers by the user's task system.
-/// This is essentially a parallel-for. The minRange parameter is a suggestion of the minimum number of items to assign
-/// per worker to reduce overhead. For example, suppose the task is small and that itemCount is 16. A minRange of 8 suggests
-/// that your task system should split the work items among just two workers, even if you have more available.
-/// In general the range [startIndex, endIndex) send to b2TaskCallback should obey:<br/>
-/// endIndex - startIndex &gt;= minRange<br/>
-/// The exception of course is when itemCount &lt; minRange.</summary>
-public delegate object EnqueueTaskCallback(TaskCallback task, int itemCount, int minRange, object taskContext, object userContext);
+/// serially within the callback and there is no need to call b2FinishTaskCallback.</summary>
+public delegate object EnqueueTaskCallback(TaskCallback task, object taskContext, object userContext);
 /// <summary>Finishes a user task object that wraps a Box2D task.</summary>
 public delegate void FinishTaskCallback(object userTask, object userContext);
 /// <summary>Optional friction mixing callback. This intentionally provides no context objects because this is called
@@ -104,33 +85,18 @@ public struct WorldDef
     public bool enableContinuous = true;
     /// <summary>Contact softening when mass ratios are large. Experimental.</summary>
     public bool enableContactSoftening = false;
-    /// <summary>Number of workers to use with the provided task system. Box2D performs best when using only
-    /// performance cores and accessing a single L2 cache. Efficiency cores and hyper-threading provide
+    /// <summary>Number of workers for multithreading. Box2D performs best when using performance cores and
+    /// accessing a single L3 cache (uniform memory). Efficiency cores and SMT provide
     /// little benefit and may even harm performance.</summary>
-    /// <remarks>Box2D does not create threads. This is the number of threads your applications has created
-    /// that you are allocating to b2World_Step.
-    /// Do not modify the default value unless you are also providing a task system and providing
-    /// task callbacks (enqueueTask and finishTask).</remarks>
+    /// <remarks>This is clamped to the range [1, B2_MAX_WORKERS].
+    /// Using a value above 1 will turn on multithreading. If task callbacks are provided
+    /// then Box2D will use the user provided task system. Otherwise Box2D will create threads and use
+    /// an internal scheduler.</remarks>
     private int workerCount = Environment.ProcessorCount;
     /// <summary>Function to spawn tasks</summary>
-    public EnqueueTaskCallback enqueueTask = (task, itemCount, minRange, taskContext, userContext) =>
-    {
-        DefaultTaskContext context = (DefaultTaskContext)userContext;
-        DefaultTaskObject t = new();
-        for (int i = 0; i < itemCount;)
-        {
-            int startIndex = i, endIndex = i + Math.Min(itemCount - i, minRange);
-            context.semaphore.Wait();
-            context.taskIndices.TryDequeue(out uint index);
-            t.tasks.Add(Task.Run(() => task(startIndex, endIndex, index, taskContext)));
-            context.taskIndices.Enqueue(index);
-            context.semaphore.Release();
-            i = endIndex;
-        }
-        return t;
-    };
+    public EnqueueTaskCallback enqueueTask = null;
     /// <summary>Function to finish a task</summary>
-    public FinishTaskCallback finishTask = (userTask, userContext) => ((DefaultTaskObject)userTask).Await();
+    public FinishTaskCallback finishTask = null;
     /// <summary>User context that is provided to enqueueTask and finishTask</summary>
     public object userTaskContext = null;
     /// <summary>User data</summary>

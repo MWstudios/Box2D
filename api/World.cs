@@ -51,9 +51,10 @@ public static class WorldAPI
         }
         world.locked = true;
         world.activeTaskCount = 0;
+        world.taskCount = 0;
+        world.scheduler?.Reset();
         Stopwatch stepTicks = new(), pairTicks = new();
         stepTicks.Start();
-        world.taskCount = 0;
         {
             pairTicks.Start();
             world.UpdateBroadPhasePairs();
@@ -871,6 +872,23 @@ public static class WorldAPI
         world.restitutionCallback = callback ?? world.restitutionCallback;
     }
 
+    /// <summary>Set the worker count. Must be between in the range [1, B2_MAX_WORKERS]</summary>
+    public static void SetWorkerCount(WorldID worldId, int count)
+    {
+        World world = World.GetUnlockedWorldFromId(worldId);
+        if (world == null) return;
+        if (count == world.workerCount) return;
+        world.workerCount = Math.Clamp(count, 1, Box2D.MaxWorkers);
+        world.CreateWorkerContexts();
+    }
+
+    /// <summary>Get the worker count.</summary>
+    public static int GetWorkerCount(WorldID worldId)
+    {
+        World world = World.GetUnlockedWorldFromId(worldId);
+        if (world == null) return 0;
+        return world.workerCount;
+    }
     ///<summary> Dump memory stats to box2d_memory.txt</summary>
     ///<remarks>Probably inaccurate in .NET (many object sizes are estimated)</remarks>
     public static unsafe void DumpMemoryStats(WorldID worldId)

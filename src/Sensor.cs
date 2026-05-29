@@ -74,11 +74,11 @@ public partial class World
         sensor.overlaps2.Add(new() { shapeId = shapeId, generation = otherShape.generation });
         return true;
     }
-    public static void SensorTask(int startIndex, int endIndex, uint threadIndex, object context)
+    public static void SensorTask(int startIndex, int endIndex, int threadIndex, object context)
     {
         World world = (World)context;
         Debug.Assert(threadIndex < world.workerCount);
-        SensorTaskContext taskContext = world.sensorTaskContexts[(int)threadIndex];
+        SensorTaskContext taskContext = world.sensorTaskContexts[threadIndex];
         Debug.Assert(startIndex < endIndex);
         DynamicTree[] trees = world.broadPhase.trees;
         for (int sensorIndex = startIndex; sensorIndex < endIndex; sensorIndex++)
@@ -134,9 +134,7 @@ public partial class World
         Debug.Assert(workerCount > 0);
         for (int i = 0; i < workerCount; i++) sensorTaskContexts[i].eventBits.SetBitCountAndClear(sensorCount);
         int minRange = 16;
-        object userSensorTask = enqueueTaskFcn(SensorTask, sensorCount, minRange, this, userTaskContext);
-        taskCount++;
-        if (userSensorTask != null) finishTaskFcn(userSensorTask, userTaskContext);
+        ParallelFor(SensorTask, sensorCount, minRange, this);
         ref BitSet bitset = ref sensorTaskContexts[0].eventBits;
         for (int i = 1; i < workerCount; i++) bitset.InPlaceUnion(sensorTaskContexts[i].eventBits);
         ulong[] bits = bitset.bits;

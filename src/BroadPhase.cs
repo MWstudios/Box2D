@@ -194,7 +194,7 @@ public partial class World
         queryContext.moveResult.pairList = pair;
         return true;
     }
-    static void FindPairsTask(int startIndex, int endIndex, uint threadIndex, object context)
+    static void FindPairsTask(int startIndex, int endIndex, int workerIndex, object context)
     {
         World world = (World)context;
         BroadPhase bp = world.broadPhase;
@@ -230,7 +230,7 @@ public partial class World
             stats.leafVisits += statsDynamic.leafVisits;
         }
     }
-    static void UpdateTreesTask(int startIndex, int endIndex, uint threadIndex, object context) => ((World)context).broadPhase.RebuildTrees();
+    static void UpdateTreesTask(object context) => ((World)context).broadPhase.RebuildTrees();
     public void UpdateBroadPhasePairs()
     {
         BroadPhase bp = broadPhase;
@@ -239,19 +239,22 @@ public partial class World
         if (moveCount == 0) return;
         bp.moveResults = new MoveResult[moveCount];
         for (int i = 0; i < bp.moveResults.Length; i++) bp.moveResults[i] = new();
-        bp.movePairs = new MovePair[moveCount * 8];
+        bp.movePairs = new MovePair[moveCount * 32];
         for (int i = 0; i < bp.movePairs.Length; i++) bp.movePairs[i] = new();
         Interlocked.Exchange(ref bp.movePairIndex, 0);
         int minRange = 64;
-        object userPairTask = enqueueTaskFcn(FindPairsTask, moveCount, minRange, this, userTaskContext);
-        if (userPairTask != null)
+        ParallelFor(FindPairsTask, moveCount, minRange, this);
+        if (taskCount < Box2D.MaxTasks)
         {
-            finishTaskFcn(userPairTask, userTaskContext);
+            userTreeTask = enqueueTaskFcn(UpdateTreesTask, this, userTaskContext);
             taskCount++;
+            activeTaskCount += userTreeTask == null ? 0 : 1;
         }
-        userTreeTask = enqueueTaskFcn(UpdateTreesTask, 1, 1, this, userTaskContext);
-        taskCount++;
-        activeTaskCount += userTreeTask == null ? 0 : 1;
+        else
+        {
+            userTreeTask = null;
+            UpdateTreesTask(this);
+        }
         for (int i = 0; i < moveCount; i++)
         {
             MoveResult result = bp.moveResults[i];

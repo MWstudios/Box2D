@@ -151,10 +151,12 @@ public partial class World
     public object customFilterContext;
 
     public int workerCount = 1;
-    public EnqueueTaskCallback enqueueTaskFcn = (task, count, _, taskContext, _) => { task(0, count, 0, taskContext); return null; };
+    public EnqueueTaskCallback enqueueTaskFcn = (task, taskContext, _) => { task(taskContext); return null!; };
     public FinishTaskCallback finishTaskFcn = (_, _) => { };
     public object userTaskContext = null;
     public object userTreeTask = null;
+
+    public Scheduler scheduler;
 
     public object userData;
 
@@ -176,10 +178,32 @@ public partial class World
     public bool inUse = true;
 
     public List<Particle.ParticleSystem> particleSystemList = new();
+    public static World GetUnlockedWorldFromId(WorldID id)
+    {
+        if (id.index1.locked) { Debug.Assert(false); return null; }
+        return id.index1;
+    }
     public static World GetWorldLocked(World world)
     {
         if (world.locked) throw new ArgumentException("World is already locked");
         return world;
+    }
+    public void CreateWorkerContexts()
+    {
+        taskContexts = new(workerCount);
+        sensorTaskContexts = new(workerCount);
+        for (int i = 0; i < workerCount; i++)
+        {
+            taskContexts.Add(new()
+            {
+                sensorHits = new(8),
+                contactStateBitSet = new(1024),
+                jointStateBitSet = new(1024),
+                enlargedSimBitSet = new(256),
+                awakeIslandBitSet = new(256)
+            });
+            sensorTaskContexts.Add(new() { eventBits = new(128) });
+        }
     }
     public World(ref WorldDef def)
     {
@@ -210,21 +234,17 @@ public partial class World
             enqueueTaskFcn = def.enqueueTask;
             finishTaskFcn = def.finishTask;
             userTaskContext = def.userTaskContext ?? new DefaultTaskContext(workerCount);
+            scheduler = null;
         }
-        taskContexts = new(workerCount);
-        sensorTaskContexts = new(workerCount);
-        for (int i = 0; i < workerCount; i++)
+        else if (def.WorkerCount > 1)
         {
-            taskContexts.Add(new()
-            {
-                sensorHits = new(8),
-                contactStateBitSet = new(1024),
-                jointStateBitSet = new(1024),
-                enlargedSimBitSet = new(256),
-                awakeIslandBitSet = new(256)
-            });
-            sensorTaskContexts.Add(new() { eventBits = new(128) });
+            workerCount = Math.Min(def.WorkerCount, Box2D.MaxWorkers);
+            scheduler = new(workerCount);
+            enqueueTaskFcn = SchedulerEnqueueTask;
+            finishTaskFcn = SchedulerFinishTask;
+            userTaskContext = scheduler;
         }
+        CreateWorkerContexts();
     }
     public void Destroy()
     {
@@ -260,12 +280,11 @@ public partial class World
         arena.Destroy();
         generation++;
     }
-    public static void CollideTask(int startIndex, int endIndex, uint threadIndex, object context)
+    public static void CollideTask(int startIndex, int endIndex, int threadIndex, object context)
     {
         StepContext stepContext = (StepContext)context;
         World world = stepContext.world;
-        Debug.Assert((int)threadIndex < world.workerCount);
-        TaskContext taskContext = world.taskContexts[(int)threadIndex];
+        TaskContext taskContext = world.taskContexts[threadIndex];
         var contactSims = stepContext.contacts;
         List<Shape> shapes = world.shapes;
         List<Body> bodies = world.bodies;
@@ -411,9 +430,7 @@ public partial class World
         for (int i = 0; i < world.workerCount; i++)
             world.taskContexts[i].contactStateBitSet.SetBitCountAndClear(contactIdCapacity);
         int minRange = 64;
-        object userCollideTask = world.enqueueTaskFcn(CollideTask, contactCount, minRange, context, world.userTaskContext);
-        world.taskCount++;
-        if (userCollideTask != null) world.finishTaskFcn(userCollideTask, world.userTaskContext);
+        world.ParallelFor(CollideTask, contactCount, minRange, context);
         context.contacts = null;
         contactSims = null;
         ref BitSet bitSet = ref world.taskContexts[0].contactStateBitSet;

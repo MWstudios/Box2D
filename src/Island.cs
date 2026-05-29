@@ -448,7 +448,7 @@ public partial class World
     /// Note: static bodies are never in an island<br/>
     /// Note: this task interacts with some allocators without locks under the assumption that no other tasks
     /// are interacting with these data structures.</remarks>
-    public static void SplitIslandTask(int startIndex, int endIndex, uint threadIndex, object context)
+    public static void SplitIslandTask(object context)
     {
         World world = (World)context;
         Debug.Assert(world.splitIslandId != -1);
