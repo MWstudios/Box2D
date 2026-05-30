@@ -910,7 +910,7 @@ public class ContactSolverAVX : IContactSolverW
                     Vector256<float> dvx = Avx.Subtract(Avx.Subtract(bB.v.X, Avx.Multiply(bB.w, rB.Y)), Avx.Subtract(bA.v.X, Avx.Multiply(bA.w, rA.Y)));
                     Vector256<float> dvy = Avx.Subtract(Avx.Add(bB.v.Y, Avx.Multiply(bB.w, rB.X)), Avx.Add(bA.v.Y, Avx.Multiply(bA.w, rA.X)));
                     Vector256<float> vn = Avx.Add(Avx.Multiply(dvx, c->normal.X), Avx.Multiply(dvy, c->normal.Y));
-                    Vector256<float> negImpulse = Avx.Multiply(mask, Avx.Add(vn, Avx.Multiply(c->restitution, c->relativeVelocity1)));
+                    Vector256<float> negImpulse = Avx.Multiply(mass, Avx.Add(vn, Avx.Multiply(c->restitution, c->relativeVelocity1)));
                     Vector256<float> newImpulse = Avx.Max(Avx.Subtract(c->normalImpulse1, negImpulse), Vector256<float>.Zero);
                     Vector256<float> deltaImpulse = Avx.Subtract(newImpulse, c->normalImpulse1);
                     c->normalImpulse1 = newImpulse;
@@ -939,7 +939,7 @@ public class ContactSolverAVX : IContactSolverW
                     Vector256<float> dvx = Avx.Subtract(Avx.Subtract(bB.v.X, Avx.Multiply(bB.w, rB.Y)), Avx.Subtract(bA.v.X, Avx.Multiply(bA.w, rA.Y)));
                     Vector256<float> dvy = Avx.Subtract(Avx.Add(bB.v.Y, Avx.Multiply(bB.w, rB.X)), Avx.Add(bA.v.Y, Avx.Multiply(bA.w, rA.X)));
                     Vector256<float> vn = Avx.Add(Avx.Multiply(dvx, c->normal.X), Avx.Multiply(dvy, c->normal.Y));
-                    Vector256<float> negImpulse = Avx.Multiply(mask, Avx.Add(vn, Avx.Multiply(c->restitution, c->relativeVelocity2)));
+                    Vector256<float> negImpulse = Avx.Multiply(mass, Avx.Add(vn, Avx.Multiply(c->restitution, c->relativeVelocity2)));
                     Vector256<float> newImpulse = Avx.Max(Avx.Subtract(c->normalImpulse2, negImpulse), Vector256<float>.Zero);
                     Vector256<float> deltaImpulse = Avx.Subtract(newImpulse, c->normalImpulse2);
                     c->normalImpulse2 = newImpulse;
@@ -1601,7 +1601,7 @@ public class ContactSolverNeon : IContactSolverW
                     Vector128<float> dvx = AdvSimd.Subtract(AdvSimd.Subtract(bB.v.X, AdvSimd.Multiply(bB.w, rB.Y)), AdvSimd.Subtract(bA.v.X, AdvSimd.Multiply(bA.w, rA.Y)));
                     Vector128<float> dvy = AdvSimd.Subtract(AdvSimd.Add(bB.v.Y, AdvSimd.Multiply(bB.w, rB.X)), AdvSimd.Add(bA.v.Y, AdvSimd.Multiply(bA.w, rA.X)));
                     Vector128<float> vn = AdvSimd.Add(AdvSimd.Multiply(dvx, c->normal.X), AdvSimd.Multiply(dvy, c->normal.Y));
-                    Vector128<float> negImpulse = AdvSimd.Multiply(mask, AdvSimd.Add(vn, AdvSimd.Multiply(c->restitution, c->relativeVelocity1)));
+                    Vector128<float> negImpulse = AdvSimd.Multiply(mass, AdvSimd.Add(vn, AdvSimd.Multiply(c->restitution, c->relativeVelocity1)));
                     Vector128<float> newImpulse = AdvSimd.Max(AdvSimd.Subtract(c->normalImpulse1, negImpulse), Vector128<float>.Zero);
                     Vector128<float> deltaImpulse = AdvSimd.Subtract(newImpulse, c->normalImpulse1);
                     c->normalImpulse1 = newImpulse;
@@ -1630,7 +1630,7 @@ public class ContactSolverNeon : IContactSolverW
                     Vector128<float> dvx = AdvSimd.Subtract(AdvSimd.Subtract(bB.v.X, AdvSimd.Multiply(bB.w, rB.Y)), AdvSimd.Subtract(bA.v.X, AdvSimd.Multiply(bA.w, rA.Y)));
                     Vector128<float> dvy = AdvSimd.Subtract(AdvSimd.Add(bB.v.Y, AdvSimd.Multiply(bB.w, rB.X)), AdvSimd.Add(bA.v.Y, AdvSimd.Multiply(bA.w, rA.X)));
                     Vector128<float> vn = AdvSimd.Add(AdvSimd.Multiply(dvx, c->normal.X), AdvSimd.Multiply(dvy, c->normal.Y));
-                    Vector128<float> negImpulse = AdvSimd.Multiply(mask, AdvSimd.Add(vn, AdvSimd.Multiply(c->restitution, c->relativeVelocity2)));
+                    Vector128<float> negImpulse = AdvSimd.Multiply(mass, AdvSimd.Add(vn, AdvSimd.Multiply(c->restitution, c->relativeVelocity2)));
                     Vector128<float> newImpulse = AdvSimd.Max(AdvSimd.Subtract(c->normalImpulse2, negImpulse), Vector128<float>.Zero);
                     Vector128<float> deltaImpulse = AdvSimd.Subtract(newImpulse, c->normalImpulse2);
                     c->normalImpulse2 = newImpulse;
@@ -2245,7 +2245,7 @@ public class ContactSolverSSE : IContactSolverW
                     Vector128<float> dvx = Sse.Subtract(Sse.Subtract(bB.v.X, Sse.Multiply(bB.w, rB.Y)), Sse.Subtract(bA.v.X, Sse.Multiply(bA.w, rA.Y)));
                     Vector128<float> dvy = Sse.Subtract(Sse.Add(bB.v.Y, Sse.Multiply(bB.w, rB.X)), Sse.Add(bA.v.Y, Sse.Multiply(bA.w, rA.X)));
                     Vector128<float> vn = Sse.Add(Sse.Multiply(dvx, c->normal.X), Sse.Multiply(dvy, c->normal.Y));
-                    Vector128<float> negImpulse = Sse.Multiply(mask, Sse.Add(vn, Sse.Multiply(c->restitution, c->relativeVelocity1)));
+                    Vector128<float> negImpulse = Sse.Multiply(mass, Sse.Add(vn, Sse.Multiply(c->restitution, c->relativeVelocity1)));
                     Vector128<float> newImpulse = Sse.Max(Sse.Subtract(c->normalImpulse1, negImpulse), Vector128<float>.Zero);
                     Vector128<float> deltaImpulse = Sse.Subtract(newImpulse, c->normalImpulse1);
                     c->normalImpulse1 = newImpulse;
@@ -2274,7 +2274,7 @@ public class ContactSolverSSE : IContactSolverW
                     Vector128<float> dvx = Sse.Subtract(Sse.Subtract(bB.v.X, Sse.Multiply(bB.w, rB.Y)), Sse.Subtract(bA.v.X, Sse.Multiply(bA.w, rA.Y)));
                     Vector128<float> dvy = Sse.Subtract(Sse.Add(bB.v.Y, Sse.Multiply(bB.w, rB.X)), Sse.Add(bA.v.Y, Sse.Multiply(bA.w, rA.X)));
                     Vector128<float> vn = Sse.Add(Sse.Multiply(dvx, c->normal.X), Sse.Multiply(dvy, c->normal.Y));
-                    Vector128<float> negImpulse = Sse.Multiply(mask, Sse.Add(vn, Sse.Multiply(c->restitution, c->relativeVelocity2)));
+                    Vector128<float> negImpulse = Sse.Multiply(mass, Sse.Add(vn, Sse.Multiply(c->restitution, c->relativeVelocity2)));
                     Vector128<float> newImpulse = Sse.Max(Sse.Subtract(c->normalImpulse2, negImpulse), Vector128<float>.Zero);
                     Vector128<float> deltaImpulse = Sse.Subtract(newImpulse, c->normalImpulse2);
                     c->normalImpulse2 = newImpulse;
@@ -2929,7 +2929,7 @@ public class ContactSolverFloat : IContactSolverW
                     FloatW dvx = (bB.v.X - bB.w * rB.Y) - (bA.v.X - bA.w * rA.Y);
                     FloatW dvy = (bB.v.Y + bB.w * rB.X) - (bA.v.Y + bA.w * rA.X);
                     FloatW vn = dvx * c->normal.X + dvy * c->normal.Y;
-                    FloatW negImpulse = mask * (vn + c->restitution * c->relativeVelocity1);
+                    FloatW negImpulse = mass * (vn + c->restitution * c->relativeVelocity1);
                     FloatW newImpulse = MaxW(c->normalImpulse1 - negImpulse, FloatW.Zero);
                     FloatW deltaImpulse = newImpulse - c->normalImpulse1;
                     c->normalImpulse1 = newImpulse;
@@ -2958,7 +2958,7 @@ public class ContactSolverFloat : IContactSolverW
                     FloatW dvx = (bB.v.X - bB.w * rB.Y) - (bA.v.X - bA.w * rA.Y);
                     FloatW dvy = (bB.v.Y + bB.w * rB.X) - (bA.v.Y + bA.w * rA.X);
                     FloatW vn = dvx * c->normal.X + dvy * c->normal.Y;
-                    FloatW negImpulse = mask * (vn + c->restitution * c->relativeVelocity2);
+                    FloatW negImpulse = mass * (vn + c->restitution * c->relativeVelocity2);
                     FloatW newImpulse = MaxW(c->normalImpulse2 - negImpulse, FloatW.Zero);
                     FloatW deltaImpulse = newImpulse - c->normalImpulse2;
                     c->normalImpulse2 = newImpulse;

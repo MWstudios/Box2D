@@ -114,21 +114,21 @@ public static class Distance
             {
                 s.v1 = new() { indexA = cache.indexA[0], indexB = cache.indexB[0], a = -1 };
                 s.v1.wA = proxyA.points[s.v1.indexA];
-                s.v1.wB = proxyA.points[s.v1.indexB];
+                s.v1.wB = proxyB.points[s.v1.indexB];
                 s.v1.w = s.v1.wA - s.v1.wB;
             }
             if (s.count > 1)
             {
                 s.v2 = new() { indexA = cache.indexA[1], indexB = cache.indexB[1], a = -1 };
                 s.v2.wA = proxyA.points[s.v2.indexA];
-                s.v2.wB = proxyA.points[s.v2.indexB];
+                s.v2.wB = proxyB.points[s.v2.indexB];
                 s.v2.w = s.v2.wA - s.v2.wB;
             }
             if (s.count > 2)
             {
                 s.v3 = new() { indexA = cache.indexA[2], indexB = cache.indexB[2], a = -1 };
                 s.v3.wA = proxyA.points[s.v3.indexA];
-                s.v3.wB = proxyA.points[s.v3.indexB];
+                s.v3.wB = proxyB.points[s.v3.indexB];
                 s.v3.w = s.v3.wA - s.v3.wB;
             }
         }
