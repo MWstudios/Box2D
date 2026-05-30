@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Threading;
 
 namespace Box2D;
 
@@ -314,13 +313,13 @@ public partial class World
             bool overlap = AABB.Overlaps(shapeA.fatAABB, shapeB.fatAABB);
             if (!overlap)
             {
-                contactSim.simFlags |= ContactSimFlags.Disjoint;
-                contactSim.simFlags &= ~ContactSimFlags.Touching;
+                contactSim.simFlags |= ContactFlags.SimDisjoint;
+                contactSim.simFlags &= ~ContactFlags.SimTouching;
                 taskContext.contactStateBitSet.SetBit(contactId);
             }
             else
             {
-                bool wasTouching = contactSim.simFlags.HasFlag(ContactSimFlags.Touching);
+                bool wasTouching = contactSim.simFlags.HasFlag(ContactFlags.SimTouching);
                 Body bodyA = bodies[shapeA.bodyId], bodyB = bodies[shapeB.bodyId];
                 BodySim bodySimA = world.GetBodySim(bodyA), bodySimB = world.GetBodySim(bodyB);
                 Transform transformA = bodySimA.transform, transformB = bodySimB.transform;
@@ -330,17 +329,20 @@ public partial class World
                 contactSim.bodySimIndexB = bodyB.setIndex == (int)SetType.Awake ? bodyB.localIndex : -1;
                 contactSim.invMassB = bodySimB.invMass;
                 contactSim.invIB = bodySimB.invInertia;
-                if (world.contactRecycleDistance > 0 && contactSim.simFlags.HasFlag(ContactSimFlags.RelativeTransformValid))
+                if (world.contactRecycleDistance > 0 && contactSim.simFlags.HasFlag(ContactFlags.SimRelativeTransformValid) && contactSim.simFlags.HasFlag(ContactFlags.Recycle))
                 {
                     Transform xf = Transform.InvMulTransforms(transformA, transformB);
                     Transform xfc = Transform.InvMulTransforms(contactSim.cachedTransformA, contactSim.cachedTransformB);
+                    float cosA = Rotation.RelativeCos(transformA.q, contactSim.cachedTransformA.q);
+                    float cosB = Rotation.RelativeCos(transformB.q, contactSim.cachedTransformB.q);
+                    float minCos = Math.Min(cosA, cosB);
                     float maxExtentA = bodyA.type == BodyType.Static ? 0 : bodySimA.maxExtent;
                     float maxExtentB = bodyB.type == BodyType.Static ? 0 : bodySimB.maxExtent;
                     float maxExtent = Math.Max(maxExtentA, maxExtentB);
                     float distance = Vector2.Distance(xf.p, xfc.p);
                     Rotation qr = Rotation.InvMulRot(xf.q, xfc.q);
                     float tolerance = wasTouching ? world.contactRecycleDistance : recycleDistanceNonTouching;
-                    if (distance + maxExtent * Math.Abs(qr.s) < tolerance)
+                    if (minCos > Box2D.ContactRecycleCosAngle && distance + maxExtent * Math.Abs(qr.s) < tolerance)
                     {
                         Rotation dqA = transformA.q * contactSim.cachedTransformA.q.Invert();
                         Rotation dqB = transformB.q * contactSim.cachedTransformB.q.Invert();
@@ -370,18 +372,18 @@ public partial class World
                 }
                 contactSim.cachedTransformA = transformA;
                 contactSim.cachedTransformB = transformB;
-                contactSim.simFlags |= ContactSimFlags.RelativeTransformValid;
+                contactSim.simFlags |= ContactFlags.SimRelativeTransformValid;
                 Vector2 centerOffsetA = transformA.q * bodySimA.localCenter;
                 Vector2 centerOffsetB = transformB.q * bodySimB.localCenter;
                 bool touching = world.UpdateContact(contactSim, shapeA, transformA, centerOffsetA, shapeB, transformB, centerOffsetB);
                 if (touching && !wasTouching)
                 {
-                    contactSim.simFlags |= ContactSimFlags.StartedTouching;
+                    contactSim.simFlags |= ContactFlags.SimStartedTouching;
                     taskContext.contactStateBitSet.SetBit(contactId);
                 }
                 else if (!touching && wasTouching)
                 {
-                    contactSim.simFlags |= ContactSimFlags.StoppedTouching;
+                    contactSim.simFlags |= ContactFlags.SimStoppedTouching;
                     taskContext.contactStateBitSet.SetBit(contactId);
                 }
                 if (contactSim.manifold.pointCount > 0)
@@ -482,14 +484,14 @@ public partial class World
                 ShapeID shapeIdB = new() { index1 = shapeB.id + 1, world0 = world, generation = shapeB.generation };
                 ContactID contactFullId = new() { index1 = contactId + 1, world0 = world, generation = contact.generation };
                 ContactFlags flags = contact.flags;
-                ContactSimFlags simFlags = contactSim.simFlags;
-                if (simFlags.HasFlag(ContactSimFlags.Disjoint))
+                ContactFlags simFlags = contactSim.simFlags;
+                if (simFlags.HasFlag(ContactFlags.SimDisjoint))
                 {
                     world.DestroyContact(contact, false);
                     contact = null;
                     contactSim = null;
                 }
-                else if (simFlags.HasFlag(ContactSimFlags.StartedTouching))
+                else if (simFlags.HasFlag(ContactFlags.SimStartedTouching))
                 {
                     Debug.Assert(contact.islandId == -1);
                     if (flags.HasFlag(ContactFlags.EnableContactEvents))
@@ -503,13 +505,13 @@ public partial class World
                     Debug.Assert(contact.colorIndex == -1);
                     Debug.Assert(contact.localIndex == localIndex);
                     contactSim = awakeSet.contactSims[localIndex];
-                    contactSim.simFlags &= ~ContactSimFlags.StartedTouching;
+                    contactSim.simFlags &= ~ContactFlags.SimStartedTouching;
                     world.AddContactToGraph(contactSim, contact);
                     world.RemoveNonTouchingContact((int)SetType.Awake, localIndex);
                 }
-                else if (simFlags.HasFlag(ContactSimFlags.StoppedTouching))
+                else if (simFlags.HasFlag(ContactFlags.SimStoppedTouching))
                 {
-                    contactSim.simFlags &= ~ContactSimFlags.StoppedTouching;
+                    contactSim.simFlags &= ~ContactFlags.SimStoppedTouching;
                     contact.flags &= ~ContactFlags.Touching;
                     if (contact.flags.HasFlag(ContactFlags.EnableContactEvents))
                     {
@@ -587,7 +589,7 @@ public partial class World
         }
 #endif
     }
-    public void ValidateSolverSets()
+    public unsafe void ValidateSolverSets()
     {
 #if B2_VALIDATE
         Debug.Assert(bodyIdPool.GetIdCapacity() == bodies.Count);
@@ -637,6 +639,10 @@ public partial class World
                         Body body = bodies[bodyId];
                         Debug.Assert(body.setIndex == setIndex);
                         Debug.Assert(body.localIndex == i);
+                        var syncedFlags = body.flags & ~BodyFlags.TransientFlags;
+                        Debug.Assert((body.flags & syncedFlags) == syncedFlags);
+                        BodyState* bodyState = GetBodyState(body);
+                        if (bodyState != null) Debug.Assert((bodyState->flags & syncedFlags) == syncedFlags);
                         if (body.type == BodyType.Dynamic) Debug.Assert(body.flags.HasFlag(BodyFlags.Dynamic));
                         if (setIndex == (int)SetType.Disabled) Debug.Assert(body.headContactKey == -1);
                         int prevShapeId = -1;
@@ -703,7 +709,7 @@ public partial class World
                         Contact contact = contacts[contactSim.contactId];
                         if (setIndex == (int)SetType.Awake)
                             Debug.Assert(contactSim.manifold.pointCount == 0 ||
-                                ((ContactSimFlags)contactSim.simFlags).HasFlag(ContactSimFlags.StartedTouching));
+                                contactSim.simFlags.HasFlag(ContactFlags.SimStartedTouching));
                         Debug.Assert(contact.setIndex == setIndex);
                         Debug.Assert(contact.colorIndex == -1);
                         Debug.Assert(contact.localIndex == i);
@@ -757,8 +763,8 @@ public partial class World
                     ContactSim contactSim = color.contactSims[i];
                     Contact contact = contacts[contactSim.contactId];
                     Debug.Assert(contactSim.manifold.pointCount > 0 ||
-                        ((ContactSimFlags)contactSim.simFlags).HasFlag(ContactSimFlags.StoppedTouching) ||
-                        ((ContactSimFlags)contactSim.simFlags).HasFlag(ContactSimFlags.Disjoint));
+                        contactSim.simFlags.HasFlag(ContactFlags.SimStoppedTouching) ||
+                        contactSim.simFlags.HasFlag(ContactFlags.SimDisjoint));
                     Debug.Assert(contact.setIndex == (int)SetType.Awake);
                     Debug.Assert(contact.colorIndex == colorIndex);
                     Debug.Assert(contact.localIndex == i);
@@ -833,7 +839,7 @@ public partial class World
 }
 public partial class DebugDraw
 {
-    public void DrawShape(Shape shape, Transform xf, HexColor color)
+    public void DrawShape(Shape shape, Transform xf, HexColor color, bool drawChainNormals)
     {
         switch (shape.type)
         {
@@ -866,7 +872,11 @@ public partial class DebugDraw
                     Vector2 p1 = xf.TransformPoint(segment.point1), p2 = xf.TransformPoint(segment.point2);
                     DrawSegmentFcn(p1, p2, color, context);
                     DrawPointFcn(p2, 4, color, context);
-                    DrawSegmentFcn(p1, Vector2.Lerp(p1, p2, 0.1f), HexColor.PaleGreen, context);
+                    if (drawChainNormals)
+                    {
+                        Vector2 c = Vector2.Lerp(p1, p2, 0.5f);
+                        DrawSegmentFcn(c, Vector2.MulAdd(c, 0.2f * Box2D.LengthUnitsPerMeter, (p2 - p1).Normalize().RightPerp()), HexColor.PaleGreen, context);
+                    }
                     break;
                 }
             default:
@@ -904,7 +914,7 @@ public partial class DebugDraw
             else if (body.type == BodyType.Kinematic) color = HexColor.RoyalBlue;
             else if (body.setIndex == (int)SetType.Awake) color = HexColor.Pink;
             else color = HexColor.Gray;
-            draw.DrawShape(shape, bodySim.transform, color);
+            draw.DrawShape(shape, bodySim.transform, color, draw.drawChainNormals);
         }
         if (draw.drawBounds)
         {

@@ -59,7 +59,9 @@ public unsafe static class BodyAPI
             bodyId = bodyId,
             flags = lockFlags | (def.isBullet ? BodyFlags.IsBullet : 0)
             | (def.allowFastRotation ? BodyFlags.AllowFastRotation : 0)
-            | (def.type == BodyType.Dynamic ? BodyFlags.Dynamic : 0),
+            | (def.type == BodyType.Dynamic ? BodyFlags.Dynamic : 0)
+            | (def.enableSleep ? BodyFlags.EnableSleep : 0)
+            | (def.enableContactRecycling ? BodyFlags.EnableContactRecycling : 0),
         };
         set.bodySims.Add(bodySim);
         if (setId == (int)_SetType.Awake)
@@ -97,7 +99,6 @@ public unsafe static class BodyAPI
         body.sleepTime = 0;
         body.type = def.type;
         body.flags = bodySim.flags;
-        body.enableSleep = def.enableSleep;
         if (setId >= (int)_SetType.Awake) world.CreateIslandForBody(setId, body);
         world.ValidateSolverSets();
         return new() { index1 = bodyId + 1, world0 = world, generation = body.generation };
@@ -179,6 +180,7 @@ public unsafe static class BodyAPI
             body.type = type;
             if (type == BodyType.Dynamic) body.flags |= BodyFlags.Dynamic;
             else body.flags &= ~BodyFlags.Dynamic;
+            world.SyncBodyFlags(body);
             world.UpdateBodyMassData(body);
             return;
         }
@@ -246,9 +248,8 @@ public unsafe static class BodyAPI
             if (body.type != BodyType.Dynamic && otherBody.type != BodyType.Dynamic) continue;
             world.LinkJoint(joint);
         }
+        world.SyncBodyFlags(body);
         world.UpdateBodyMassData(body);
-        BodyState* state = world.GetBodyState(body);
-        if (state != null) state->flags = body.flags;
         world.ValidateSolverSets();
         world.ValidateIsland(body.islandId);
     }
@@ -688,17 +689,20 @@ public unsafe static class BodyAPI
         }
     }
 
-    ///<summary> Enable or disable sleeping for this body. If sleeping is disabled the body will wake.</summary>
+    ///<summary> Enable or disable sleeping for this body. If sleeping is disabled the body will wake (and the entire island).</summary>
     public static void EnableSleep(BodyID bodyId, bool enableSleep)
     {
         World world = World.GetWorldLocked(bodyId.world0); if (world == null) return;
         Body body = world.GetBodyFullID(bodyId);
-        body.enableSleep = enableSleep;
+        bool flag = body.flags.HasFlag(BodyFlags.EnableSleep);
+        if (enableSleep == flag) return;
+        body.flags = enableSleep ? body.flags | BodyFlags.EnableSleep : body.flags & ~BodyFlags.EnableSleep;
+        world.SyncBodyFlags(body);
         if (!enableSleep) world.WakeBody(body);
     }
 
     ///<summary> Returns true if sleeping is enabled for this body</summary>
-    public static bool IsSleepEnabled(BodyID bodyId) => bodyId.world0.GetBodyFullID(bodyId).enableSleep;
+    public static bool IsSleepEnabled(BodyID bodyId) => bodyId.world0.GetBodyFullID(bodyId).flags.HasFlag(BodyFlags.EnableSleep);
 
     ///<summary> Set the sleep threshold, usually in meters per second</summary>
     public static void SetSleepThreshold(BodyID bodyId, float sleepThreshold) => bodyId.world0.GetBodyFullID(bodyId).sleepThreshold = sleepThreshold;
@@ -797,13 +801,10 @@ public unsafe static class BodyAPI
         {
             body.flags &= ~allLocks;
             body.flags |= allLocks;
-            BodySim bodySim = world.GetBodySim(body);
-            bodySim.flags &= ~allLocks;
-            bodySim.flags |= newFlags;
+            world.SyncBodyFlags(body);
             BodyState* state = world.GetBodyState(body);
             if (state != null)
             {
-                state->flags = bodySim.flags;
                 state->linearVelocity = new(locks.linearX ? 0 : state->linearVelocity.x, locks.linearY ? 0 : state->linearVelocity.y);
                 state->angularVelocity = locks.angularZ ? 0 : state->angularVelocity;
             }
@@ -827,13 +828,36 @@ public unsafe static class BodyAPI
     public static void SetBullet(BodyID bodyId, bool flag)
     {
         World world = World.GetWorldLocked(bodyId.world0); if (world == null) return;
-        BodySim bodySim = world.GetBodySim(world.GetBodyFullID(bodyId));
-        if (flag) bodySim.flags |= BodyFlags.IsBullet;
-        else bodySim.flags &= ~BodyFlags.IsBullet;
+        BodyFlags newFlag = flag ? BodyFlags.IsBullet : 0;
+        Body body = world.GetBodyFullID(bodyId);
+        if ((body.flags & BodyFlags.IsBullet) == newFlag) return;
+        body.flags &= ~BodyFlags.IsBullet;
+        body.flags |= newFlag;
+        world.SyncBodyFlags(body);
     }
 
     ///<summary> Is this body a bullet?</summary>
     public static bool IsBullet(BodyID bodyId) => bodyId.world0.GetBodySim(bodyId.world0.GetBodyFullID(bodyId)).flags.HasFlag(BodyFlags.IsBullet);
+
+    /// <summary>Enable or disable contact recycling for this body. Contact recycling is a performance optimization
+    /// that reuses contact manifolds when bodies move slightly. Disabling it can avoid ghost collisions
+    /// on characters at the cost of higher per-step work. Existing contacts retain their prior setting;
+    /// only contacts created after this call see the new value.
+    /// @see b2BodyDef::enableContactRecycling</summary>
+    public static void EnableContactRecycling(BodyID bodyId, bool flag)
+    {
+        World world = World.GetWorldLocked(bodyId.world0);
+        if (world == null) return;
+        BodyFlags newFlag = flag ? BodyFlags.EnableContactRecycling : 0;
+        Body body = world.GetBodyFullID(bodyId);
+        if ((body.flags & BodyFlags.EnableContactRecycling) == newFlag) return;
+        body.flags &= ~BodyFlags.EnableContactRecycling;
+        body.flags |= newFlag;
+        world.SyncBodyFlags(body);
+    }
+
+    /// <summary>Is contact recycling enabled on this body?</summary>
+    public static bool IsContactRecyclingEnabled(BodyID bodyId) => bodyId.world0.GetBodyFullID(bodyId).flags.HasFlag(BodyFlags.EnableContactRecycling);
 
     ///<summary>Enable/disable contact events on all shapes.
     /// @see ShapeDef::enableContactEvents</summary>

@@ -144,7 +144,7 @@ public partial class World
     public void AddContactToGraph(ContactSim contactSim, Contact contact)
     {
         Debug.Assert(contactSim.manifold.pointCount > 0);
-        Debug.Assert(contactSim.simFlags.HasFlag(ContactSimFlags.Touching));
+        Debug.Assert(contactSim.simFlags.HasFlag(ContactFlags.SimTouching));
         Debug.Assert(contact.flags.HasFlag(ContactFlags.Touching));
         int colorIndex = Box2D.GraphColorCount - 1;
         int bodyIdA = contact.edge0.bodyId, bodyIdB = contact.edge1.bodyId;

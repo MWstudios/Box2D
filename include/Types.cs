@@ -209,6 +209,9 @@ public struct BodyDef
     /// <summary>This allows this body to bypass rotational speed limits. Should only be used
     /// for circular objects, like wheels.</summary>
     public bool allowFastRotation = false;
+    /// <summary>Enable contact recycling. True by default. Leaving this enabled improves performance
+    /// but may lead to ghost collision that should be avoided on characters.</summary>
+    public bool enableContactRecycling = true;
     /// <summary>Used internally to detect a valid definition. DO NOT SET.</summary>
     internal int internalValue = Box2D.SECRET_COOKIE;
     public BodyDef() { }
@@ -1040,6 +1043,8 @@ public partial class DebugDraw
     public ContactDrawType contactDrawType;
     /// <summary>Option to draw shapes</summary>
     public bool drawShapes = true;
+    /// <summary>Option to draw chain shape normals</summary>
+    public bool drawChainNormals;
     /// <summary>Option to draw joints</summary>
     public bool drawJoints;
     /// <summary>Option to draw additional information for joints</summary>

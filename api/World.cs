@@ -948,8 +948,10 @@ public static class WorldAPI
         file.WriteLine($"static tree: {world.broadPhase.trees[(int)BodyType.Static].GetByteCount()}");
         file.WriteLine($"kinematic tree: {world.broadPhase.trees[(int)BodyType.Kinematic].GetByteCount()}");
         file.WriteLine($"dynamic tree: {world.broadPhase.trees[(int)BodyType.Dynamic].GetByteCount()}");
-        HashSet<int> moveSet = world.broadPhase.moveSet;
-        file.WriteLine($"moveSet: {moveSet.Count * 8} ({moveSet.Count} {moveSet.Count})");
+        int movedBytes = 0;
+        for (int i = 0; i < world.broadPhase.movedProxies.Length; i++)
+            movedBytes += world.broadPhase.movedProxies[i].GetBitSetBytes();
+        file.WriteLine($"movedProxies: {movedBytes})");
         file.WriteLine($"moveArray: {world.broadPhase.moveArray.Count * 4}");
         HashSet<ulong> pairSet = world.broadPhase.pairSet;
         file.WriteLine($"pairSet: {pairSet.Count * 28} ({pairSet.Count} {pairSet.Count})");

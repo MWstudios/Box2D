@@ -102,7 +102,7 @@ public partial class World
                 ContactSim contactSim = set.contactSims[i];
                 Contact contact = contacts[contactSim.contactId];
                 Debug.Assert(contact.flags.HasFlag(ContactFlags.Touching));
-                Debug.Assert(contactSim.simFlags.HasFlag(ContactSimFlags.Touching));
+                Debug.Assert(contactSim.simFlags.HasFlag(ContactFlags.SimTouching));
                 Debug.Assert(contactSim.manifold.pointCount > 0);
                 Debug.Assert(contact.setIndex == setIndex);
                 AddContactToGraph(contactSim, contact);

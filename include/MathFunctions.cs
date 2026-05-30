@@ -168,6 +168,7 @@ public struct Rotation
     public static Vector2 operator *(Rotation q, Vector2 v) => new(q.c * v.x - q.s * v.y, q.s * v.x + q.c * v.y);
     /// <summary>Inverse rotate a vector</summary>
     public Vector2 InvRotateVector(Vector2 v) => new(c * v.x + s * v.y, -s * v.x + c * v.y);
+    public static float RelativeCos(Rotation a, Rotation b) => a.c * b.c + a.s * b.s;
     public override string ToString() => $"(c={c}, s={s})";
 }
 /// <summary>A 2D rigid transform</summary>

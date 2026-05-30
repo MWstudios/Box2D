@@ -474,12 +474,12 @@ public unsafe partial class World
             sim.force = Vector2.Zero;
             sim.torque = 0;
             Debug.Assert(!body.flags.HasFlag(BodyFlags.DirtyMass));
-            body.flags &= ~(BodyFlags.IsFast | BodyFlags.IsSpeedCapped | BodyFlags.HadTimeOfImpact);
+            body.flags &= ~BodyFlags.TransientFlags;
             body.flags |= sim.flags & (BodyFlags.IsSpeedCapped | BodyFlags.HadTimeOfImpact);
             body.flags |= state->flags & (BodyFlags.IsSpeedCapped | BodyFlags.HadTimeOfImpact);
-            sim.flags &= ~(BodyFlags.IsFast | BodyFlags.IsSpeedCapped | BodyFlags.HadTimeOfImpact);
-            state->flags &= ~(BodyFlags.IsFast | BodyFlags.IsSpeedCapped | BodyFlags.HadTimeOfImpact);
-            if (!world.enableSleep || !body.enableSleep || sleepVelocity > body.sleepThreshold)
+            sim.flags &= ~BodyFlags.TransientFlags;
+            state->flags &= ~BodyFlags.TransientFlags;
+            if (!world.enableSleep || !body.flags.HasFlag(BodyFlags.EnableSleep) || sleepVelocity > body.sleepThreshold)
             {
                 body.sleepTime = 0;
                 if (body.type == BodyType.Dynamic && world.enableContinuous && Math.Max(maxDeltaPosition, maxVelocity * stepContext.dt) > 0.5f * sim.minExtent)
@@ -1231,7 +1231,7 @@ public unsafe partial class World
                     int proxyKey = shape.proxyKey;
                     int proxyId = B2_PROXY_ID(proxyKey);
                     Debug.Assert(B2_PROXY_TYPE(proxyKey) == BodyType.Dynamic);
-                    Debug.Assert(broadPhase.moveSet.Contains(proxyKey));
+                    Debug.Assert(broadPhase.movedProxies[(int)BodyType.Dynamic].GetBit(proxyId));
                     dynamicTree.EnlargeProxy(proxyKey, shape.fatAABB);
                     shapeId = shape.nextShapeId;
                 }

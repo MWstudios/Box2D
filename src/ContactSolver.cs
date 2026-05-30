@@ -1011,7 +1011,7 @@ public class ContactSolverAVX : IContactSolverW
                     m.point1.tangentImpulse = tangentImpulse2[laneIndex];
                     m.point1.totalNormalImpulse = totalNormalImpulse2[laneIndex];
                     m.point1.normalVelocity = normalVelocity2[laneIndex];
-                    if (contactSim.simFlags.HasFlag(ContactSimFlags.EnableHitEvent))
+                    if (contactSim.simFlags.HasFlag(ContactFlags.SimEnableHitEvent))
                     {
                         if (contactSim.manifold.pointCount > 0 && m.point0.normalVelocity < negHitThreshold && m.point0.totalNormalImpulse > 0)
                         {
@@ -1702,7 +1702,7 @@ public class ContactSolverNeon : IContactSolverW
                     m.point1.tangentImpulse = tangentImpulse2[laneIndex];
                     m.point1.totalNormalImpulse = totalNormalImpulse2[laneIndex];
                     m.point1.normalVelocity = normalVelocity2[laneIndex];
-                    if (contactSim.simFlags.HasFlag(ContactSimFlags.EnableHitEvent))
+                    if (contactSim.simFlags.HasFlag(ContactFlags.SimEnableHitEvent))
                     {
                         if (contactSim.manifold.pointCount > 0 && m.point0.normalVelocity < negHitThreshold && m.point0.totalNormalImpulse > 0)
                         {
@@ -2346,7 +2346,7 @@ public class ContactSolverSSE : IContactSolverW
                     m.point1.tangentImpulse = tangentImpulse2[laneIndex];
                     m.point1.totalNormalImpulse = totalNormalImpulse2[laneIndex];
                     m.point1.normalVelocity = normalVelocity2[laneIndex];
-                    if (contactSim.simFlags.HasFlag(ContactSimFlags.EnableHitEvent))
+                    if (contactSim.simFlags.HasFlag(ContactFlags.SimEnableHitEvent))
                     {
                         if (contactSim.manifold.pointCount > 0 && m.point0.normalVelocity < negHitThreshold && m.point0.totalNormalImpulse > 0)
                         {
@@ -3030,7 +3030,7 @@ public class ContactSolverFloat : IContactSolverW
                     m.point1.tangentImpulse = tangentImpulse2[laneIndex];
                     m.point1.totalNormalImpulse = totalNormalImpulse2[laneIndex];
                     m.point1.normalVelocity = normalVelocity2[laneIndex];
-                    if (contactSim.simFlags.HasFlag(ContactSimFlags.EnableHitEvent))
+                    if (contactSim.simFlags.HasFlag(ContactFlags.SimEnableHitEvent))
                     {
                         if (contactSim.manifold.pointCount > 0 && m.point0.normalVelocity < negHitThreshold && m.point0.totalNormalImpulse > 0)
                         {

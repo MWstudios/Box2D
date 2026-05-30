@@ -47,6 +47,8 @@ public static partial class Box2D
     public static float SpeculativeDistance = 4 * LinearSlop;
     /// <summary>The default contact recycling distance.</summary>
     public static float ContactRecycleDistance = 10 * LinearSlop;
+    /// <summary>The default contact recycling world angle threshold. 0.98 ~= 11.5 degrees</summary>
+    public static float ContactRecycleCosAngle = 0.98f;
     /// <summary>This is used to fatten AABBs in the dynamic tree. This allows proxies
     /// to move by a small amount without triggering a tree adjustment. This is in meters.
     /// Normally this is 5cm.</summary>

@@ -13,6 +13,29 @@ namespace Box2D;
 
     /// <summary>This contact wants contact events</summary>
     EnableContactEvents = 0x00000004,
+
+    Recycle = 0x00000008,
+
+    /// <summary>Set when the shapes are touching</summary>
+    SimTouching = 0x00010000,
+
+    /// <summary>This contact no longer has overlapping AABBs</summary>
+    SimDisjoint = 0x00020000,
+
+    /// <summary>This contact started touching</summary>
+    SimStartedTouching = 0x00040000,
+
+    /// <summary>This contact stopped touching</summary>
+    SimStoppedTouching = 0x00080000,
+
+    /// <summary>This contact has a hit event</summary>
+    SimEnableHitEvent = 0x00100000,
+
+    /// <summary>This contact wants pre-solve events</summary>
+    SimEnablePreSolveEvents = 0x00200000,
+
+    /// <summary>This contact has a cached relative transform</summary>
+    SimRelativeTransformValid = 0x00400000,
 };
 
 /// <summary>A contact edge is used to connect bodies and contacts together
@@ -65,31 +88,6 @@ public class Contact
     public uint generation;
 }
 
-/// <summary>Shifted to be distinct from ContactFlags
-[Flags] public enum ContactSimFlags
-{
-    /// <summary>Set when the shapes are touching</summary>
-    Touching = 0x00010000,
-
-    /// <summary>This contact no longer has overlapping AABBs</summary>
-    Disjoint = 0x00020000,
-
-    /// <summary>This contact started touching</summary>
-    StartedTouching = 0x00040000,
-
-    /// <summary>This contact stopped touching</summary>
-    StoppedTouching = 0x00080000,
-
-    /// <summary>This contact has a hit event</summary>
-    EnableHitEvent = 0x00100000,
-
-    /// <summary>This contact wants pre-solve events</summary>
-    EnablePreSolveEvents = 0x00200000,
-
-    /// <summary>This contact has a cached relative transform</summary>
-    RelativeTransformValid = 0x00400000,
-};
-
 /// <summary>The class manages contact between two shapes. A contact exists for each overlapping
 /// AABB in the broad-phase (except if filtered). Therefore a contact object may exist
 /// that has no contact points.</summary>
@@ -122,7 +120,7 @@ public record class ContactSim
     public float tangentSpeed;
 
     /// <summary>ContactSimFlags</summary>
-    public ContactSimFlags simFlags;
+    public ContactFlags simFlags;
 
     public SimplexCache cache;
 }
@@ -170,6 +168,8 @@ public partial class World
         contact.shapeIdA = shapeIdA;
         contact.shapeIdB = shapeIdB;
         contact.flags = 0;
+        if (bodyA.flags.HasFlag(BodyFlags.EnableContactRecycling) && bodyB.flags.HasFlag(BodyFlags.EnableContactRecycling))
+            contact.flags |= ContactFlags.Recycle;
         Debug.Assert(shapeA.sensorIndex == -1 && shapeB.sensorIndex == -1);
         if (shapeA.enableContactEvents || shapeB.enableContactEvents)
             contact.flags |= ContactFlags.EnableContactEvents;
@@ -224,10 +224,10 @@ public partial class World
         contactSim.friction = frictionCallback(shapeA.material.friction, shapeA.material.userMaterialId, shapeB.material.friction, shapeB.material.userMaterialId);
         contactSim.restitution = restitutionCallback(shapeA.material.restitution, shapeA.material.userMaterialId, shapeB.material.restitution, shapeB.material.userMaterialId);
         contactSim.tangentSpeed = 0;
-        contactSim.simFlags = 0;
+        contactSim.simFlags = contact.flags;
         if (shapeA.enablePreSolveEvents || shapeB.enablePreSolveEvents)
         {
-            contactSim.simFlags |= ContactSimFlags.EnablePreSolveEvents;
+            contactSim.simFlags |= ContactFlags.SimEnablePreSolveEvents;
         }
     }
     public void DestroyContact(Contact contact, bool wakeBodies)
@@ -343,7 +343,7 @@ public partial class World
         contactSim.tangentSpeed = shapeA.material.tangentSpeed + shapeB.material.tangentSpeed;
         int pointCount = contactSim.manifold.pointCount;
         bool touching = pointCount > 0;
-        if (touching && preSolveFcn != null && contactSim.simFlags.HasFlag(ContactSimFlags.EnablePreSolveEvents))
+        if (touching && preSolveFcn != null && contactSim.simFlags.HasFlag(ContactFlags.SimEnablePreSolveEvents))
         {
             ShapeID shapeIdA = new() { index1 = shapeA.id + 1, world0 = this, generation = shapeA.generation };
             ShapeID shapeIdB = new() { index1 = shapeB.id + 1, world0 = this, generation = shapeB.generation };
@@ -381,9 +381,9 @@ public partial class World
         }
         if (touching && (shapeA.enableHitEvents || shapeB.enableHitEvents))
         {
-            contactSim.simFlags |= ContactSimFlags.EnableHitEvent;
+            contactSim.simFlags |= ContactFlags.SimEnableHitEvent;
         }
-        else contactSim.simFlags &= ~ContactSimFlags.EnableHitEvent;
+        else contactSim.simFlags &= ~ContactFlags.SimEnableHitEvent;
         if (pointCount > 0)
             contactSim.manifold.rollingImpulse = oldManifold.rollingImpulse;
 
@@ -416,8 +416,8 @@ public partial class World
             }
             unmatchedCount += mp2.persisted ? 0 : 1;
         }
-        if (touching) contactSim.simFlags |= ContactSimFlags.Touching;
-        else contactSim.simFlags &= ~ContactSimFlags.Touching;
+        if (touching) contactSim.simFlags |= ContactFlags.SimTouching;
+        else contactSim.simFlags &= ~ContactFlags.SimTouching;
         return touching;
     }
 }

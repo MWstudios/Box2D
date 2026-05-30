@@ -32,12 +32,9 @@ public class BroadPhase
     static int B2_PROXY_KEY(int ID, int TYPE) => (ID << 2) | TYPE;
     static ulong B2_SHAPE_PAIR_KEY(ulong K1, ulong K2) => K1 < K2 ? (K2 << 32) | K2 : (K2 << 32) | K1;
     public DynamicTree[] trees = new DynamicTree[3];
-    /// <summary>The move set and array are used to track shapes that have moved significantly
-    /// and need a pair query for new contacts. The array has a deterministic order.
-    /// todo perhaps just a move set?
-    /// todo implement a 32bit hash set for faster lookup
-    /// todo moveSet can grow quite large on the first time step and remain large</summary>
-    public HashSet<int> moveSet = new(16);
+    /// <summary>Per body-type bit sets indexed by proxyId, marking proxies moved this step.
+    /// Paired with moveArray which preserves deterministic insertion order for pair queries.</summary>
+    public BitSet[] movedProxies = new BitSet[3];
     public List<int> moveArray = new(16);
     /// <summary>These are the results from the pair query and are used to create new contacts
     /// in deterministic order. There is a move result linked list for each moving shape and
@@ -50,19 +47,37 @@ public class BroadPhase
     public HashSet<ulong> pairSet = new(32);
     public BroadPhase(ref Capacity capacity)
     {
+        movedProxies[(int)BodyType.Static] = new((uint)Math.Max(16, 2 * capacity.staticShapeCount));
+        movedProxies[(int)BodyType.Kinematic] = new(16);
+        movedProxies[(int)BodyType.Dynamic] = new((uint)Math.Max(16, 2 * capacity.dynamicShapeCount));
         trees[(int)BodyType.Static] = new(Math.Max(16, capacity.staticShapeCount));
         trees[(int)BodyType.Kinematic] = new(16);
         trees[(int)BodyType.Dynamic] = new(Math.Max(16, capacity.dynamicShapeCount));
     }
-    public void Destroy() { for (int i = 0; i < trees.Length; i++) trees[i].Destroy(); }
+    public void Destroy()
+    {
+        for (int i = 0; i < trees.Length; i++) trees[i].Destroy();
+        for (int i = 0; i < movedProxies.Length; i++) movedProxies[i].Destroy();
+    }
     public void BufferMove(int queryProxy)
     {
-        if (moveSet.Add(queryProxy)) moveArray.Add(queryProxy);
+        BodyType proxyType = B2_PROXY_TYPE(queryProxy);
+        int proxyId = B2_PROXY_ID(queryProxy);
+        BitSet set = movedProxies[(int)proxyType];
+        if (!set.GetBit(proxyId))
+        {
+            set.SetBitGrow(proxyId);
+            moveArray.Add(queryProxy);
+        }
     }
     public void UnBufferMove(int proxyKey)
     {
-        if (moveSet.Remove(proxyKey))
+        BodyType proxyType = B2_PROXY_TYPE(proxyKey);
+        int proxyId = B2_PROXY_ID(proxyKey);
+        BitSet set = movedProxies[(int)proxyType];
+        if (set.GetBit(proxyId))
         {
+            set.ClearBit(proxyId);
             int count = moveArray.Count;
             for (int i = 0; i < count; i++) if (moveArray[i] == proxyKey)
                 {
@@ -81,7 +96,6 @@ public class BroadPhase
     }
     public void DestroyProxy(int proxyKey)
     {
-        Debug.Assert(moveArray.Count == moveSet.Count);
         UnBufferMove(proxyKey);
         BodyType proxyType = B2_PROXY_TYPE(proxyKey);
         int proxyId = B2_PROXY_ID(proxyKey);
@@ -125,6 +139,19 @@ public class BroadPhase
     {
         for (int j = 0; j < 3; j++) trees[j].ValidateNoEnlarged();
     }
+    public void ValidateMovedProxies()
+    {
+#if B2_VALIDATE
+        for (int i = 0; i < moveArray.Count; i++)
+        {
+            int proxyKey = moveArray[i];
+            Debug.Assert(movedProxies[(int)B2_PROXY_TYPE(proxyKey)].GetBit(B2_PROXY_ID(proxyKey)));
+        }
+        int totalSetBits = 0;
+        for (int i = 0; i < movedProxies.Length; i++) totalSetBits += movedProxies[i].CountSetBits();
+        Debug.Assert(totalSetBits == moveArray.Count);
+#endif
+    }
 }
 public partial class World
 {
@@ -145,13 +172,13 @@ public partial class World
         {
             if (treeType == BodyType.Dynamic && proxyKey < queryProxyKey)
             {
-                if (broadPhase.moveSet.Contains(proxyKey)) return true;
+                if (broadPhase.movedProxies[(int)treeType].GetBit(proxyId)) return true;
             }
         }
         else
         {
             Debug.Assert(treeType == BodyType.Dynamic);
-            if (broadPhase.moveSet.Contains(proxyKey)) return true;
+            if (broadPhase.movedProxies[(int)treeType].GetBit(proxyId)) return true;
         }
         ulong pairKey = B2_SHAPE_PAIR_KEY((ulong)shapeId, (ulong)queryContext.queryShapeIndex);
         if (broadPhase.pairSet.Contains(pairKey)) return true;
@@ -236,8 +263,8 @@ public partial class World
     public void UpdateBroadPhasePairs()
     {
         BroadPhase bp = broadPhase;
+        bp.ValidateMovedProxies();
         int moveCount = bp.moveArray.Count;
-        Debug.Assert(moveCount == bp.moveSet.Count);
         if (moveCount == 0) return;
         bp.moveResults = new MoveResult[moveCount];
         for (int i = 0; i < bp.moveResults.Length; i++) bp.moveResults[i] = new();
@@ -269,8 +296,12 @@ public partial class World
                 pair = pair.next;
             }
         }
+        for (int i = 0; i < bp.moveArray.Count; i++)
+        {
+            int proxyKey = bp.moveArray[i];
+            bp.movedProxies[(int)B2_PROXY_TYPE(proxyKey)].ClearBit(B2_PROXY_ID(proxyKey));
+        }
         bp.moveArray.Clear();
-        bp.moveSet.Clear();
         bp.movePairs = null;
         bp.moveResults = null;
         ValidateSolverSets();

@@ -4,7 +4,8 @@ using System.Reflection;
 
 namespace Box2D;
 
-[Flags] public enum BodyFlags
+[Flags]
+public enum BodyFlags
 {
     /// <summary>This body has fixed translation along the x-axis</summary>
     LockLinearX = 1,
@@ -32,8 +33,15 @@ namespace Box2D;
     /// <summary>Flag to indicate the user has used the updateBodyMass option to defer mass
     /// computation but b2Body_ApplyMassFromShapes was not called before the world step.</summary>
     DirtyMass = 0x400,
+    EnableSleep = 0x800,
+    EnableContactRecycling = 0x1000,
     /// <summary>All lock flags</summary>
     AllLocks = LockLinearX | LockLinearY | LockAngularZ,
+    /// <summary>If this flag is set then the body has fixed rotation
+    /// todo use this to set the inverse inertia to zero</summary>
+    FixedRotation = LockAngularZ,
+    /// <summary>These flags are transient per time step. These may be different across b2Body, b2BodySim, and b2BodyState.</summary>
+    TransientFlags = IsFast | IsSpeedCapped | HadTimeOfImpact,
 }
 public class Body
 {
@@ -89,9 +97,6 @@ public class Body
     ///<summary>This is monotonically advanced when a body is allocated in this slot<br/>
     /// Used to check for invalid BodyId</summary>
     public ushort generation;
-
-    ///<summary>todo move into flags</summary>
-    public bool enableSleep;
 }
 /// <summary>Body State<br/>
 /// The body state is designed for fast conversion to and from SIMD via scatter-gather.
@@ -181,6 +186,13 @@ public record BodySim
 }
 public unsafe partial class World
 {
+    public void SyncBodyFlags(Body body)
+    {
+        var flags = body.flags & ~BodyFlags.TransientFlags;
+        GetBodySim(body).flags = flags;
+        BodyState* bodyState = GetBodyState(body);
+        if (bodyState != null) bodyState->flags = flags;
+    }
     public Body GetBodyFullID(BodyID bodyID)
     {
         Debug.Assert(API.BodyAPI.IsValid(bodyID));

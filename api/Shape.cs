@@ -19,7 +19,11 @@ public static class ShapeAPI
         Transform transform = world.GetBodyTransformQuick(body);
         Shape shape = world.CreateShapeInternal(body, transform, ref def, geometry, shapeType);
         if (def.updateBodyMass) world.UpdateBodyMassData(body);
-        else body.flags |= BodyFlags.DirtyMass;
+        else if (!body.flags.HasFlag(BodyFlags.DirtyMass))
+        {
+            body.flags |= BodyFlags.DirtyMass;
+            world.SyncBodyFlags(body);
+        }
         world.ValidateSolverSets();
         return new() { index1 = shape.id + 1, world0 = world, generation = shape.generation };
     }
@@ -30,8 +34,25 @@ public static class ShapeAPI
 
     ///<summary>Create a line segment shape and attach it to a body. The shape definition and geometry are fully cloned.
     /// Contacts are not created until the next time step.</summary>
-    /// <returns>the shape id for accessing the shape</returns>
+    /// <returns>the shape id or b2_nullShapeId if the segment is too short.</returns>
     public static ShapeID CreateSegmentShape(BodyID bodyId, ref ShapeDef def, Segment segment) => CreateShape(bodyId, ref def, segment, ShapeType.Segment);
+
+    /// <summary>Create an orphaned chain segment shape and attach it to a body. The shape definition and
+    /// geometry are fully cloned. The caller is responsible for the segment's ghost vertices and
+    /// lifetime. The segment is not owned by any b2ChainShape (b2Shape_GetParentChain returns
+    /// b2_nullChainId). Contacts are not created until the next time step.</summary>
+    /// <returns>the shape id, or b2_nullShapeId if the segment is too short.</returns>
+    public static ShapeID CreateChainSegmentShape(BodyID bodyId, ref ShapeDef def, ChainSegment chainSegment)
+    {
+        float lengthSqr = Vector2.DistanceSquared(chainSegment.segment.point1, chainSegment.segment.point2);
+        if (lengthSqr <= Box2D.LinearSlop * Box2D.LinearSlop)
+        {
+            Debug.Assert(false);
+            return new();
+        }
+        ChainSegment local = chainSegment with { chainId = -1, segment = chainSegment.segment with { } };
+        return CreateShape(bodyId, ref def, local, ShapeType.ChainSegment);
+    }
 
     ///<summary>Create a capsule shape and attach it to a body. The shape definition and geometry are fully cloned.
     /// Contacts are not created until the next time step.</summary>
@@ -52,6 +73,11 @@ public static class ShapeAPI
         World world = World.GetWorldLocked(shapeId.world0);
         if (world == null) return;
         Shape shape = world.GetShape(shapeId);
+        if (shape.type == ShapeType.ChainSegment && ((ChainSegment)shape.shape).chainId != -1)
+        {
+            Debug.Assert(false);
+            return;
+        }
         Body body = world.bodies[shape.bodyId];
         world.DestroyShapeInternal(shape, body, true);
         if (updateBodyMass) world.UpdateBodyMassData(body);
@@ -328,6 +354,28 @@ public static class ShapeAPI
         World world = World.GetWorldLocked(shapeId.world0); if (world == null) return;
         Shape shape = world.GetShape(shapeId);
         shape.shape = polygon; shape.type = ShapeType.Polygon;
+        shape.aabbMargin = shape.ComputeMargin();
+        world.ResetProxy(shape, true, true);
+    }
+
+    /// <summary>Allows you to change a shape to be an orphaned chain segment or update the current chain
+    /// segment, including its ghost vertices. The chainId on the input is ignored. The resulting
+    /// shape is always orphaned. Asserts if the shape is already a chain segment
+    /// owned by a b2ChainShape (chainId != B2_NULL_INDEX).</summary>
+    public static void SetChainSegment(ShapeID shapeId, ChainSegment chainSegment)
+    {
+        World world = World.GetWorldLocked(shapeId.world0);
+        if (world == null) return;
+        Shape shape = world.GetShape(shapeId);
+        if (shape.type == ShapeType.ChainSegment && ((ChainSegment)shape.shape).chainId != -1)
+        {
+            Debug.Assert(false);
+            return;
+        }
+        float lengthSqr = Vector2.DistanceSquared(chainSegment.segment.point1, chainSegment.segment.point2);
+        if (lengthSqr <= Box2D.LinearSlop * Box2D.LinearSlop) return;
+        shape.shape = chainSegment with { chainId = -1, segment = chainSegment.segment with { } };
+        shape.type = ShapeType.ChainSegment;
         shape.aabbMargin = shape.ComputeMargin();
         world.ResetProxy(shape, true, true);
     }
