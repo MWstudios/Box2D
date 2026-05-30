@@ -201,13 +201,13 @@ public static class Collision
         Vector2 u1 = d1.GetLengthAndNormalize(out float length1), u2 = d2.GetLengthAndNormalize(out float length2);
         float fp2 = Vector2.Dot(p2 - p1, u1);
         float fq2 = Vector2.Dot(q2 - p1, u1);
-        bool outsideA = (fp2 < 0 && fq2 < 0) || (fp2 >= length1 && fq2 >= length1);
+        bool outsideA = (fp2 <= 0 && fq2 <= 0) || (fp2 >= length1 && fq2 >= length1);
         float fp1 = Vector2.Dot(p1 - p2, u2);
         float fq1 = Vector2.Dot(q1 - p2, u2);
-        bool outsideB = (fp1 < 0 && fq1 < 0) || (fp1 >= length2 && fq1 >= length2);
+        bool outsideB = (fp1 <= 0 && fq1 <= 0) || (fp1 >= length2 && fq1 >= length2);
         if (!outsideA && !outsideB)
         {
-            Vector2 normalA = new();
+            Vector2 normalA;
             float separationA = 0;
             {
                 normalA = u1.LeftPerp();
@@ -222,7 +222,7 @@ public static class Collision
                     normalA = -normalA;
                 }
             }
-            Vector2 normalB = new();
+            Vector2 normalB;
             float separationB = 0;
             {
                 normalB = u2.LeftPerp();
@@ -265,8 +265,8 @@ public static class Collision
                 Vector2 cq = q1;
                 if (fp1 < 0 && fq1 > 0) cp = Vector2.Lerp(p1, q1, -fp1 / (fq1 - fp1));
                 else if (fq1 < 0 && fp1 > 0) cq = Vector2.Lerp(q1, p1, -fq1 / (fp1 - fq1));
-                if (fp1 > length2 && fq1 > length2) cp = Vector2.Lerp(p1, q1, (fp1 - length2) / (fp1 - fq1));
-                else if (fq1 > length2 && fp1 > length2) cq = Vector2.Lerp(q1, p1, (fq1 - length2) / (fq1 - fp1));
+                if (fp1 > length2 && fq1 < length2) cp = Vector2.Lerp(p1, q1, (fp1 - length2) / (fp1 - fq1));
+                else if (fq1 > length2 && fp1 < length2) cq = Vector2.Lerp(q1, p1, (fq1 - length2) / (fq1 - fp1));
                 float sp = Vector2.Dot(cp - p2, normalB);
                 float sq = Vector2.Dot(cq - p2, normalB);
                 if (sp <= distance + Box2D.LinearSlop || sq <= distance + Box2D.LinearSlop)
@@ -274,8 +274,8 @@ public static class Collision
                     manifold.point0.anchorA = Vector2.MulAdd(cp, 0.5f * (radiusB - radiusA - sp), normalB);
                     manifold.point0.separation = sp - radius;
                     manifold.point0.id = B2_MAKE_ID(0, 0);
-                    manifold.point1.anchorA = Vector2.MulAdd(cq, 0.5f * (radiusB - radiusA - sp), normalB);
-                    manifold.point1.separation = sp - radius;
+                    manifold.point1.anchorA = Vector2.MulAdd(cq, 0.5f * (radiusB - radiusA - sq), normalB);
+                    manifold.point1.separation = sq - radius;
                     manifold.point1.id = B2_MAKE_ID(1, 0);
                     manifold.pointCount = 2;
                 }
