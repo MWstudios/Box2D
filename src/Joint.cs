@@ -374,20 +374,66 @@ public partial class World
     {
         JointSim base_ = GetJointSim(joint); return base_.joint.GetTorque(this, base_);
     }
+    public static void PrepareJointsTask(ref SolverBlock block, StepContext context)
+    {
+        var spans = context.jointPrepareSpans;
+        int index = block.startIndex, endIndex = block.startIndex + block.count;
+        int colorIndex = 0;
+        while (spans[colorIndex + 1].start <= index) colorIndex++;
+        while (index < endIndex)
+        {
+            int colorStart = spans[colorIndex].start;
+            int colorEndIndex = Math.Min(spans[colorIndex + 1].start, endIndex);
+            var joints = spans[colorIndex].joints;
+            for (; index < colorEndIndex; index++)
+            {
+                Debug.Assert(0 <= index - colorStart && index - colorStart < spans[colorIndex].count);
+                joints[index - colorStart].PrepareJoint(context);
+            }
+            colorIndex++;
+        }
+    }
+    public static void WarmStartJointsTask(ref SolverBlock block, StepContext context, int colorIndex)
+    {
+        GraphColor color = context.graph.colors[colorIndex];
+        for (int i = block.startIndex; i < block.startIndex + block.count; i++)
+        {
+            JointSim joint = color.jointSims[i];
+            joint.WarmStart(context);
+        }
+    }
+    public static void SolveJointsTask(ref SolverBlock block, StepContext context, int colorIndex, bool useBias, int workerIndex)
+    {
+        GraphColor color = context.graph.colors[colorIndex];
+        Debug.Assert(0 <= block.startIndex && block.startIndex + block.count <= color.jointSims.Count);
+        BitSet jointStateBitSet = context.world.taskContexts[workerIndex].jointStateBitSet;
+        for (int i = block.startIndex; i < block.startIndex + block.count; i++)
+        {
+            JointSim joint = color.jointSims[i];
+            joint.Solve(context, useBias);
+            if (useBias && (joint.forceThreshold < float.MaxValue || joint.torqueThreshold < float.MaxValue)
+                && !jointStateBitSet.GetBit(joint.jointId))
+            {
+                joint.GetJointReaction(context.inv_h, out float force, out float torque);
+                if (force >= joint.forceThreshold || torque >= joint.torqueThreshold)
+                    jointStateBitSet.SetBit(joint.jointId);
+            }
+        }
+    }
 }
 public partial class StepContext
 {
-    public void PrepareOverflowJoints()
+    public void PrepareJoints_Overflow()
     {
         List<JointSim> joints = graph.colors[Box2D.GraphColorCount - 1].jointSims;
         for (int i = 0; i < joints.Count; i++) joints[i].PrepareJoint(this);
     }
-    public void WarmStartOverflowJoints()
+    public void WarmStartJoints_Overflow()
     {
         List<JointSim> joints = graph.colors[Box2D.GraphColorCount - 1].jointSims;
         for (int i = 0; i < joints.Count; i++) joints[i].WarmStart(this);
     }
-    public void SolveOverflowJoints(bool useBias)
+    public void SolveJoints_Overflow(bool useBias)
     {
         List<JointSim> joints = graph.colors[Box2D.GraphColorCount - 1].jointSims;
         for (int i = 0; i < joints.Count; i++) joints[i].Solve(this, useBias);

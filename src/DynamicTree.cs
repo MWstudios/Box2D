@@ -33,11 +33,11 @@ namespace Box2D;
 public partial class DynamicTree
 {
     /// <summary>Constructing the tree initializes the node pool.</summary>
-    public DynamicTree()
+    public DynamicTree(int proxyCapacity)
     {
         root = -1;
         nodeCount = 0;
-        nodes = new TreeNode[16];
+        nodes = new TreeNode[2 * Math.Max(proxyCapacity, 16) - 1];
         for (int i = 0; i < nodes.Length - 1; i++) nodes[i].next = i + 1;
         nodes[^1].next = -1;
         freeList = 0;

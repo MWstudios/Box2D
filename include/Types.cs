@@ -35,6 +35,20 @@ public class RayResult
     public int leafVisits;
     public bool hit;
 }
+/// <summary>Optional world capacities that can be used to avoid run-time allocations.</summary>
+public struct Capacity
+{
+    /// <summary>Number of expected static shapes.</summary>
+    public int staticShapeCount;
+    /// <summary>Number of expected dynamic and kinematic shapes.</summary>
+    public int dynamicShapeCount;
+    /// <summary>Number of expected static bodies.</summary>
+    public int staticBodyCount;
+    /// <summary>Number of expected dynamic and kinematic bodies.</summary>
+    public int dynamicBodyCount;
+    /// <summary>Number of expected contacts.</summary>
+    public int contactCount;
+}
 public class DefaultTaskObject
 {
     public List<Task> tasks = new();
@@ -101,6 +115,8 @@ public struct WorldDef
     public object userTaskContext = null;
     /// <summary>User data</summary>
     public object userData = null;
+    /// <summary>Optional initial capacities</summary>
+    public Capacity capacity;
     /// <summary>Used internally to detect a valid definition. DO NOT SET.</summary>
     internal int internalValue = Box2D.SECRET_COOKIE;
 
@@ -362,8 +378,8 @@ public class Profile
     public float pairs;
     public float collide;
     public float solve;
-    public float prepareStages;
-    public float solveConstraints;
+    public float solverSetup;
+    public float constraints;
     public float prepareConstraints;
     public float integrateVelocities;
     public float warmStart;
@@ -396,6 +412,10 @@ public struct Counters
     public int byteCount = 0;
     public int taskCount = 0;
     public int[] colorCounts = new int[24];
+    /// <summary>Number of contacts touched by the collide pass (graph contacts + awake-set non-touching).</summary>
+    public int awakeContactCount;
+    /// <summary>Number of contacts recycled in the most recent step.</summary>
+    public int recycledContactCount;
     public Counters() { }
 }
 /// <summary>Joint type enumeration<br/>

@@ -139,9 +139,9 @@ public unsafe record class WheelJoint : IJoint
         Debug.Assert(joint.type == JointType.Wheel);
         float mA = joint.invMassA, mB = joint.invMassB;
         float iA = joint.invIA, iB = joint.invIB;
-        BodyState dummyState = new();
-        BodyState* stateA = &dummyState; if (indexA != -1) stateA = context.states.Data + indexA;
-        BodyState* stateB = &dummyState; if (indexB != -1) stateB = context.states.Data + indexB;
+        
+        BodyState* stateA = BodyState.IdentityPtr; if (indexA != -1) stateA = context.states.Data + indexA;
+        BodyState* stateB = BodyState.IdentityPtr; if (indexB != -1) stateB = context.states.Data + indexB;
         Vector2 rA = stateA->deltaRotation * frameA.p, rB = stateB->deltaRotation * frameB.p;
         Vector2 d = stateB->deltaPosition - stateA->deltaPosition + deltaCenter + (rB - rA);
         Vector2 axisA = frameA.q * new Vector2(1, 0);
@@ -171,9 +171,9 @@ public unsafe record class WheelJoint : IJoint
         Debug.Assert(joint.type == JointType.Wheel);
         float mA = joint.invMassA, mB = joint.invMassB;
         float iA = joint.invIA, iB = joint.invIB;
-        BodyState dummyState = new();
-        BodyState* stateA = &dummyState; if (indexA != -1) stateA = context.states.Data + indexA;
-        BodyState* stateB = &dummyState; if (indexB != -1) stateB = context.states.Data + indexB;
+        
+        BodyState* stateA = BodyState.IdentityPtr; if (indexA != -1) stateA = context.states.Data + indexA;
+        BodyState* stateB = BodyState.IdentityPtr; if (indexB != -1) stateB = context.states.Data + indexB;
         Vector2 vA = stateA->linearVelocity, vB = stateB->linearVelocity;
         float wA = stateA->angularVelocity, wB = stateB->angularVelocity;
         bool fixedRotation = iA + iB == 0;

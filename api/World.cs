@@ -41,20 +41,31 @@ public static class WorldAPI
         world.contactHitEvents.Clear();
         world.jointEvents.Clear();
         world.profile = new();
-        if (timeStep == 0)
+        /*if (timeStep == 0)
         {
             world.endEventArrayIndex = 1 - world.endEventArrayIndex;
             if (world.endEventArrayIndex == 1)
             { world.sensorEndEvents1.Clear(); world.contactEndEvents1.Clear(); }
             else { world.sensorEndEvents0.Clear(); world.contactEndEvents0.Clear(); }
             return;
-        }
+        }*/
         world.locked = true;
         world.activeTaskCount = 0;
         world.taskCount = 0;
         world.scheduler?.Reset();
         Stopwatch stepTicks = new(), pairTicks = new();
         stepTicks.Start();
+        {
+            ref Capacity c = ref world.maxCapacity;
+            c.staticShapeCount = Math.Max(c.staticShapeCount, world.broadPhase.trees[(int)BodyType.Static].proxyCount);
+            c.dynamicShapeCount = Math.Max(c.dynamicShapeCount, world.broadPhase.trees[(int)BodyType.Dynamic].proxyCount);
+            int staticBodyCount = world.solverSets[(int)SetType.Static].bodySims.Count;
+            c.staticBodyCount = Math.Max(c.staticBodyCount, staticBodyCount);
+            int totalBodyCount = world.bodyIdPool.GetIdCount();
+            c.dynamicBodyCount = Math.Max(c.dynamicBodyCount, totalBodyCount - staticBodyCount);
+            int totalContactCount = world.contactIdPool.GetIdCount();
+            c.contactCount = Math.Max(c.contactCount, totalContactCount);
+        }
         {
             pairTicks.Start();
             world.UpdateBroadPhasePairs();
@@ -95,6 +106,12 @@ public static class WorldAPI
             pairTicks.Stop();
             world.profile.collide = (float)pairTicks.Elapsed.TotalMilliseconds;
         }
+        if (world.userTreeTask != null)
+        {
+            world.finishTaskFcn(world.userTreeTask, world.userTaskContext);
+            world.userTreeTask = null;
+            world.activeTaskCount--;
+        }
         {
             pairTicks.Restart();
             world.OverlapSensors();
@@ -103,8 +120,8 @@ public static class WorldAPI
         }
         stepTicks.Stop();
         world.profile.step = (float)stepTicks.Elapsed.TotalMilliseconds;
-        Debug.Assert(world.arena.GetArenaAllocation() == 0);
-        world.arena.GrowArena();
+        Debug.Assert(world.stack.GetAllocation() == 0);
+        world.stack.Grow();
         Debug.Assert(world.activeTaskCount == 0);
         world.endEventArrayIndex = 1 - world.endEventArrayIndex;
         if (world.endEventArrayIndex == 1)
@@ -847,10 +864,22 @@ public static class WorldAPI
             treeHeight = Math.Max(world.broadPhase.trees[(int)BodyType.Dynamic].GetHeight(), world.broadPhase.trees[(int)BodyType.Kinematic].GetHeight()),
             taskCount = world.taskCount
         };
+        s.recycledContactCount = 0;
+        for (int i = 0; i < world.workerCount; i++)
+            s.recycledContactCount += world.taskContexts[i].recycledContactCount;
+        s.awakeContactCount = 0;
         for (int i = 0; i < Box2D.GraphColorCount; i++)
-            s.colorCounts[i] = world.constraintGraph.colors[i].contactSims.Count + world.constraintGraph.colors[i].jointSims.Count;
+        {
+            GraphColor color = world.constraintGraph.colors[i];
+            s.colorCounts[i] = color.contactSims.Count + color.jointSims.Count;
+            s.awakeContactCount += color.contactSims.Count;
+        }
+        s.awakeContactCount += world.solverSets[(int)SetType.Awake].contactSims.Count;
         return s;
     }
+
+    /// <summary>Get max capacity. This can be used with b2WorldDef to avoid run-time allocations and copies</summary>
+    public static Capacity GetMaxCapacity(WorldID worldId) => worldId.index1.maxCapacity;
 
     ///<summary> Set the user data pointer.</summary>
     public static void SetUserData(WorldID worldId, object userData) => worldId.index1.userData = userData;

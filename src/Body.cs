@@ -135,6 +135,12 @@ public struct BodyState
         float v2 = linearVelocity.LengthSquared();
         if (v2 > maxLinearSpeed * maxLinearSpeed) linearVelocity *= maxLinearSpeed / MathF.Sqrt(v2);
     }
+    public static readonly BodyState Identity = new();
+    public static unsafe readonly BodyState* IdentityPtr;
+    static unsafe BodyState()
+    {
+        fixed (BodyState* ptr = &Identity) IdentityPtr = ptr;
+    }
 }
 /// <summary>Body simulation data used for integration of position and velocity
 /// Transform data used for collision and solver preparation.</summary>

@@ -37,7 +37,7 @@ public struct ContactConstraint
 }
 public unsafe partial class StepContext
 {
-    public void PrepareOverflowContacts()
+    public void PrepareContacts_Overflow()
     {
         ref GraphColor color = ref graph.colors[Box2D.GraphColorCount - 1];
         ContactConstraint[] constraints = color.overflowConstraints;
@@ -113,20 +113,20 @@ public unsafe partial class StepContext
             }
         }
     }
-    public void WarmStartOverflowContacts()
+    public void WarmStartContacts_Overflow()
     {
         ref GraphColor color = ref graph.colors[Box2D.GraphColorCount - 1];
         var constraints = color.overflowConstraints;
         int contactCount = color.contactSims.Count;
         SolverSet awakeSet = world.solverSets[(int)SetType.Awake];
         var states = awakeSet.bodyStates;
-        BodyState dummyState = new();
+        
         for (int i = 0; i < contactCount; i++)
         {
             ref ContactConstraint constraint = ref constraints[i];
             int indexA = constraint.indexA - 1, indexB = constraint.indexB - 1;
-            BodyState* stateA = &dummyState; if (indexA != -1) stateA = states.Data + indexA;
-            BodyState* stateB = &dummyState; if (indexB != -1) stateB = states.Data + indexB;
+            BodyState* stateA = BodyState.IdentityPtr; if (indexA != -1) stateA = states.Data + indexA;
+            BodyState* stateB = BodyState.IdentityPtr; if (indexB != -1) stateB = states.Data + indexB;
             Vector2 vA = stateA->linearVelocity;
             float wA = stateA->angularVelocity;
             Vector2 vB = stateB->linearVelocity;
@@ -163,7 +163,7 @@ public unsafe partial class StepContext
             }
         }
     }
-    public void SolveOverflowContacts(bool useBias)
+    public void SolveContacts_Overflow(bool useBias)
     {
         GraphColor color = graph.colors[Box2D.GraphColorCount - 1];
         var constraints = color.overflowConstraints;
@@ -171,7 +171,7 @@ public unsafe partial class StepContext
         SolverSet awakeSet = world.solverSets[(int)SetType.Awake];
         var states = awakeSet.bodyStates;
         float contactSpeed = world.contactSpeed;
-        BodyState dummyState = new();
+        
         for (int i = 0; i < contactCount; i++)
         {
             ref ContactConstraint constraint = ref constraints[i];
@@ -180,11 +180,11 @@ public unsafe partial class StepContext
             float mB = constraint.invMassB;
             float iB = constraint.invIB;
             int indexA = constraint.indexA - 1, indexB = constraint.indexB - 1;
-            BodyState* stateA = &dummyState; if (indexA != -1) stateA = states.Data + indexA;
+            BodyState* stateA = BodyState.IdentityPtr; if (indexA != -1) stateA = states.Data + indexA;
             Vector2 vA = stateA->linearVelocity;
             float wA = stateA->angularVelocity;
             Rotation dqA = stateA->deltaRotation;
-            BodyState* stateB = &dummyState; if (indexB != -1) stateB = states.Data + indexB;
+            BodyState* stateB = BodyState.IdentityPtr; if (indexB != -1) stateB = states.Data + indexB;
             Vector2 vB = stateB->linearVelocity;
             float wB = stateB->angularVelocity;
             Rotation dqB = stateB->deltaRotation;
@@ -224,7 +224,7 @@ public unsafe partial class StepContext
                 vB = Vector2.MulAdd(vB, mB, P);
                 wB += iB * Vector2.Cross(rB, P);
             }
-            for (int j = 0; j < pointCount; j++)
+            if (!useBias) for (int j = 0; j < pointCount; j++)
             {
                 ref ContactConstraintPoint cp = ref constraint.point0;
                 if (j == 1) cp = ref constraint.point1;
@@ -264,7 +264,7 @@ public unsafe partial class StepContext
             }
         }
     }
-    public void ApplyOverflowRestitution()
+    public void ApplyRestitution_Overflow()
     {
         GraphColor color = graph.colors[Box2D.GraphColorCount - 1];
         var constraints = color.overflowConstraints;
@@ -272,7 +272,7 @@ public unsafe partial class StepContext
         SolverSet awakeSet = world.solverSets[(int)SetType.Awake];
         var states = awakeSet.bodyStates;
         float threshold = world.restitutionThreshold;
-        BodyState dummyState = new();
+        
         for (int i = 0; i < contactCount; i++)
         {
             ref ContactConstraint constraint = ref constraints[i];
@@ -283,10 +283,10 @@ public unsafe partial class StepContext
             float mB = constraint.invMassB;
             float iB = constraint.invIB;
             int indexA = constraint.indexA - 1, indexB = constraint.indexB - 1;
-            BodyState* stateA = &dummyState; if (indexA != -1) stateA = states.Data + indexA;
+            BodyState* stateA = BodyState.IdentityPtr; if (indexA != -1) stateA = states.Data + indexA;
             Vector2 vA = stateA->linearVelocity;
             float wA = stateA->angularVelocity;
-            BodyState* stateB = &dummyState; if (indexB != -1) stateB = states.Data + indexB;
+            BodyState* stateB = BodyState.IdentityPtr; if (indexB != -1) stateB = states.Data + indexB;
             Vector2 vB = stateB->linearVelocity;
             float wB = stateB->angularVelocity;
             Vector2 normal = constraint.normal;
@@ -323,7 +323,7 @@ public unsafe partial class StepContext
             }
         }
     }
-    public void StoreOverflowImpulses()
+    public void StoreImpulses_Overflow()
     {
         GraphColor color = graph.colors[Box2D.GraphColorCount - 1];
         var constraints = color.overflowConstraints;
@@ -356,11 +356,11 @@ public interface IContactSolverW
 {
     public static IContactSolverW Instance() => Avx.IsSupported ? new ContactSolverAVX() :
         AdvSimd.IsSupported ? new ContactSolverNeon() : Sse.IsSupported ? new ContactSolverSSE() : new ContactSolverFloat();
-    public void PrepareContactsTask(int startIndex, int endIndex, StepContext context);
-    public void WarmStartContactsTask(int startIndex, int endIndex, StepContext context, int colorIndex);
-    public void SolveContactsTask(int startIndex, int endIndex, StepContext context, int colorIndex, bool useBias);
-    public void ApplyRestitutionTask(int startIndex, int endIndex, StepContext context, int colorIndex);
-    public void StoreImpulsesTask(int startIndex, int endIndex, StepContext context);
+    public void PrepareContactsTask(ref SolverBlock block, StepContext context);
+    public void WarmStartContactsTask(ref SolverBlock block, StepContext context);
+    public void SolveContactsTask(ref SolverBlock block, StepContext context, bool useBias);
+    public void ApplyRestitutionTask(ref SolverBlock block, StepContext context);
+    public void StoreImpulsesTask(ref SolverBlock block, StepContext context, int workerIndex);
 }
 public class ContactSolverAVX : IContactSolverW
 {
@@ -484,49 +484,60 @@ public class ContactSolverAVX : IContactSolverW
         if (i7 != -1 && states[i7].flags.HasFlag(BodyFlags.Dynamic)) Avx.StoreAligned((float*)(states + i7), Avx.Permute2x128(tt2, tt6, 0x31));
         if (i8 != -1 && states[i8].flags.HasFlag(BodyFlags.Dynamic)) Avx.StoreAligned((float*)(states + i8), Avx.Permute2x128(tt3, tt7, 0x31));
     }
-    public unsafe void PrepareContactsTask(int startIndex, int endIndex, StepContext context)
+    public unsafe void PrepareContactsTask(ref SolverBlock block, StepContext context)
     {
         World world = context.world;
-        ContactSim[] contacts = context.contacts;
-        var awakeStates = context.states;
+        var states = context.states;
         Softness contactSoftness = context.contactSoftness;
         Softness staticSoftness = context.staticSoftness;
+        var spans = context.contactPrepareSpans;
+        var wideBase = (ContactConstraintsAVX)context.wideContactConstraints;
         bool enableSoftening = world.enableContactSoftening;
         float warmStartScale = world.enableWarmStarting ? 1 : 0;
-        for (int i = startIndex; i < endIndex; i++)
+        int wideIndex = block.startIndex, endWideIndex = block.startIndex + block.count;
+        int colorIndex = 0;
+        while (spans[colorIndex + 1].start <= wideIndex) colorIndex++;
+        while (wideIndex < endWideIndex)
         {
-            var constraint = ((ContactConstraintsAVX)context.wideContactConstraints).wideConstraints + i;
-            for (int j = 0; j < 8; j++)
+            int colorWideStart = spans[colorIndex].start;
+            int colorWideEndIndex = Math.Min(spans[colorIndex + 1].start, endWideIndex);
+            int colorContactCount = spans[colorIndex].count;
+            var contactSims = spans[colorIndex].contacts;
+            for (; wideIndex < colorWideEndIndex; wideIndex++)
             {
-                ref ContactSim contactSim = ref contacts[8 * i + j];
-                if (contactSim != null)
+                var constraint = wideBase.wideConstraints + wideIndex;
+                int localWideIndex = wideIndex - colorWideStart;
+                for (int lane = 0; lane < 8; lane++)
                 {
-                    Manifold manifold = contactSim.manifold;
+                    int contactIndex = 8 * localWideIndex + lane;
+                    if (contactIndex >= colorContactCount) break;
+                    ContactSim contactSim = contactSims[contactIndex];
+                    ref Manifold manifold = ref contactSim.manifold;
                     int indexA = contactSim.bodySimIndexA, indexB = contactSim.bodySimIndexB;
 
-                    ((int*)&constraint->indexA)[j] = indexA + 1;
-                    ((int*)&constraint->indexB)[j] = indexB + 1;
+                    ((int*)&constraint->indexA)[lane] = indexA + 1;
+                    ((int*)&constraint->indexB)[lane] = indexB + 1;
                     Vector2 vA = Vector2.Zero;
                     float wA = 0, mA = contactSim.invMassA, iA = contactSim.invIA;
                     if (indexA != -1)
                     {
-                        vA = awakeStates[indexA].linearVelocity;
-                        wA = awakeStates[indexA].angularVelocity;
+                        vA = states[indexA].linearVelocity;
+                        wA = states[indexA].angularVelocity;
                     }
                     Vector2 vB = Vector2.Zero;
                     float wB = 0, mB = contactSim.invMassB, iB = contactSim.invIB;
                     if (indexB != -1)
                     {
-                        vB = awakeStates[indexB].linearVelocity;
-                        wB = awakeStates[indexB].angularVelocity;
+                        vB = states[indexB].linearVelocity;
+                        wB = states[indexB].angularVelocity;
                     }
-                    ((float*)&constraint->invMassA)[j] = mA;
-                    ((float*)&constraint->invMassB)[j] = mB;
-                    ((float*)&constraint->invIA)[j] = iA;
-                    ((float*)&constraint->invIB)[j] = iB;
+                    ((float*)&constraint->invMassA)[lane] = mA;
+                    ((float*)&constraint->invMassB)[lane] = mB;
+                    ((float*)&constraint->invIA)[lane] = iA;
+                    ((float*)&constraint->invIB)[lane] = iB;
                     {
                         float k = iA + iB;
-                        ((float*)&constraint->rollingMass)[j] = k > 0.0f ? 1.0f / k : 0.0f;
+                        ((float*)&constraint->rollingMass)[lane] = k > 0.0f ? 1.0f / k : 0.0f;
                     }
                     Softness soft = contactSoftness;
                     if (indexA == -1 || indexB == -1) soft = staticSoftness;
@@ -540,18 +551,18 @@ public class ContactSolverAVX : IContactSolverW
                     }
 
                     Vector2 normal = manifold.normal;
-                    ((float*)&constraint->normal.X)[j] = normal.x;
-                    ((float*)&constraint->normal.Y)[j] = normal.y;
+                    ((float*)&constraint->normal.X)[lane] = normal.x;
+                    ((float*)&constraint->normal.Y)[lane] = normal.y;
 
-                    ((float*)&constraint->friction)[j] = contactSim.friction;
-                    ((float*)&constraint->tangentSpeed)[j] = contactSim.tangentSpeed;
-                    ((float*)&constraint->restitution)[j] = contactSim.restitution;
-                    ((float*)&constraint->rollingResistance)[j] = contactSim.rollingResistance;
-                    ((float*)&constraint->rollingImpulse)[j] = warmStartScale * manifold.rollingImpulse;
+                    ((float*)&constraint->friction)[lane] = contactSim.friction;
+                    ((float*)&constraint->tangentSpeed)[lane] = contactSim.tangentSpeed;
+                    ((float*)&constraint->restitution)[lane] = contactSim.restitution;
+                    ((float*)&constraint->rollingResistance)[lane] = contactSim.rollingResistance;
+                    ((float*)&constraint->rollingImpulse)[lane] = warmStartScale * manifold.rollingImpulse;
 
-                    ((float*)&constraint->biasRate)[j] = soft.biasRate;
-                    ((float*)&constraint->massScale)[j] = soft.massScale;
-                    ((float*)&constraint->impulseScale)[j] = soft.impulseScale;
+                    ((float*)&constraint->biasRate)[lane] = soft.biasRate;
+                    ((float*)&constraint->massScale)[lane] = soft.massScale;
+                    ((float*)&constraint->impulseScale)[lane] = soft.impulseScale;
 
                     Vector2 tangent = normal.RightPerp();
 
@@ -561,31 +572,31 @@ public class ContactSolverAVX : IContactSolverW
                         Vector2 rA = mp.anchorA;
                         Vector2 rB = mp.anchorB;
 
-                        ((float*)&constraint->anchorA1.X)[j] = rA.x;
-                        ((float*)&constraint->anchorA1.Y)[j] = rA.y;
-                        ((float*)&constraint->anchorB1.X)[j] = rB.x;
-                        ((float*)&constraint->anchorB1.Y)[j] = rB.y;
+                        ((float*)&constraint->anchorA1.X)[lane] = rA.x;
+                        ((float*)&constraint->anchorA1.Y)[lane] = rA.y;
+                        ((float*)&constraint->anchorB1.X)[lane] = rB.x;
+                        ((float*)&constraint->anchorB1.Y)[lane] = rB.y;
 
-                        ((float*)&constraint->baseSeparation1)[j] = mp.separation - Vector2.Dot(rB - rA, normal);
+                        ((float*)&constraint->baseSeparation1)[lane] = mp.separation - Vector2.Dot(rB - rA, normal);
 
-                        ((float*)&constraint->normalImpulse1)[j] = warmStartScale * mp.normalImpulse;
-                        ((float*)&constraint->tangentImpulse1)[j] = warmStartScale * mp.tangentImpulse;
-                        ((float*)&constraint->totalNormalImpulse1)[j] = 0.0f;
+                        ((float*)&constraint->normalImpulse1)[lane] = warmStartScale * mp.normalImpulse;
+                        ((float*)&constraint->tangentImpulse1)[lane] = warmStartScale * mp.tangentImpulse;
+                        ((float*)&constraint->totalNormalImpulse1)[lane] = 0.0f;
 
                         float rnA = Vector2.Cross(rA, normal);
                         float rnB = Vector2.Cross(rB, normal);
                         float kNormal = mA + mB + iA * rnA * rnA + iB * rnB * rnB;
-                        ((float*)&constraint->normalMass1)[j] = kNormal > 0.0f ? 1.0f / kNormal : 0.0f;
+                        ((float*)&constraint->normalMass1)[lane] = kNormal > 0.0f ? 1.0f / kNormal : 0.0f;
 
                         float rtA = Vector2.Cross(rA, tangent);
                         float rtB = Vector2.Cross(rB, tangent);
                         float kTangent = mA + mB + iA * rtA * rtA + iB * rtB * rtB;
-                        ((float*)&constraint->tangentMass1)[j] = kTangent > 0.0f ? 1.0f / kTangent : 0.0f;
+                        ((float*)&constraint->tangentMass1)[lane] = kTangent > 0.0f ? 1.0f / kTangent : 0.0f;
 
                         // relative velocity for restitution
                         Vector2 vrA = vA + Vector2.CrossSV(wA, rA);
                         Vector2 vrB = vB + Vector2.CrossSV(wB, rB);
-                        ((float*)&constraint->relativeVelocity1)[j] = Vector2.Dot(normal, vrB - vrA);
+                        ((float*)&constraint->relativeVelocity1)[lane] = Vector2.Dot(normal, vrB - vrA);
                     }
 
                     int pointCount = manifold.pointCount;
@@ -598,104 +609,58 @@ public class ContactSolverAVX : IContactSolverW
                         Vector2 rA = mp.anchorA;
                         Vector2 rB = mp.anchorB;
 
-                        ((float*)&constraint->anchorA2.X)[j] = rA.x;
-                        ((float*)&constraint->anchorA2.Y)[j] = rA.y;
-                        ((float*)&constraint->anchorB2.X)[j] = rB.x;
-                        ((float*)&constraint->anchorB2.Y)[j] = rB.y;
+                        ((float*)&constraint->anchorA2.X)[lane] = rA.x;
+                        ((float*)&constraint->anchorA2.Y)[lane] = rA.y;
+                        ((float*)&constraint->anchorB2.X)[lane] = rB.x;
+                        ((float*)&constraint->anchorB2.Y)[lane] = rB.y;
 
-                        ((float*)&constraint->baseSeparation2)[j] = mp.separation - Vector2.Dot(rB - rA, normal);
+                        ((float*)&constraint->baseSeparation2)[lane] = mp.separation - Vector2.Dot(rB - rA, normal);
 
-                        ((float*)&constraint->normalImpulse2)[j] = warmStartScale * mp.normalImpulse;
-                        ((float*)&constraint->tangentImpulse2)[j] = warmStartScale * mp.tangentImpulse;
-                        ((float*)&constraint->totalNormalImpulse2)[j] = 0.0f;
+                        ((float*)&constraint->normalImpulse2)[lane] = warmStartScale * mp.normalImpulse;
+                        ((float*)&constraint->tangentImpulse2)[lane] = warmStartScale * mp.tangentImpulse;
+                        ((float*)&constraint->totalNormalImpulse2)[lane] = 0.0f;
 
                         float rnA = Vector2.Cross(rA, normal);
                         float rnB = Vector2.Cross(rB, normal);
                         float kNormal = mA + mB + iA * rnA * rnA + iB * rnB * rnB;
-                        ((float*)&constraint->normalMass2)[j] = kNormal > 0.0f ? 1.0f / kNormal : 0.0f;
+                        ((float*)&constraint->normalMass2)[lane] = kNormal > 0.0f ? 1.0f / kNormal : 0.0f;
 
                         float rtA = Vector2.Cross(rA, tangent);
                         float rtB = Vector2.Cross(rB, tangent);
                         float kTangent = mA + mB + iA * rtA * rtA + iB * rtB * rtB;
-                        ((float*)&constraint->tangentMass2)[j] = kTangent > 0.0f ? 1.0f / kTangent : 0.0f;
+                        ((float*)&constraint->tangentMass2)[lane] = kTangent > 0.0f ? 1.0f / kTangent : 0.0f;
 
                         // relative velocity for restitution
                         Vector2 vrA = vA + Vector2.CrossSV(wA, rA);
                         Vector2 vrB = vB + Vector2.CrossSV(wB, rB);
-                        ((float*)&constraint->relativeVelocity2)[j] = Vector2.Dot(normal, vrB - vrA);
+                        ((float*)&constraint->relativeVelocity2)[lane] = Vector2.Dot(normal, vrB - vrA);
                     }
                     else
                     {
                         // dummy data that has no effect
-                        ((float*)&constraint->baseSeparation2)[j] = 0.0f;
-                        ((float*)&constraint->normalImpulse2)[j] = 0.0f;
-                        ((float*)&constraint->tangentImpulse2)[j] = 0.0f;
-                        ((float*)&constraint->totalNormalImpulse2)[j] = 0.0f;
-                        ((float*)&constraint->anchorA2.X)[j] = 0.0f;
-                        ((float*)&constraint->anchorA2.Y)[j] = 0.0f;
-                        ((float*)&constraint->anchorB2.X)[j] = 0.0f;
-                        ((float*)&constraint->anchorB2.Y)[j] = 0.0f;
-                        ((float*)&constraint->normalMass2)[j] = 0.0f;
-                        ((float*)&constraint->tangentMass2)[j] = 0.0f;
-                        ((float*)&constraint->relativeVelocity2)[j] = 0.0f;
+                        ((float*)&constraint->baseSeparation2)[lane] = 0.0f;
+                        ((float*)&constraint->normalImpulse2)[lane] = 0.0f;
+                        ((float*)&constraint->tangentImpulse2)[lane] = 0.0f;
+                        ((float*)&constraint->totalNormalImpulse2)[lane] = 0.0f;
+                        ((float*)&constraint->anchorA2.X)[lane] = 0.0f;
+                        ((float*)&constraint->anchorA2.Y)[lane] = 0.0f;
+                        ((float*)&constraint->anchorB2.X)[lane] = 0.0f;
+                        ((float*)&constraint->anchorB2.Y)[lane] = 0.0f;
+                        ((float*)&constraint->normalMass2)[lane] = 0.0f;
+                        ((float*)&constraint->tangentMass2)[lane] = 0.0f;
+                        ((float*)&constraint->relativeVelocity2)[lane] = 0.0f;
                     }
                 }
-                else
-                {
-                    ((int*)&constraint->indexA)[j] = 0;
-                    ((int*)&constraint->indexB)[j] = 0;
-
-                    ((float*)&constraint->invMassA)[j] = 0.0f;
-                    ((float*)&constraint->invMassB)[j] = 0.0f;
-                    ((float*)&constraint->invIA)[j] = 0.0f;
-                    ((float*)&constraint->invIB)[j] = 0.0f;
-
-                    ((float*)&constraint->normal.X)[j] = 0.0f;
-                    ((float*)&constraint->normal.Y)[j] = 0.0f;
-                    ((float*)&constraint->friction)[j] = 0.0f;
-                    ((float*)&constraint->tangentSpeed)[j] = 0.0f;
-                    ((float*)&constraint->rollingResistance)[j] = 0.0f;
-                    ((float*)&constraint->rollingMass)[j] = 0.0f;
-                    ((float*)&constraint->rollingImpulse)[j] = 0.0f;
-                    ((float*)&constraint->biasRate)[j] = 0.0f;
-                    ((float*)&constraint->massScale)[j] = 0.0f;
-                    ((float*)&constraint->impulseScale)[j] = 0.0f;
-
-                    ((float*)&constraint->anchorA1.X)[j] = 0.0f;
-                    ((float*)&constraint->anchorA1.Y)[j] = 0.0f;
-                    ((float*)&constraint->anchorB1.X)[j] = 0.0f;
-                    ((float*)&constraint->anchorB1.Y)[j] = 0.0f;
-                    ((float*)&constraint->baseSeparation1)[j] = 0.0f;
-                    ((float*)&constraint->normalImpulse1)[j] = 0.0f;
-                    ((float*)&constraint->tangentImpulse1)[j] = 0.0f;
-                    ((float*)&constraint->totalNormalImpulse1)[j] = 0.0f;
-                    ((float*)&constraint->normalMass1)[j] = 0.0f;
-                    ((float*)&constraint->tangentMass1)[j] = 0.0f;
-
-                    ((float*)&constraint->anchorA2.X)[j] = 0.0f;
-                    ((float*)&constraint->anchorA2.Y)[j] = 0.0f;
-                    ((float*)&constraint->anchorB2.X)[j] = 0.0f;
-                    ((float*)&constraint->anchorB2.Y)[j] = 0.0f;
-                    ((float*)&constraint->baseSeparation2)[j] = 0.0f;
-                    ((float*)&constraint->normalImpulse2)[j] = 0.0f;
-                    ((float*)&constraint->tangentImpulse2)[j] = 0.0f;
-                    ((float*)&constraint->totalNormalImpulse2)[j] = 0.0f;
-                    ((float*)&constraint->normalMass2)[j] = 0.0f;
-                    ((float*)&constraint->tangentMass2)[j] = 0.0f;
-
-                    ((float*)&constraint->restitution)[j] = 0.0f;
-                    ((float*)&constraint->relativeVelocity1)[j] = 0.0f;
-                    ((float*)&constraint->relativeVelocity2)[j] = 0.0f;
-                }
             }
+            colorIndex++;
         }
     }
-    public unsafe void WarmStartContactsTask(int startIndex, int endIndex, StepContext context, int colorIndex)
+    public unsafe void WarmStartContactsTask(ref SolverBlock block, StepContext context)
     {
         var states = context.states.Data;
-        var constraints = ((ContactConstraintsAVX)context.graph.colors[colorIndex].wideConstraints).wideConstraints;
+        var constraints = ((ContactConstraintsAVX)context.graph.colors[block.colorIndex].wideConstraints).wideConstraints;
         {
-            for (int i = startIndex; i < endIndex; i++)
+            for (int i = block.startIndex; i < block.startIndex + block.count; i++)
             {
                 ContactConstraintWide* c = constraints + i;
                 BodyStateW bA = GatherBodies(states, (int*)&c->indexA);
@@ -751,15 +716,15 @@ public class ContactSolverAVX : IContactSolverW
             }
         }
     }
-    public unsafe void SolveContactsTask(int startIndex, int endIndex, StepContext context, int colorIndex, bool useBias)
+    public unsafe void SolveContactsTask(ref SolverBlock block, StepContext context, bool useBias)
     {
         var states = context.states.Data;
-        var constraints = ((ContactConstraintsAVX)context.graph.colors[colorIndex].wideConstraints).wideConstraints;
+        var constraints = ((ContactConstraintsAVX)context.graph.colors[block.colorIndex].wideConstraints).wideConstraints;
         {
             Vector256<float> inv_h = Vector256.Create(context.inv_h);
             Vector256<float> contactSpeed = Vector256.Create(-context.world.contactSpeed);
             Vector256<float> oneW = Vector256<float>.One;
-            for (int wideIndex = startIndex; wideIndex < endIndex; wideIndex++)
+            for (int wideIndex = block.startIndex; wideIndex < block.startIndex + block.count; wideIndex++)
             {
                 ContactConstraintWide* c = constraints + wideIndex;
                 BodyStateW bA = GatherBodies(states, (int*)&c->indexA);
@@ -826,7 +791,6 @@ public class ContactSolverAVX : IContactSolverW
                     Vector256<float> dvx = Avx.Subtract(Avx.Subtract(bB.v.X, Avx.Multiply(bB.w, rB.Y)), Avx.Subtract(bA.v.X, Avx.Multiply(bA.w, rA.Y)));
                     Vector256<float> dvy = Avx.Subtract(Avx.Add(bB.v.Y, Avx.Multiply(bB.w, rB.X)), Avx.Add(bA.v.Y, Avx.Multiply(bA.w, rA.X)));
                     Vector256<float> vn = Avx.Add(Avx.Multiply(dvx, c->normal.X), Avx.Multiply(dvy, c->normal.Y));
-                    //different than 1, is this intended?
                     Vector256<float> negImpulse = Avx.Add(Avx.Multiply(c->normalMass2, Avx.Add(Avx.Multiply(pointMassScale, vn), bias)), Avx.Multiply(pointImpulseScale, c->normalImpulse2));
                     Vector256<float> newImpulse = Avx.Max(Avx.Subtract(c->normalImpulse2, negImpulse), Vector256<float>.Zero);
                     Vector256<float> impulse = Avx.Subtract(newImpulse, c->normalImpulse2);
@@ -848,85 +812,89 @@ public class ContactSolverAVX : IContactSolverW
                     };
                     bB.w = Avx.Add(bB.w, Avx.Multiply(c->invIB, Avx.Subtract(Avx.Multiply(rB.X, Py), Avx.Multiply(rB.Y, Px))));
                 }
-                Vector256<float> tangentX = c->normal.Y;
-                Vector256<float> tangentY = Avx.Subtract(Vector256<float>.Zero, c->normal.X);
+                if (!useBias)
                 {
-                    Vector2W rA = c->anchorA1, rB = c->anchorB1;
-                    Vector256<float> dvx = Avx.Subtract(Avx.Subtract(bB.v.X, Avx.Multiply(bB.w, rB.Y)), Avx.Subtract(bA.v.X, Avx.Multiply(bA.w, rA.Y)));
-                    Vector256<float> dvy = Avx.Subtract(Avx.Add(bB.v.Y, Avx.Multiply(bB.w, rB.X)), Avx.Add(bA.v.Y, Avx.Multiply(bA.w, rA.X)));
-                    Vector256<float> vt = Avx.Add(Avx.Multiply(dvx, tangentX), Avx.Multiply(dvy, tangentY));
-                    vt = Avx.Subtract(vt, c->tangentSpeed);
-                    Vector256<float> negImpulse = Avx.Multiply(c->tangentMass1, vt);
-                    Vector256<float> maxFriction = Avx.Multiply(c->friction, c->normalImpulse1);
-                    Vector256<float> newImpulse = Avx.Subtract(c->tangentImpulse1, negImpulse);
-                    //no symclamp?
-                    newImpulse = Avx.Max(Avx.Subtract(Vector256<float>.Zero, maxFriction), Avx.Min(newImpulse, maxFriction));
-                    Vector256<float> impulse = Avx.Subtract(newImpulse, c->tangentImpulse1);
-                    c->tangentImpulse1 = newImpulse;
-                    Vector256<float> Px = Avx.Multiply(impulse, tangentX);
-                    Vector256<float> Py = Avx.Multiply(impulse, tangentY);
-                    bA.v = new()
+                    if (!AllZeroW(c->rollingResistance))
                     {
-                        X = Avx.Subtract(bA.v.X, Avx.Multiply(c->invMassA, Px)),
-                        Y = Avx.Subtract(bA.v.Y, Avx.Multiply(c->invMassA, Py))
-                    };
-                    bA.w = Avx.Subtract(bA.w, Avx.Multiply(c->invIA, Avx.Subtract(Avx.Multiply(rA.X, Py), Avx.Multiply(rA.Y, Px))));
-                    bB.v = new()
+                        Vector256<float> deltaLambda = Avx.Multiply(c->rollingMass, Avx.Subtract(bA.w, bB.w));
+                        Vector256<float> lambda = c->rollingImpulse;
+                        Vector256<float> maxLambda = Avx.Multiply(c->rollingResistance, totalNormalImpulse);
+                        c->rollingImpulse = SymClampW(Avx.Add(lambda, deltaLambda), maxLambda);
+                        deltaLambda = Avx.Subtract(c->rollingImpulse, lambda);
+                        bA.w = Avx.Subtract(bA.w, Avx.Multiply(c->invIA, deltaLambda));
+                        bB.w = Avx.Add(bB.w, Avx.Multiply(c->invIB, deltaLambda));
+                    }
+                    Vector256<float> tangentX = c->normal.Y;
+                    Vector256<float> tangentY = Avx.Subtract(Vector256<float>.Zero, c->normal.X);
                     {
-                        X = Avx.Add(bB.v.X, Avx.Multiply(c->invMassB, Px)),
-                        Y = Avx.Add(bB.v.Y, Avx.Multiply(c->invMassB, Py))
-                    };
-                    bB.w = Avx.Add(bB.w, Avx.Multiply(c->invIB, Avx.Subtract(Avx.Multiply(rB.X, Py), Avx.Multiply(rB.Y, Px))));
-                }
-                {
-                    Vector2W rA = c->anchorA2, rB = c->anchorB2;
-                    Vector256<float> dvx = Avx.Subtract(Avx.Subtract(bB.v.X, Avx.Multiply(bB.w, rB.Y)), Avx.Subtract(bA.v.X, Avx.Multiply(bA.w, rA.Y)));
-                    Vector256<float> dvy = Avx.Subtract(Avx.Add(bB.v.Y, Avx.Multiply(bB.w, rB.X)), Avx.Add(bA.v.Y, Avx.Multiply(bA.w, rA.X)));
-                    Vector256<float> vt = Avx.Add(Avx.Multiply(dvx, tangentX), Avx.Multiply(dvy, tangentY));
-                    vt = Avx.Subtract(vt, c->tangentSpeed);
-                    Vector256<float> negImpulse = Avx.Multiply(c->tangentMass2, vt);
-                    Vector256<float> maxFriction = Avx.Multiply(c->friction, c->normalImpulse2);
-                    Vector256<float> newImpulse = Avx.Subtract(c->tangentImpulse2, negImpulse);
-                    newImpulse = Avx.Max(Avx.Subtract(Vector256<float>.Zero, maxFriction), Avx.Min(newImpulse, maxFriction));
-                    Vector256<float> impulse = Avx.Subtract(newImpulse, c->tangentImpulse2);
-                    c->tangentImpulse2 = newImpulse;
-                    Vector256<float> Px = Avx.Multiply(impulse, tangentX);
-                    Vector256<float> Py = Avx.Multiply(impulse, tangentY);
-                    bA.v = new()
+                        Vector2W rA = c->anchorA1, rB = c->anchorB1;
+                        Vector256<float> dvx = Avx.Subtract(Avx.Subtract(bB.v.X, Avx.Multiply(bB.w, rB.Y)), Avx.Subtract(bA.v.X, Avx.Multiply(bA.w, rA.Y)));
+                        Vector256<float> dvy = Avx.Subtract(Avx.Add(bB.v.Y, Avx.Multiply(bB.w, rB.X)), Avx.Add(bA.v.Y, Avx.Multiply(bA.w, rA.X)));
+                        Vector256<float> vt = Avx.Add(Avx.Multiply(dvx, tangentX), Avx.Multiply(dvy, tangentY));
+                        vt = Avx.Subtract(vt, c->tangentSpeed);
+                        Vector256<float> negImpulse = Avx.Multiply(c->tangentMass1, vt);
+                        Vector256<float> maxFriction = Avx.Multiply(c->friction, c->normalImpulse1);
+                        Vector256<float> newImpulse = Avx.Subtract(c->tangentImpulse1, negImpulse);
+                        //no symclamp?
+                        newImpulse = Avx.Max(Avx.Subtract(Vector256<float>.Zero, maxFriction), Avx.Min(newImpulse, maxFriction));
+                        Vector256<float> impulse = Avx.Subtract(newImpulse, c->tangentImpulse1);
+                        c->tangentImpulse1 = newImpulse;
+                        Vector256<float> Px = Avx.Multiply(impulse, tangentX);
+                        Vector256<float> Py = Avx.Multiply(impulse, tangentY);
+                        bA.v = new()
+                        {
+                            X = Avx.Subtract(bA.v.X, Avx.Multiply(c->invMassA, Px)),
+                            Y = Avx.Subtract(bA.v.Y, Avx.Multiply(c->invMassA, Py))
+                        };
+                        bA.w = Avx.Subtract(bA.w, Avx.Multiply(c->invIA, Avx.Subtract(Avx.Multiply(rA.X, Py), Avx.Multiply(rA.Y, Px))));
+                        bB.v = new()
+                        {
+                            X = Avx.Add(bB.v.X, Avx.Multiply(c->invMassB, Px)),
+                            Y = Avx.Add(bB.v.Y, Avx.Multiply(c->invMassB, Py))
+                        };
+                        bB.w = Avx.Add(bB.w, Avx.Multiply(c->invIB, Avx.Subtract(Avx.Multiply(rB.X, Py), Avx.Multiply(rB.Y, Px))));
+                    }
                     {
-                        X = Avx.Subtract(bA.v.X, Avx.Multiply(c->invMassA, Px)),
-                        Y = Avx.Subtract(bA.v.Y, Avx.Multiply(c->invMassA, Py))
-                    };
-                    bA.w = Avx.Subtract(bA.w, Avx.Multiply(c->invIA, Avx.Subtract(Avx.Multiply(rA.X, Py), Avx.Multiply(rA.Y, Px))));
-                    bB.v = new()
-                    {
-                        X = Avx.Add(bB.v.X, Avx.Multiply(c->invMassB, Px)),
-                        Y = Avx.Add(bB.v.Y, Avx.Multiply(c->invMassB, Py))
-                    };
-                    bB.w = Avx.Add(bB.w, Avx.Multiply(c->invIB, Avx.Subtract(Avx.Multiply(rB.X, Py), Avx.Multiply(rB.Y, Px))));
-                }
-                {
-                    Vector256<float> deltaLambda = Avx.Multiply(c->rollingMass, Avx.Subtract(bA.w, bB.w));
-                    Vector256<float> lambda = c->rollingImpulse;
-                    Vector256<float> maxLambda = Avx.Multiply(c->rollingResistance, totalNormalImpulse);
-                    c->rollingImpulse = SymClampW(Avx.Add(lambda, deltaLambda), maxLambda);
-                    deltaLambda = Avx.Subtract(c->rollingImpulse, lambda);
-                    bA.w = Avx.Subtract(bA.w, Avx.Multiply(c->invIA, deltaLambda));
-                    bB.w = Avx.Add(bB.w, Avx.Multiply(c->invIB, deltaLambda));
+                        Vector2W rA = c->anchorA2, rB = c->anchorB2;
+                        Vector256<float> dvx = Avx.Subtract(Avx.Subtract(bB.v.X, Avx.Multiply(bB.w, rB.Y)), Avx.Subtract(bA.v.X, Avx.Multiply(bA.w, rA.Y)));
+                        Vector256<float> dvy = Avx.Subtract(Avx.Add(bB.v.Y, Avx.Multiply(bB.w, rB.X)), Avx.Add(bA.v.Y, Avx.Multiply(bA.w, rA.X)));
+                        Vector256<float> vt = Avx.Add(Avx.Multiply(dvx, tangentX), Avx.Multiply(dvy, tangentY));
+                        vt = Avx.Subtract(vt, c->tangentSpeed);
+                        Vector256<float> negImpulse = Avx.Multiply(c->tangentMass2, vt);
+                        Vector256<float> maxFriction = Avx.Multiply(c->friction, c->normalImpulse2);
+                        Vector256<float> newImpulse = Avx.Subtract(c->tangentImpulse2, negImpulse);
+                        newImpulse = Avx.Max(Avx.Subtract(Vector256<float>.Zero, maxFriction), Avx.Min(newImpulse, maxFriction));
+                        Vector256<float> impulse = Avx.Subtract(newImpulse, c->tangentImpulse2);
+                        c->tangentImpulse2 = newImpulse;
+                        Vector256<float> Px = Avx.Multiply(impulse, tangentX);
+                        Vector256<float> Py = Avx.Multiply(impulse, tangentY);
+                        bA.v = new()
+                        {
+                            X = Avx.Subtract(bA.v.X, Avx.Multiply(c->invMassA, Px)),
+                            Y = Avx.Subtract(bA.v.Y, Avx.Multiply(c->invMassA, Py))
+                        };
+                        bA.w = Avx.Subtract(bA.w, Avx.Multiply(c->invIA, Avx.Subtract(Avx.Multiply(rA.X, Py), Avx.Multiply(rA.Y, Px))));
+                        bB.v = new()
+                        {
+                            X = Avx.Add(bB.v.X, Avx.Multiply(c->invMassB, Px)),
+                            Y = Avx.Add(bB.v.Y, Avx.Multiply(c->invMassB, Py))
+                        };
+                        bB.w = Avx.Add(bB.w, Avx.Multiply(c->invIB, Avx.Subtract(Avx.Multiply(rB.X, Py), Avx.Multiply(rB.Y, Px))));
+                    }
                 }
                 ScatterBodies(states, (int*)&c->indexA, ref bA);
                 ScatterBodies(states, (int*)&c->indexB, ref bB);
             }
         }
     }
-    public unsafe void ApplyRestitutionTask(int startIndex, int endIndex, StepContext context, int colorIndex)
+    public unsafe void ApplyRestitutionTask(ref SolverBlock block, StepContext context)
     {
         var states = context.states.Data;
-        var constraints = ((ContactConstraintsAVX)context.graph.colors[colorIndex].wideConstraints).wideConstraints;
+        var constraints = ((ContactConstraintsAVX)context.graph.colors[block.colorIndex].wideConstraints).wideConstraints;
         {
             Vector256<float> threshold = Vector256.Create(context.world.restitutionThreshold);
             Vector256<float> zero = Vector256<float>.Zero;
-            for (int i = startIndex; i < endIndex; i++)
+            for (int i = block.startIndex; i < block.startIndex + block.count; i++)
             {
                 ContactConstraintWide* c = constraints + i;
                 if (AllZeroW(c->restitution)) continue;
@@ -996,15 +964,27 @@ public class ContactSolverAVX : IContactSolverW
             }
         }
     }
-    public unsafe void StoreImpulsesTask(int startIndex, int endIndex, StepContext context)
+    public unsafe void StoreImpulsesTask(ref SolverBlock block, StepContext context, int workerIndex)
     {
-        ContactSim[] contacts = context.contacts;
-        Manifold dummy = new();
-        ContactConstraintWide* constraints = ((ContactConstraintsAVX)context.wideContactConstraints).wideConstraints;
+        var spans = context.contactPrepareSpans;
+        var wideBase = ((ContactConstraintsAVX)context.wideContactConstraints).wideConstraints;
+        TaskContext taskContext = context.world.taskContexts[workerIndex];
+        BitSet hitEventBitSet = taskContext.hitEventBitSet;
+        bool hasHitEvents = taskContext.hasHitEvents;
+        float negHitThreshold = -context.world.hitEventThreshold;
+        int wideIndex = block.startIndex;
+        int endWideIndex = block.startIndex + block.count;
+        int colorIndex = 0;
+        while (spans[colorIndex + 1].start <= wideIndex) colorIndex++;
+        while (wideIndex < endWideIndex)
         {
-            for (int constraintIndex = startIndex; constraintIndex < endIndex; constraintIndex++)
+            int colorWideEndIndex = Math.Min(spans[colorIndex + 1].start, endWideIndex);
+            int colorWideStart = spans[colorIndex].start;
+            int colorContactCount = spans[colorIndex].count;
+            var contactSims = spans[colorIndex].contacts;
+            for (; wideIndex < colorWideEndIndex; wideIndex++)
             {
-                ContactConstraintWide* c = constraints + constraintIndex;
+                ContactConstraintWide* c = wideBase + wideIndex;
                 float* rollingImpulse = (float*)&c->rollingImpulse;
                 float* normalImpulse1 = (float*)&c->normalImpulse1;
                 float* normalImpulse2 = (float*)&c->normalImpulse2;
@@ -1014,11 +994,14 @@ public class ContactSolverAVX : IContactSolverW
                 float* totalNormalImpulse2 = (float*)&c->totalNormalImpulse2;
                 float* normalVelocity1 = (float*)&c->relativeVelocity1;
                 float* normalVelocity2 = (float*)&c->relativeVelocity2;
-                int baseIndex = 8 * constraintIndex;
+                int localWideIndex = wideIndex - colorWideStart;
+                int baseIndex = 8 * localWideIndex;
                 for (int laneIndex = 0; laneIndex < 8; ++laneIndex)
                 {
-                    ref Manifold m = ref dummy;
-                    if (contacts[baseIndex + laneIndex] != null) m = ref contacts[baseIndex + laneIndex].manifold;
+                    int contactIndex = baseIndex + laneIndex;
+                    if (contactIndex >= colorContactCount) break;
+                    ContactSim contactSim = contactSims[contactIndex];
+                    ref Manifold m = ref contactSim.manifold;
                     m.rollingImpulse = rollingImpulse[laneIndex];
                     m.point0.normalImpulse = normalImpulse1[laneIndex];
                     m.point0.tangentImpulse = tangentImpulse1[laneIndex];
@@ -1028,8 +1011,24 @@ public class ContactSolverAVX : IContactSolverW
                     m.point1.tangentImpulse = tangentImpulse2[laneIndex];
                     m.point1.totalNormalImpulse = totalNormalImpulse2[laneIndex];
                     m.point1.normalVelocity = normalVelocity2[laneIndex];
+                    if (contactSim.simFlags.HasFlag(ContactSimFlags.EnableHitEvent))
+                    {
+                        if (contactSim.manifold.pointCount > 0 && m.point0.normalVelocity < negHitThreshold && m.point0.totalNormalImpulse > 0)
+                        {
+                            hitEventBitSet.SetBit(contactSim.contactId);
+                            hasHitEvents = true;
+                            break;
+                        }
+                        if (contactSim.manifold.pointCount > 1 && m.point1.normalVelocity < negHitThreshold && m.point1.totalNormalImpulse > 0)
+                        {
+                            hitEventBitSet.SetBit(contactSim.contactId);
+                            hasHitEvents = true;
+                            break;
+                        }
+                    }
                 }
             }
+            colorIndex++;
         }
     }
 }
@@ -1176,49 +1175,60 @@ public class ContactSolverNeon : IContactSolverW
         if (i4 != -1 && states[i4].flags.HasFlag(BodyFlags.Dynamic)) AdvSimd.Store((float*)(states + i4), Vector128.Create(r1.GetUpper().GetUpper(), r2.GetUpper().GetUpper()));*/
 
     }
-    public unsafe void PrepareContactsTask(int startIndex, int endIndex, StepContext context)
+    public unsafe void PrepareContactsTask(ref SolverBlock block, StepContext context)
     {
         World world = context.world;
-        ContactSim[] contacts = context.contacts;
-        var awakeStates = context.states;
+        var states = context.states;
         Softness contactSoftness = context.contactSoftness;
         Softness staticSoftness = context.staticSoftness;
+        var spans = context.contactPrepareSpans;
+        var wideBase = (ContactConstraintsNeon)context.wideContactConstraints;
         bool enableSoftening = world.enableContactSoftening;
         float warmStartScale = world.enableWarmStarting ? 1 : 0;
-        for (int i = startIndex; i < endIndex; i++)
+        int wideIndex = block.startIndex, endWideIndex = block.startIndex + block.count;
+        int colorIndex = 0;
+        while (spans[colorIndex + 1].start <= wideIndex) colorIndex++;
+        while (wideIndex < endWideIndex)
         {
-            var constraint = ((ContactConstraintsNeon)context.wideContactConstraints).wideConstraints + i;
-            for (int j = 0; j < 4; j++)
+            int colorWideStart = spans[colorIndex].start;
+            int colorWideEndIndex = Math.Min(spans[colorIndex + 1].start, endWideIndex);
+            int colorContactCount = spans[colorIndex].count;
+            var contactSims = spans[colorIndex].contacts;
+            for (; wideIndex < colorWideEndIndex; wideIndex++)
             {
-                ref ContactSim contactSim = ref contacts[4 * i + j];
-                if (contactSim != null)
+                var constraint = wideBase.wideConstraints + wideIndex;
+                int localWideIndex = wideIndex - colorWideStart;
+                for (int lane = 0; lane < 4; lane++)
                 {
-                    Manifold manifold = contactSim.manifold;
+                    int contactIndex = 4 * localWideIndex + lane;
+                    if (contactIndex >= colorContactCount) break;
+                    ContactSim contactSim = contactSims[contactIndex];
+                    ref Manifold manifold = ref contactSim.manifold;
                     int indexA = contactSim.bodySimIndexA, indexB = contactSim.bodySimIndexB;
 
-                    ((int*)&constraint->indexA)[j] = indexA + 1;
-                    ((int*)&constraint->indexB)[j] = indexB + 1;
+                    ((int*)&constraint->indexA)[lane] = indexA + 1;
+                    ((int*)&constraint->indexB)[lane] = indexB + 1;
                     Vector2 vA = Vector2.Zero;
                     float wA = 0, mA = contactSim.invMassA, iA = contactSim.invIA;
                     if (indexA != -1)
                     {
-                        vA = awakeStates[indexA].linearVelocity;
-                        wA = awakeStates[indexA].angularVelocity;
+                        vA = states[indexA].linearVelocity;
+                        wA = states[indexA].angularVelocity;
                     }
                     Vector2 vB = Vector2.Zero;
                     float wB = 0, mB = contactSim.invMassB, iB = contactSim.invIB;
                     if (indexB != -1)
                     {
-                        vB = awakeStates[indexB].linearVelocity;
-                        wB = awakeStates[indexB].angularVelocity;
+                        vB = states[indexB].linearVelocity;
+                        wB = states[indexB].angularVelocity;
                     }
-                    ((float*)&constraint->invMassA)[j] = mA;
-                    ((float*)&constraint->invMassB)[j] = mB;
-                    ((float*)&constraint->invIA)[j] = iA;
-                    ((float*)&constraint->invIB)[j] = iB;
+                    ((float*)&constraint->invMassA)[lane] = mA;
+                    ((float*)&constraint->invMassB)[lane] = mB;
+                    ((float*)&constraint->invIA)[lane] = iA;
+                    ((float*)&constraint->invIB)[lane] = iB;
                     {
                         float k = iA + iB;
-                        ((float*)&constraint->rollingMass)[j] = k > 0.0f ? 1.0f / k : 0.0f;
+                        ((float*)&constraint->rollingMass)[lane] = k > 0.0f ? 1.0f / k : 0.0f;
                     }
                     Softness soft = contactSoftness;
                     if (indexA == -1 || indexB == -1) soft = staticSoftness;
@@ -1232,18 +1242,18 @@ public class ContactSolverNeon : IContactSolverW
                     }
 
                     Vector2 normal = manifold.normal;
-                    ((float*)&constraint->normal.X)[j] = normal.x;
-                    ((float*)&constraint->normal.Y)[j] = normal.y;
+                    ((float*)&constraint->normal.X)[lane] = normal.x;
+                    ((float*)&constraint->normal.Y)[lane] = normal.y;
 
-                    ((float*)&constraint->friction)[j] = contactSim.friction;
-                    ((float*)&constraint->tangentSpeed)[j] = contactSim.tangentSpeed;
-                    ((float*)&constraint->restitution)[j] = contactSim.restitution;
-                    ((float*)&constraint->rollingResistance)[j] = contactSim.rollingResistance;
-                    ((float*)&constraint->rollingImpulse)[j] = warmStartScale * manifold.rollingImpulse;
+                    ((float*)&constraint->friction)[lane] = contactSim.friction;
+                    ((float*)&constraint->tangentSpeed)[lane] = contactSim.tangentSpeed;
+                    ((float*)&constraint->restitution)[lane] = contactSim.restitution;
+                    ((float*)&constraint->rollingResistance)[lane] = contactSim.rollingResistance;
+                    ((float*)&constraint->rollingImpulse)[lane] = warmStartScale * manifold.rollingImpulse;
 
-                    ((float*)&constraint->biasRate)[j] = soft.biasRate;
-                    ((float*)&constraint->massScale)[j] = soft.massScale;
-                    ((float*)&constraint->impulseScale)[j] = soft.impulseScale;
+                    ((float*)&constraint->biasRate)[lane] = soft.biasRate;
+                    ((float*)&constraint->massScale)[lane] = soft.massScale;
+                    ((float*)&constraint->impulseScale)[lane] = soft.impulseScale;
 
                     Vector2 tangent = normal.RightPerp();
 
@@ -1253,31 +1263,31 @@ public class ContactSolverNeon : IContactSolverW
                         Vector2 rA = mp.anchorA;
                         Vector2 rB = mp.anchorB;
 
-                        ((float*)&constraint->anchorA1.X)[j] = rA.x;
-                        ((float*)&constraint->anchorA1.Y)[j] = rA.y;
-                        ((float*)&constraint->anchorB1.X)[j] = rB.x;
-                        ((float*)&constraint->anchorB1.Y)[j] = rB.y;
+                        ((float*)&constraint->anchorA1.X)[lane] = rA.x;
+                        ((float*)&constraint->anchorA1.Y)[lane] = rA.y;
+                        ((float*)&constraint->anchorB1.X)[lane] = rB.x;
+                        ((float*)&constraint->anchorB1.Y)[lane] = rB.y;
 
-                        ((float*)&constraint->baseSeparation1)[j] = mp.separation - Vector2.Dot(rB - rA, normal);
+                        ((float*)&constraint->baseSeparation1)[lane] = mp.separation - Vector2.Dot(rB - rA, normal);
 
-                        ((float*)&constraint->normalImpulse1)[j] = warmStartScale * mp.normalImpulse;
-                        ((float*)&constraint->tangentImpulse1)[j] = warmStartScale * mp.tangentImpulse;
-                        ((float*)&constraint->totalNormalImpulse1)[j] = 0.0f;
+                        ((float*)&constraint->normalImpulse1)[lane] = warmStartScale * mp.normalImpulse;
+                        ((float*)&constraint->tangentImpulse1)[lane] = warmStartScale * mp.tangentImpulse;
+                        ((float*)&constraint->totalNormalImpulse1)[lane] = 0.0f;
 
                         float rnA = Vector2.Cross(rA, normal);
                         float rnB = Vector2.Cross(rB, normal);
                         float kNormal = mA + mB + iA * rnA * rnA + iB * rnB * rnB;
-                        ((float*)&constraint->normalMass1)[j] = kNormal > 0.0f ? 1.0f / kNormal : 0.0f;
+                        ((float*)&constraint->normalMass1)[lane] = kNormal > 0.0f ? 1.0f / kNormal : 0.0f;
 
                         float rtA = Vector2.Cross(rA, tangent);
                         float rtB = Vector2.Cross(rB, tangent);
                         float kTangent = mA + mB + iA * rtA * rtA + iB * rtB * rtB;
-                        ((float*)&constraint->tangentMass1)[j] = kTangent > 0.0f ? 1.0f / kTangent : 0.0f;
+                        ((float*)&constraint->tangentMass1)[lane] = kTangent > 0.0f ? 1.0f / kTangent : 0.0f;
 
                         // relative velocity for restitution
                         Vector2 vrA = vA + Vector2.CrossSV(wA, rA);
                         Vector2 vrB = vB + Vector2.CrossSV(wB, rB);
-                        ((float*)&constraint->relativeVelocity1)[j] = Vector2.Dot(normal, vrB - vrA);
+                        ((float*)&constraint->relativeVelocity1)[lane] = Vector2.Dot(normal, vrB - vrA);
                     }
 
                     int pointCount = manifold.pointCount;
@@ -1290,104 +1300,58 @@ public class ContactSolverNeon : IContactSolverW
                         Vector2 rA = mp.anchorA;
                         Vector2 rB = mp.anchorB;
 
-                        ((float*)&constraint->anchorA2.X)[j] = rA.x;
-                        ((float*)&constraint->anchorA2.Y)[j] = rA.y;
-                        ((float*)&constraint->anchorB2.X)[j] = rB.x;
-                        ((float*)&constraint->anchorB2.Y)[j] = rB.y;
+                        ((float*)&constraint->anchorA2.X)[lane] = rA.x;
+                        ((float*)&constraint->anchorA2.Y)[lane] = rA.y;
+                        ((float*)&constraint->anchorB2.X)[lane] = rB.x;
+                        ((float*)&constraint->anchorB2.Y)[lane] = rB.y;
 
-                        ((float*)&constraint->baseSeparation2)[j] = mp.separation - Vector2.Dot(rB - rA, normal);
+                        ((float*)&constraint->baseSeparation2)[lane] = mp.separation - Vector2.Dot(rB - rA, normal);
 
-                        ((float*)&constraint->normalImpulse2)[j] = warmStartScale * mp.normalImpulse;
-                        ((float*)&constraint->tangentImpulse2)[j] = warmStartScale * mp.tangentImpulse;
-                        ((float*)&constraint->totalNormalImpulse2)[j] = 0.0f;
+                        ((float*)&constraint->normalImpulse2)[lane] = warmStartScale * mp.normalImpulse;
+                        ((float*)&constraint->tangentImpulse2)[lane] = warmStartScale * mp.tangentImpulse;
+                        ((float*)&constraint->totalNormalImpulse2)[lane] = 0.0f;
 
                         float rnA = Vector2.Cross(rA, normal);
                         float rnB = Vector2.Cross(rB, normal);
                         float kNormal = mA + mB + iA * rnA * rnA + iB * rnB * rnB;
-                        ((float*)&constraint->normalMass2)[j] = kNormal > 0.0f ? 1.0f / kNormal : 0.0f;
+                        ((float*)&constraint->normalMass2)[lane] = kNormal > 0.0f ? 1.0f / kNormal : 0.0f;
 
                         float rtA = Vector2.Cross(rA, tangent);
                         float rtB = Vector2.Cross(rB, tangent);
                         float kTangent = mA + mB + iA * rtA * rtA + iB * rtB * rtB;
-                        ((float*)&constraint->tangentMass2)[j] = kTangent > 0.0f ? 1.0f / kTangent : 0.0f;
+                        ((float*)&constraint->tangentMass2)[lane] = kTangent > 0.0f ? 1.0f / kTangent : 0.0f;
 
                         // relative velocity for restitution
                         Vector2 vrA = vA + Vector2.CrossSV(wA, rA);
                         Vector2 vrB = vB + Vector2.CrossSV(wB, rB);
-                        ((float*)&constraint->relativeVelocity2)[j] = Vector2.Dot(normal, vrB - vrA);
+                        ((float*)&constraint->relativeVelocity2)[lane] = Vector2.Dot(normal, vrB - vrA);
                     }
                     else
                     {
                         // dummy data that has no effect
-                        ((float*)&constraint->baseSeparation2)[j] = 0.0f;
-                        ((float*)&constraint->normalImpulse2)[j] = 0.0f;
-                        ((float*)&constraint->tangentImpulse2)[j] = 0.0f;
-                        ((float*)&constraint->totalNormalImpulse2)[j] = 0.0f;
-                        ((float*)&constraint->anchorA2.X)[j] = 0.0f;
-                        ((float*)&constraint->anchorA2.Y)[j] = 0.0f;
-                        ((float*)&constraint->anchorB2.X)[j] = 0.0f;
-                        ((float*)&constraint->anchorB2.Y)[j] = 0.0f;
-                        ((float*)&constraint->normalMass2)[j] = 0.0f;
-                        ((float*)&constraint->tangentMass2)[j] = 0.0f;
-                        ((float*)&constraint->relativeVelocity2)[j] = 0.0f;
+                        ((float*)&constraint->baseSeparation2)[lane] = 0.0f;
+                        ((float*)&constraint->normalImpulse2)[lane] = 0.0f;
+                        ((float*)&constraint->tangentImpulse2)[lane] = 0.0f;
+                        ((float*)&constraint->totalNormalImpulse2)[lane] = 0.0f;
+                        ((float*)&constraint->anchorA2.X)[lane] = 0.0f;
+                        ((float*)&constraint->anchorA2.Y)[lane] = 0.0f;
+                        ((float*)&constraint->anchorB2.X)[lane] = 0.0f;
+                        ((float*)&constraint->anchorB2.Y)[lane] = 0.0f;
+                        ((float*)&constraint->normalMass2)[lane] = 0.0f;
+                        ((float*)&constraint->tangentMass2)[lane] = 0.0f;
+                        ((float*)&constraint->relativeVelocity2)[lane] = 0.0f;
                     }
                 }
-                else
-                {
-                    ((int*)&constraint->indexA)[j] = 0;
-                    ((int*)&constraint->indexB)[j] = 0;
-
-                    ((float*)&constraint->invMassA)[j] = 0.0f;
-                    ((float*)&constraint->invMassB)[j] = 0.0f;
-                    ((float*)&constraint->invIA)[j] = 0.0f;
-                    ((float*)&constraint->invIB)[j] = 0.0f;
-
-                    ((float*)&constraint->normal.X)[j] = 0.0f;
-                    ((float*)&constraint->normal.Y)[j] = 0.0f;
-                    ((float*)&constraint->friction)[j] = 0.0f;
-                    ((float*)&constraint->tangentSpeed)[j] = 0.0f;
-                    ((float*)&constraint->rollingResistance)[j] = 0.0f;
-                    ((float*)&constraint->rollingMass)[j] = 0.0f;
-                    ((float*)&constraint->rollingImpulse)[j] = 0.0f;
-                    ((float*)&constraint->biasRate)[j] = 0.0f;
-                    ((float*)&constraint->massScale)[j] = 0.0f;
-                    ((float*)&constraint->impulseScale)[j] = 0.0f;
-
-                    ((float*)&constraint->anchorA1.X)[j] = 0.0f;
-                    ((float*)&constraint->anchorA1.Y)[j] = 0.0f;
-                    ((float*)&constraint->anchorB1.X)[j] = 0.0f;
-                    ((float*)&constraint->anchorB1.Y)[j] = 0.0f;
-                    ((float*)&constraint->baseSeparation1)[j] = 0.0f;
-                    ((float*)&constraint->normalImpulse1)[j] = 0.0f;
-                    ((float*)&constraint->tangentImpulse1)[j] = 0.0f;
-                    ((float*)&constraint->totalNormalImpulse1)[j] = 0.0f;
-                    ((float*)&constraint->normalMass1)[j] = 0.0f;
-                    ((float*)&constraint->tangentMass1)[j] = 0.0f;
-
-                    ((float*)&constraint->anchorA2.X)[j] = 0.0f;
-                    ((float*)&constraint->anchorA2.Y)[j] = 0.0f;
-                    ((float*)&constraint->anchorB2.X)[j] = 0.0f;
-                    ((float*)&constraint->anchorB2.Y)[j] = 0.0f;
-                    ((float*)&constraint->baseSeparation2)[j] = 0.0f;
-                    ((float*)&constraint->normalImpulse2)[j] = 0.0f;
-                    ((float*)&constraint->tangentImpulse2)[j] = 0.0f;
-                    ((float*)&constraint->totalNormalImpulse2)[j] = 0.0f;
-                    ((float*)&constraint->normalMass2)[j] = 0.0f;
-                    ((float*)&constraint->tangentMass2)[j] = 0.0f;
-
-                    ((float*)&constraint->restitution)[j] = 0.0f;
-                    ((float*)&constraint->relativeVelocity1)[j] = 0.0f;
-                    ((float*)&constraint->relativeVelocity2)[j] = 0.0f;
-                }
             }
+            colorIndex++;
         }
     }
-    public unsafe void WarmStartContactsTask(int startIndex, int endIndex, StepContext context, int colorIndex)
+    public unsafe void WarmStartContactsTask(ref SolverBlock block, StepContext context)
     {
         var states = context.states.Data;
-        var constraints = ((ContactConstraintsNeon)context.graph.colors[colorIndex].wideConstraints).wideConstraints;
+        var constraints = ((ContactConstraintsNeon)context.graph.colors[block.colorIndex].wideConstraints).wideConstraints;
         {
-            for (int wideIndex = startIndex; wideIndex < endIndex; wideIndex++)
+            for (int wideIndex = block.startIndex; wideIndex < block.startIndex + block.count; wideIndex++)
             {
                 ContactConstraintWide* c = constraints + wideIndex;
                 BodyStateW bA = GatherBodies(states, (int*)&c->indexA);
@@ -1443,17 +1407,17 @@ public class ContactSolverNeon : IContactSolverW
             }
         }
     }
-    public unsafe void SolveContactsTask(int startIndex, int endIndex, StepContext context, int colorIndex, bool useBias)
+    public unsafe void SolveContactsTask(ref SolverBlock block, StepContext context, bool useBias)
     {
         var states = context.states.Data;
-        var constraints = ((ContactConstraintsNeon)context.graph.colors[colorIndex].wideConstraints).wideConstraints;
+        var constraints = ((ContactConstraintsNeon)context.graph.colors[block.colorIndex].wideConstraints).wideConstraints;
         {
             Vector128<float> inv_h = Vector128.Create(context.inv_h);
             Vector128<float> contactSpeed = Vector128.Create(-context.world.contactSpeed);
             Vector128<float> oneW = Vector128<float>.One;
-            for (int i = startIndex; i < endIndex; i++)
+            for (int wideIndex = block.startIndex; wideIndex < block.startIndex + block.count; wideIndex++)
             {
-                ContactConstraintWide* c = constraints + i;
+                ContactConstraintWide* c = constraints + wideIndex;
                 BodyStateW bA = GatherBodies(states, (int*)&c->indexA);
                 BodyStateW bB = GatherBodies(states, (int*)&c->indexB);
                 Vector128<float> biasRate, massScale, impulseScale;
@@ -1518,7 +1482,6 @@ public class ContactSolverNeon : IContactSolverW
                     Vector128<float> dvx = AdvSimd.Subtract(AdvSimd.Subtract(bB.v.X, AdvSimd.Multiply(bB.w, rB.Y)), AdvSimd.Subtract(bA.v.X, AdvSimd.Multiply(bA.w, rA.Y)));
                     Vector128<float> dvy = AdvSimd.Subtract(AdvSimd.Add(bB.v.Y, AdvSimd.Multiply(bB.w, rB.X)), AdvSimd.Add(bA.v.Y, AdvSimd.Multiply(bA.w, rA.X)));
                     Vector128<float> vn = AdvSimd.Add(AdvSimd.Multiply(dvx, c->normal.X), AdvSimd.Multiply(dvy, c->normal.Y));
-                    //different than 1, is this intended?
                     Vector128<float> negImpulse = AdvSimd.Add(AdvSimd.Multiply(c->normalMass2, AdvSimd.Add(AdvSimd.Multiply(pointMassScale, vn), bias)), AdvSimd.Multiply(pointImpulseScale, c->normalImpulse2));
                     Vector128<float> newImpulse = AdvSimd.Max(AdvSimd.Subtract(c->normalImpulse2, negImpulse), Vector128<float>.Zero);
                     Vector128<float> impulse = AdvSimd.Subtract(newImpulse, c->normalImpulse2);
@@ -1540,85 +1503,89 @@ public class ContactSolverNeon : IContactSolverW
                     };
                     bB.w = AdvSimd.Add(bB.w, AdvSimd.Multiply(c->invIB, AdvSimd.Subtract(AdvSimd.Multiply(rB.X, Py), AdvSimd.Multiply(rB.Y, Px))));
                 }
-                Vector128<float> tangentX = c->normal.Y;
-                Vector128<float> tangentY = AdvSimd.Subtract(Vector128<float>.Zero, c->normal.X);
+                if (!useBias)
                 {
-                    Vector2W rA = c->anchorA1, rB = c->anchorB1;
-                    Vector128<float> dvx = AdvSimd.Subtract(AdvSimd.Subtract(bB.v.X, AdvSimd.Multiply(bB.w, rB.Y)), AdvSimd.Subtract(bA.v.X, AdvSimd.Multiply(bA.w, rA.Y)));
-                    Vector128<float> dvy = AdvSimd.Subtract(AdvSimd.Add(bB.v.Y, AdvSimd.Multiply(bB.w, rB.X)), AdvSimd.Add(bA.v.Y, AdvSimd.Multiply(bA.w, rA.X)));
-                    Vector128<float> vt = AdvSimd.Add(AdvSimd.Multiply(dvx, tangentX), AdvSimd.Multiply(dvy, tangentY));
-                    vt = AdvSimd.Subtract(vt, c->tangentSpeed);
-                    Vector128<float> negImpulse = AdvSimd.Multiply(c->tangentMass1, vt);
-                    Vector128<float> maxFriction = AdvSimd.Multiply(c->friction, c->normalImpulse1);
-                    Vector128<float> newImpulse = AdvSimd.Subtract(c->tangentImpulse1, negImpulse);
-                    //no symclamp?
-                    newImpulse = AdvSimd.Max(AdvSimd.Subtract(Vector128<float>.Zero, maxFriction), AdvSimd.Min(newImpulse, maxFriction));
-                    Vector128<float> impulse = AdvSimd.Subtract(newImpulse, c->tangentImpulse1);
-                    c->tangentImpulse1 = newImpulse;
-                    Vector128<float> Px = AdvSimd.Multiply(impulse, tangentX);
-                    Vector128<float> Py = AdvSimd.Multiply(impulse, tangentY);
-                    bA.v = new()
+                    if (!AllZeroW(c->rollingResistance))
                     {
-                        X = AdvSimd.Subtract(bA.v.X, AdvSimd.Multiply(c->invMassA, Px)),
-                        Y = AdvSimd.Subtract(bA.v.Y, AdvSimd.Multiply(c->invMassA, Py))
-                    };
-                    bA.w = AdvSimd.Subtract(bA.w, AdvSimd.Multiply(c->invIA, AdvSimd.Subtract(AdvSimd.Multiply(rA.X, Py), AdvSimd.Multiply(rA.Y, Px))));
-                    bB.v = new()
+                        Vector128<float> deltaLambda = AdvSimd.Multiply(c->rollingMass, AdvSimd.Subtract(bA.w, bB.w));
+                        Vector128<float> lambda = c->rollingImpulse;
+                        Vector128<float> maxLambda = AdvSimd.Multiply(c->rollingResistance, totalNormalImpulse);
+                        c->rollingImpulse = SymClampW(AdvSimd.Add(lambda, deltaLambda), maxLambda);
+                        deltaLambda = AdvSimd.Subtract(c->rollingImpulse, lambda);
+                        bA.w = AdvSimd.Subtract(bA.w, AdvSimd.Multiply(c->invIA, deltaLambda));
+                        bB.w = AdvSimd.Add(bB.w, AdvSimd.Multiply(c->invIB, deltaLambda));
+                    }
+                    Vector128<float> tangentX = c->normal.Y;
+                    Vector128<float> tangentY = AdvSimd.Subtract(Vector128<float>.Zero, c->normal.X);
                     {
-                        X = AdvSimd.Add(bB.v.X, AdvSimd.Multiply(c->invMassB, Px)),
-                        Y = AdvSimd.Add(bB.v.Y, AdvSimd.Multiply(c->invMassB, Py))
-                    };
-                    bB.w = AdvSimd.Add(bB.w, AdvSimd.Multiply(c->invIB, AdvSimd.Subtract(AdvSimd.Multiply(rB.X, Py), AdvSimd.Multiply(rB.Y, Px))));
-                }
-                {
-                    Vector2W rA = c->anchorA2, rB = c->anchorB2;
-                    Vector128<float> dvx = AdvSimd.Subtract(AdvSimd.Subtract(bB.v.X, AdvSimd.Multiply(bB.w, rB.Y)), AdvSimd.Subtract(bA.v.X, AdvSimd.Multiply(bA.w, rA.Y)));
-                    Vector128<float> dvy = AdvSimd.Subtract(AdvSimd.Add(bB.v.Y, AdvSimd.Multiply(bB.w, rB.X)), AdvSimd.Add(bA.v.Y, AdvSimd.Multiply(bA.w, rA.X)));
-                    Vector128<float> vt = AdvSimd.Add(AdvSimd.Multiply(dvx, tangentX), AdvSimd.Multiply(dvy, tangentY));
-                    vt = AdvSimd.Subtract(vt, c->tangentSpeed);
-                    Vector128<float> negImpulse = AdvSimd.Multiply(c->tangentMass2, vt);
-                    Vector128<float> maxFriction = AdvSimd.Multiply(c->friction, c->normalImpulse2);
-                    Vector128<float> newImpulse = AdvSimd.Subtract(c->tangentImpulse2, negImpulse);
-                    newImpulse = AdvSimd.Max(AdvSimd.Subtract(Vector128<float>.Zero, maxFriction), AdvSimd.Min(newImpulse, maxFriction));
-                    Vector128<float> impulse = AdvSimd.Subtract(newImpulse, c->tangentImpulse2);
-                    c->tangentImpulse2 = newImpulse;
-                    Vector128<float> Px = AdvSimd.Multiply(impulse, tangentX);
-                    Vector128<float> Py = AdvSimd.Multiply(impulse, tangentY);
-                    bA.v = new()
+                        Vector2W rA = c->anchorA1, rB = c->anchorB1;
+                        Vector128<float> dvx = AdvSimd.Subtract(AdvSimd.Subtract(bB.v.X, AdvSimd.Multiply(bB.w, rB.Y)), AdvSimd.Subtract(bA.v.X, AdvSimd.Multiply(bA.w, rA.Y)));
+                        Vector128<float> dvy = AdvSimd.Subtract(AdvSimd.Add(bB.v.Y, AdvSimd.Multiply(bB.w, rB.X)), AdvSimd.Add(bA.v.Y, AdvSimd.Multiply(bA.w, rA.X)));
+                        Vector128<float> vt = AdvSimd.Add(AdvSimd.Multiply(dvx, tangentX), AdvSimd.Multiply(dvy, tangentY));
+                        vt = AdvSimd.Subtract(vt, c->tangentSpeed);
+                        Vector128<float> negImpulse = AdvSimd.Multiply(c->tangentMass1, vt);
+                        Vector128<float> maxFriction = AdvSimd.Multiply(c->friction, c->normalImpulse1);
+                        Vector128<float> newImpulse = AdvSimd.Subtract(c->tangentImpulse1, negImpulse);
+                        //no symclamp?
+                        newImpulse = AdvSimd.Max(AdvSimd.Subtract(Vector128<float>.Zero, maxFriction), AdvSimd.Min(newImpulse, maxFriction));
+                        Vector128<float> impulse = AdvSimd.Subtract(newImpulse, c->tangentImpulse1);
+                        c->tangentImpulse1 = newImpulse;
+                        Vector128<float> Px = AdvSimd.Multiply(impulse, tangentX);
+                        Vector128<float> Py = AdvSimd.Multiply(impulse, tangentY);
+                        bA.v = new()
+                        {
+                            X = AdvSimd.Subtract(bA.v.X, AdvSimd.Multiply(c->invMassA, Px)),
+                            Y = AdvSimd.Subtract(bA.v.Y, AdvSimd.Multiply(c->invMassA, Py))
+                        };
+                        bA.w = AdvSimd.Subtract(bA.w, AdvSimd.Multiply(c->invIA, AdvSimd.Subtract(AdvSimd.Multiply(rA.X, Py), AdvSimd.Multiply(rA.Y, Px))));
+                        bB.v = new()
+                        {
+                            X = AdvSimd.Add(bB.v.X, AdvSimd.Multiply(c->invMassB, Px)),
+                            Y = AdvSimd.Add(bB.v.Y, AdvSimd.Multiply(c->invMassB, Py))
+                        };
+                        bB.w = AdvSimd.Add(bB.w, AdvSimd.Multiply(c->invIB, AdvSimd.Subtract(AdvSimd.Multiply(rB.X, Py), AdvSimd.Multiply(rB.Y, Px))));
+                    }
                     {
-                        X = AdvSimd.Subtract(bA.v.X, AdvSimd.Multiply(c->invMassA, Px)),
-                        Y = AdvSimd.Subtract(bA.v.Y, AdvSimd.Multiply(c->invMassA, Py))
-                    };
-                    bA.w = AdvSimd.Subtract(bA.w, AdvSimd.Multiply(c->invIA, AdvSimd.Subtract(AdvSimd.Multiply(rA.X, Py), AdvSimd.Multiply(rA.Y, Px))));
-                    bB.v = new()
-                    {
-                        X = AdvSimd.Add(bB.v.X, AdvSimd.Multiply(c->invMassB, Px)),
-                        Y = AdvSimd.Add(bB.v.Y, AdvSimd.Multiply(c->invMassB, Py))
-                    };
-                    bB.w = AdvSimd.Add(bB.w, AdvSimd.Multiply(c->invIB, AdvSimd.Subtract(AdvSimd.Multiply(rB.X, Py), AdvSimd.Multiply(rB.Y, Px))));
-                }
-                {
-                    Vector128<float> deltaLambda = AdvSimd.Multiply(c->rollingMass, AdvSimd.Subtract(bA.w, bB.w));
-                    Vector128<float> lambda = c->rollingImpulse;
-                    Vector128<float> maxLambda = AdvSimd.Multiply(c->rollingResistance, totalNormalImpulse);
-                    c->rollingImpulse = SymClampW(AdvSimd.Add(lambda, deltaLambda), maxLambda);
-                    deltaLambda = AdvSimd.Subtract(c->rollingImpulse, lambda);
-                    bA.w = AdvSimd.Subtract(bA.w, AdvSimd.Multiply(c->invIA, deltaLambda));
-                    bB.w = AdvSimd.Add(bB.w, AdvSimd.Multiply(c->invIB, deltaLambda));
+                        Vector2W rA = c->anchorA2, rB = c->anchorB2;
+                        Vector128<float> dvx = AdvSimd.Subtract(AdvSimd.Subtract(bB.v.X, AdvSimd.Multiply(bB.w, rB.Y)), AdvSimd.Subtract(bA.v.X, AdvSimd.Multiply(bA.w, rA.Y)));
+                        Vector128<float> dvy = AdvSimd.Subtract(AdvSimd.Add(bB.v.Y, AdvSimd.Multiply(bB.w, rB.X)), AdvSimd.Add(bA.v.Y, AdvSimd.Multiply(bA.w, rA.X)));
+                        Vector128<float> vt = AdvSimd.Add(AdvSimd.Multiply(dvx, tangentX), AdvSimd.Multiply(dvy, tangentY));
+                        vt = AdvSimd.Subtract(vt, c->tangentSpeed);
+                        Vector128<float> negImpulse = AdvSimd.Multiply(c->tangentMass2, vt);
+                        Vector128<float> maxFriction = AdvSimd.Multiply(c->friction, c->normalImpulse2);
+                        Vector128<float> newImpulse = AdvSimd.Subtract(c->tangentImpulse2, negImpulse);
+                        newImpulse = AdvSimd.Max(AdvSimd.Subtract(Vector128<float>.Zero, maxFriction), AdvSimd.Min(newImpulse, maxFriction));
+                        Vector128<float> impulse = AdvSimd.Subtract(newImpulse, c->tangentImpulse2);
+                        c->tangentImpulse2 = newImpulse;
+                        Vector128<float> Px = AdvSimd.Multiply(impulse, tangentX);
+                        Vector128<float> Py = AdvSimd.Multiply(impulse, tangentY);
+                        bA.v = new()
+                        {
+                            X = AdvSimd.Subtract(bA.v.X, AdvSimd.Multiply(c->invMassA, Px)),
+                            Y = AdvSimd.Subtract(bA.v.Y, AdvSimd.Multiply(c->invMassA, Py))
+                        };
+                        bA.w = AdvSimd.Subtract(bA.w, AdvSimd.Multiply(c->invIA, AdvSimd.Subtract(AdvSimd.Multiply(rA.X, Py), AdvSimd.Multiply(rA.Y, Px))));
+                        bB.v = new()
+                        {
+                            X = AdvSimd.Add(bB.v.X, AdvSimd.Multiply(c->invMassB, Px)),
+                            Y = AdvSimd.Add(bB.v.Y, AdvSimd.Multiply(c->invMassB, Py))
+                        };
+                        bB.w = AdvSimd.Add(bB.w, AdvSimd.Multiply(c->invIB, AdvSimd.Subtract(AdvSimd.Multiply(rB.X, Py), AdvSimd.Multiply(rB.Y, Px))));
+                    }
                 }
                 ScatterBodies(states, (int*)&c->indexA, ref bA);
                 ScatterBodies(states, (int*)&c->indexB, ref bB);
             }
         }
     }
-    public unsafe void ApplyRestitutionTask(int startIndex, int endIndex, StepContext context, int colorIndex)
+    public unsafe void ApplyRestitutionTask(ref SolverBlock block, StepContext context)
     {
         var states = context.states.Data;
-        var constraints = ((ContactConstraintsNeon)context.graph.colors[colorIndex].wideConstraints).wideConstraints;
+        var constraints = ((ContactConstraintsNeon)context.graph.colors[block.colorIndex].wideConstraints).wideConstraints;
         {
             Vector128<float> threshold = Vector128.Create(context.world.restitutionThreshold);
             Vector128<float> zero = Vector128<float>.Zero;
-            for (int i = startIndex; i < endIndex; i++)
+            for (int i = block.startIndex; i < block.startIndex + block.count; i++)
             {
                 ContactConstraintWide* c = constraints + i;
                 if (AllZeroW(c->restitution)) continue;
@@ -1688,15 +1655,27 @@ public class ContactSolverNeon : IContactSolverW
             }
         }
     }
-    public unsafe void StoreImpulsesTask(int startIndex, int endIndex, StepContext context)
+    public unsafe void StoreImpulsesTask(ref SolverBlock block, StepContext context, int workerIndex)
     {
-        ContactSim[] contacts = context.contacts;
-        Manifold dummy = new();
-        ContactConstraintWide* constraints = ((ContactConstraintsNeon)context.wideContactConstraints).wideConstraints;
+        var spans = context.contactPrepareSpans;
+        var wideBase = ((ContactConstraintsNeon)context.wideContactConstraints).wideConstraints;
+        TaskContext taskContext = context.world.taskContexts[workerIndex];
+        BitSet hitEventBitSet = taskContext.hitEventBitSet;
+        bool hasHitEvents = taskContext.hasHitEvents;
+        float negHitThreshold = -context.world.hitEventThreshold;
+        int wideIndex = block.startIndex;
+        int endWideIndex = block.startIndex + block.count;
+        int colorIndex = 0;
+        while (spans[colorIndex + 1].start <= wideIndex) colorIndex++;
+        while (wideIndex < endWideIndex)
         {
-            for (int constraintIndex = startIndex; constraintIndex < endIndex; constraintIndex++)
+            int colorWideEndIndex = Math.Min(spans[colorIndex + 1].start, endWideIndex);
+            int colorWideStart = spans[colorIndex].start;
+            int colorContactCount = spans[colorIndex].count;
+            var contactSims = spans[colorIndex].contacts;
+            for (; wideIndex < colorWideEndIndex; wideIndex++)
             {
-                ContactConstraintWide* c = constraints + constraintIndex;
+                ContactConstraintWide* c = wideBase + wideIndex;
                 float* rollingImpulse = (float*)&c->rollingImpulse;
                 float* normalImpulse1 = (float*)&c->normalImpulse1;
                 float* normalImpulse2 = (float*)&c->normalImpulse2;
@@ -1706,11 +1685,14 @@ public class ContactSolverNeon : IContactSolverW
                 float* totalNormalImpulse2 = (float*)&c->totalNormalImpulse2;
                 float* normalVelocity1 = (float*)&c->relativeVelocity1;
                 float* normalVelocity2 = (float*)&c->relativeVelocity2;
-                int baseIndex = 4 * constraintIndex;
+                int localWideIndex = wideIndex - colorWideStart;
+                int baseIndex = 8 * localWideIndex;
                 for (int laneIndex = 0; laneIndex < 4; ++laneIndex)
                 {
-                    ref Manifold m = ref dummy;
-                    if (contacts[baseIndex + laneIndex] != null) m = ref contacts[baseIndex + laneIndex].manifold;
+                    int contactIndex = baseIndex + laneIndex;
+                    if (contactIndex >= colorContactCount) break;
+                    ContactSim contactSim = contactSims[contactIndex];
+                    ref Manifold m = ref contactSim.manifold;
                     m.rollingImpulse = rollingImpulse[laneIndex];
                     m.point0.normalImpulse = normalImpulse1[laneIndex];
                     m.point0.tangentImpulse = tangentImpulse1[laneIndex];
@@ -1720,8 +1702,24 @@ public class ContactSolverNeon : IContactSolverW
                     m.point1.tangentImpulse = tangentImpulse2[laneIndex];
                     m.point1.totalNormalImpulse = totalNormalImpulse2[laneIndex];
                     m.point1.normalVelocity = normalVelocity2[laneIndex];
+                    if (contactSim.simFlags.HasFlag(ContactSimFlags.EnableHitEvent))
+                    {
+                        if (contactSim.manifold.pointCount > 0 && m.point0.normalVelocity < negHitThreshold && m.point0.totalNormalImpulse > 0)
+                        {
+                            hitEventBitSet.SetBit(contactSim.contactId);
+                            hasHitEvents = true;
+                            break;
+                        }
+                        if (contactSim.manifold.pointCount > 1 && m.point1.normalVelocity < negHitThreshold && m.point1.totalNormalImpulse > 0)
+                        {
+                            hitEventBitSet.SetBit(contactSim.contactId);
+                            hasHitEvents = true;
+                            break;
+                        }
+                    }
                 }
             }
+            colorIndex++;
         }
     }
 }
@@ -1821,49 +1819,60 @@ public class ContactSolverSSE : IContactSolverW
         if (i3 != -1 && states[i3].flags.HasFlag(BodyFlags.Dynamic)) Sse.StoreAligned((float*)(states + i3), Sse.Shuffle(t2, t4, 0b01000100));
         if (i4 != -1 && states[i4].flags.HasFlag(BodyFlags.Dynamic)) Sse.StoreAligned((float*)(states + i4), Sse.Shuffle(t2, t4, 0b11101110));
     }
-    public unsafe void PrepareContactsTask(int startIndex, int endIndex, StepContext context)
+    public unsafe void PrepareContactsTask(ref SolverBlock block, StepContext context)
     {
         World world = context.world;
-        ContactSim[] contacts = context.contacts;
-        var awakeStates = context.states;
+        var states = context.states;
         Softness contactSoftness = context.contactSoftness;
         Softness staticSoftness = context.staticSoftness;
+        var spans = context.contactPrepareSpans;
+        var wideBase = (ContactConstraintsSSE)context.wideContactConstraints;
         bool enableSoftening = world.enableContactSoftening;
         float warmStartScale = world.enableWarmStarting ? 1 : 0;
-        for (int i = startIndex; i < endIndex; i++)
+        int wideIndex = block.startIndex, endWideIndex = block.startIndex + block.count;
+        int colorIndex = 0;
+        while (spans[colorIndex + 1].start <= wideIndex) colorIndex++;
+        while (wideIndex < endWideIndex)
         {
-            var constraint = ((ContactConstraintsSSE)context.wideContactConstraints).wideConstraints + i;
-            for (int j = 0; j < 4; j++)
+            int colorWideStart = spans[colorIndex].start;
+            int colorWideEndIndex = Math.Min(spans[colorIndex + 1].start, endWideIndex);
+            int colorContactCount = spans[colorIndex].count;
+            var contactSims = spans[colorIndex].contacts;
+            for (; wideIndex < colorWideEndIndex; wideIndex++)
             {
-                ref ContactSim contactSim = ref contacts[4 * i + j];
-                if (contactSim != null)
+                var constraint = wideBase.wideConstraints + wideIndex;
+                int localWideIndex = wideIndex - colorWideStart;
+                for (int lane = 0; lane < 4; lane++)
                 {
-                    Manifold manifold = contactSim.manifold;
+                    int contactIndex = 4 * localWideIndex + lane;
+                    if (contactIndex >= colorContactCount) break;
+                    ContactSim contactSim = contactSims[contactIndex];
+                    ref Manifold manifold = ref contactSim.manifold;
                     int indexA = contactSim.bodySimIndexA, indexB = contactSim.bodySimIndexB;
 
-                    ((int*)&constraint->indexA)[j] = indexA + 1;
-                    ((int*)&constraint->indexB)[j] = indexB + 1;
+                    ((int*)&constraint->indexA)[lane] = indexA + 1;
+                    ((int*)&constraint->indexB)[lane] = indexB + 1;
                     Vector2 vA = Vector2.Zero;
                     float wA = 0, mA = contactSim.invMassA, iA = contactSim.invIA;
                     if (indexA != -1)
                     {
-                        vA = awakeStates[indexA].linearVelocity;
-                        wA = awakeStates[indexA].angularVelocity;
+                        vA = states[indexA].linearVelocity;
+                        wA = states[indexA].angularVelocity;
                     }
                     Vector2 vB = Vector2.Zero;
                     float wB = 0, mB = contactSim.invMassB, iB = contactSim.invIB;
                     if (indexB != -1)
                     {
-                        vB = awakeStates[indexB].linearVelocity;
-                        wB = awakeStates[indexB].angularVelocity;
+                        vB = states[indexB].linearVelocity;
+                        wB = states[indexB].angularVelocity;
                     }
-                    ((float*)&constraint->invMassA)[j] = mA;
-                    ((float*)&constraint->invMassB)[j] = mB;
-                    ((float*)&constraint->invIA)[j] = iA;
-                    ((float*)&constraint->invIB)[j] = iB;
+                    ((float*)&constraint->invMassA)[lane] = mA;
+                    ((float*)&constraint->invMassB)[lane] = mB;
+                    ((float*)&constraint->invIA)[lane] = iA;
+                    ((float*)&constraint->invIB)[lane] = iB;
                     {
                         float k = iA + iB;
-                        ((float*)&constraint->rollingMass)[j] = k > 0.0f ? 1.0f / k : 0.0f;
+                        ((float*)&constraint->rollingMass)[lane] = k > 0.0f ? 1.0f / k : 0.0f;
                     }
                     Softness soft = contactSoftness;
                     if (indexA == -1 || indexB == -1) soft = staticSoftness;
@@ -1877,18 +1886,18 @@ public class ContactSolverSSE : IContactSolverW
                     }
 
                     Vector2 normal = manifold.normal;
-                    ((float*)&constraint->normal.X)[j] = normal.x;
-                    ((float*)&constraint->normal.Y)[j] = normal.y;
+                    ((float*)&constraint->normal.X)[lane] = normal.x;
+                    ((float*)&constraint->normal.Y)[lane] = normal.y;
 
-                    ((float*)&constraint->friction)[j] = contactSim.friction;
-                    ((float*)&constraint->tangentSpeed)[j] = contactSim.tangentSpeed;
-                    ((float*)&constraint->restitution)[j] = contactSim.restitution;
-                    ((float*)&constraint->rollingResistance)[j] = contactSim.rollingResistance;
-                    ((float*)&constraint->rollingImpulse)[j] = warmStartScale * manifold.rollingImpulse;
+                    ((float*)&constraint->friction)[lane] = contactSim.friction;
+                    ((float*)&constraint->tangentSpeed)[lane] = contactSim.tangentSpeed;
+                    ((float*)&constraint->restitution)[lane] = contactSim.restitution;
+                    ((float*)&constraint->rollingResistance)[lane] = contactSim.rollingResistance;
+                    ((float*)&constraint->rollingImpulse)[lane] = warmStartScale * manifold.rollingImpulse;
 
-                    ((float*)&constraint->biasRate)[j] = soft.biasRate;
-                    ((float*)&constraint->massScale)[j] = soft.massScale;
-                    ((float*)&constraint->impulseScale)[j] = soft.impulseScale;
+                    ((float*)&constraint->biasRate)[lane] = soft.biasRate;
+                    ((float*)&constraint->massScale)[lane] = soft.massScale;
+                    ((float*)&constraint->impulseScale)[lane] = soft.impulseScale;
 
                     Vector2 tangent = normal.RightPerp();
 
@@ -1898,31 +1907,31 @@ public class ContactSolverSSE : IContactSolverW
                         Vector2 rA = mp.anchorA;
                         Vector2 rB = mp.anchorB;
 
-                        ((float*)&constraint->anchorA1.X)[j] = rA.x;
-                        ((float*)&constraint->anchorA1.Y)[j] = rA.y;
-                        ((float*)&constraint->anchorB1.X)[j] = rB.x;
-                        ((float*)&constraint->anchorB1.Y)[j] = rB.y;
+                        ((float*)&constraint->anchorA1.X)[lane] = rA.x;
+                        ((float*)&constraint->anchorA1.Y)[lane] = rA.y;
+                        ((float*)&constraint->anchorB1.X)[lane] = rB.x;
+                        ((float*)&constraint->anchorB1.Y)[lane] = rB.y;
 
-                        ((float*)&constraint->baseSeparation1)[j] = mp.separation - Vector2.Dot(rB - rA, normal);
+                        ((float*)&constraint->baseSeparation1)[lane] = mp.separation - Vector2.Dot(rB - rA, normal);
 
-                        ((float*)&constraint->normalImpulse1)[j] = warmStartScale * mp.normalImpulse;
-                        ((float*)&constraint->tangentImpulse1)[j] = warmStartScale * mp.tangentImpulse;
-                        ((float*)&constraint->totalNormalImpulse1)[j] = 0.0f;
+                        ((float*)&constraint->normalImpulse1)[lane] = warmStartScale * mp.normalImpulse;
+                        ((float*)&constraint->tangentImpulse1)[lane] = warmStartScale * mp.tangentImpulse;
+                        ((float*)&constraint->totalNormalImpulse1)[lane] = 0.0f;
 
                         float rnA = Vector2.Cross(rA, normal);
                         float rnB = Vector2.Cross(rB, normal);
                         float kNormal = mA + mB + iA * rnA * rnA + iB * rnB * rnB;
-                        ((float*)&constraint->normalMass1)[j] = kNormal > 0.0f ? 1.0f / kNormal : 0.0f;
+                        ((float*)&constraint->normalMass1)[lane] = kNormal > 0.0f ? 1.0f / kNormal : 0.0f;
 
                         float rtA = Vector2.Cross(rA, tangent);
                         float rtB = Vector2.Cross(rB, tangent);
                         float kTangent = mA + mB + iA * rtA * rtA + iB * rtB * rtB;
-                        ((float*)&constraint->tangentMass1)[j] = kTangent > 0.0f ? 1.0f / kTangent : 0.0f;
+                        ((float*)&constraint->tangentMass1)[lane] = kTangent > 0.0f ? 1.0f / kTangent : 0.0f;
 
                         // relative velocity for restitution
                         Vector2 vrA = vA + Vector2.CrossSV(wA, rA);
                         Vector2 vrB = vB + Vector2.CrossSV(wB, rB);
-                        ((float*)&constraint->relativeVelocity1)[j] = Vector2.Dot(normal, vrB - vrA);
+                        ((float*)&constraint->relativeVelocity1)[lane] = Vector2.Dot(normal, vrB - vrA);
                     }
 
                     int pointCount = manifold.pointCount;
@@ -1935,104 +1944,58 @@ public class ContactSolverSSE : IContactSolverW
                         Vector2 rA = mp.anchorA;
                         Vector2 rB = mp.anchorB;
 
-                        ((float*)&constraint->anchorA2.X)[j] = rA.x;
-                        ((float*)&constraint->anchorA2.Y)[j] = rA.y;
-                        ((float*)&constraint->anchorB2.X)[j] = rB.x;
-                        ((float*)&constraint->anchorB2.Y)[j] = rB.y;
+                        ((float*)&constraint->anchorA2.X)[lane] = rA.x;
+                        ((float*)&constraint->anchorA2.Y)[lane] = rA.y;
+                        ((float*)&constraint->anchorB2.X)[lane] = rB.x;
+                        ((float*)&constraint->anchorB2.Y)[lane] = rB.y;
 
-                        ((float*)&constraint->baseSeparation2)[j] = mp.separation - Vector2.Dot(rB - rA, normal);
+                        ((float*)&constraint->baseSeparation2)[lane] = mp.separation - Vector2.Dot(rB - rA, normal);
 
-                        ((float*)&constraint->normalImpulse2)[j] = warmStartScale * mp.normalImpulse;
-                        ((float*)&constraint->tangentImpulse2)[j] = warmStartScale * mp.tangentImpulse;
-                        ((float*)&constraint->totalNormalImpulse2)[j] = 0.0f;
+                        ((float*)&constraint->normalImpulse2)[lane] = warmStartScale * mp.normalImpulse;
+                        ((float*)&constraint->tangentImpulse2)[lane] = warmStartScale * mp.tangentImpulse;
+                        ((float*)&constraint->totalNormalImpulse2)[lane] = 0.0f;
 
                         float rnA = Vector2.Cross(rA, normal);
                         float rnB = Vector2.Cross(rB, normal);
                         float kNormal = mA + mB + iA * rnA * rnA + iB * rnB * rnB;
-                        ((float*)&constraint->normalMass2)[j] = kNormal > 0.0f ? 1.0f / kNormal : 0.0f;
+                        ((float*)&constraint->normalMass2)[lane] = kNormal > 0.0f ? 1.0f / kNormal : 0.0f;
 
                         float rtA = Vector2.Cross(rA, tangent);
                         float rtB = Vector2.Cross(rB, tangent);
                         float kTangent = mA + mB + iA * rtA * rtA + iB * rtB * rtB;
-                        ((float*)&constraint->tangentMass2)[j] = kTangent > 0.0f ? 1.0f / kTangent : 0.0f;
+                        ((float*)&constraint->tangentMass2)[lane] = kTangent > 0.0f ? 1.0f / kTangent : 0.0f;
 
                         // relative velocity for restitution
                         Vector2 vrA = vA + Vector2.CrossSV(wA, rA);
                         Vector2 vrB = vB + Vector2.CrossSV(wB, rB);
-                        ((float*)&constraint->relativeVelocity2)[j] = Vector2.Dot(normal, vrB - vrA);
+                        ((float*)&constraint->relativeVelocity2)[lane] = Vector2.Dot(normal, vrB - vrA);
                     }
                     else
                     {
                         // dummy data that has no effect
-                        ((float*)&constraint->baseSeparation2)[j] = 0.0f;
-                        ((float*)&constraint->normalImpulse2)[j] = 0.0f;
-                        ((float*)&constraint->tangentImpulse2)[j] = 0.0f;
-                        ((float*)&constraint->totalNormalImpulse2)[j] = 0.0f;
-                        ((float*)&constraint->anchorA2.X)[j] = 0.0f;
-                        ((float*)&constraint->anchorA2.Y)[j] = 0.0f;
-                        ((float*)&constraint->anchorB2.X)[j] = 0.0f;
-                        ((float*)&constraint->anchorB2.Y)[j] = 0.0f;
-                        ((float*)&constraint->normalMass2)[j] = 0.0f;
-                        ((float*)&constraint->tangentMass2)[j] = 0.0f;
-                        ((float*)&constraint->relativeVelocity2)[j] = 0.0f;
+                        ((float*)&constraint->baseSeparation2)[lane] = 0.0f;
+                        ((float*)&constraint->normalImpulse2)[lane] = 0.0f;
+                        ((float*)&constraint->tangentImpulse2)[lane] = 0.0f;
+                        ((float*)&constraint->totalNormalImpulse2)[lane] = 0.0f;
+                        ((float*)&constraint->anchorA2.X)[lane] = 0.0f;
+                        ((float*)&constraint->anchorA2.Y)[lane] = 0.0f;
+                        ((float*)&constraint->anchorB2.X)[lane] = 0.0f;
+                        ((float*)&constraint->anchorB2.Y)[lane] = 0.0f;
+                        ((float*)&constraint->normalMass2)[lane] = 0.0f;
+                        ((float*)&constraint->tangentMass2)[lane] = 0.0f;
+                        ((float*)&constraint->relativeVelocity2)[lane] = 0.0f;
                     }
                 }
-                else
-                {
-                    ((int*)&constraint->indexA)[j] = 0;
-                    ((int*)&constraint->indexB)[j] = 0;
-
-                    ((float*)&constraint->invMassA)[j] = 0.0f;
-                    ((float*)&constraint->invMassB)[j] = 0.0f;
-                    ((float*)&constraint->invIA)[j] = 0.0f;
-                    ((float*)&constraint->invIB)[j] = 0.0f;
-
-                    ((float*)&constraint->normal.X)[j] = 0.0f;
-                    ((float*)&constraint->normal.Y)[j] = 0.0f;
-                    ((float*)&constraint->friction)[j] = 0.0f;
-                    ((float*)&constraint->tangentSpeed)[j] = 0.0f;
-                    ((float*)&constraint->rollingResistance)[j] = 0.0f;
-                    ((float*)&constraint->rollingMass)[j] = 0.0f;
-                    ((float*)&constraint->rollingImpulse)[j] = 0.0f;
-                    ((float*)&constraint->biasRate)[j] = 0.0f;
-                    ((float*)&constraint->massScale)[j] = 0.0f;
-                    ((float*)&constraint->impulseScale)[j] = 0.0f;
-
-                    ((float*)&constraint->anchorA1.X)[j] = 0.0f;
-                    ((float*)&constraint->anchorA1.Y)[j] = 0.0f;
-                    ((float*)&constraint->anchorB1.X)[j] = 0.0f;
-                    ((float*)&constraint->anchorB1.Y)[j] = 0.0f;
-                    ((float*)&constraint->baseSeparation1)[j] = 0.0f;
-                    ((float*)&constraint->normalImpulse1)[j] = 0.0f;
-                    ((float*)&constraint->tangentImpulse1)[j] = 0.0f;
-                    ((float*)&constraint->totalNormalImpulse1)[j] = 0.0f;
-                    ((float*)&constraint->normalMass1)[j] = 0.0f;
-                    ((float*)&constraint->tangentMass1)[j] = 0.0f;
-
-                    ((float*)&constraint->anchorA2.X)[j] = 0.0f;
-                    ((float*)&constraint->anchorA2.Y)[j] = 0.0f;
-                    ((float*)&constraint->anchorB2.X)[j] = 0.0f;
-                    ((float*)&constraint->anchorB2.Y)[j] = 0.0f;
-                    ((float*)&constraint->baseSeparation2)[j] = 0.0f;
-                    ((float*)&constraint->normalImpulse2)[j] = 0.0f;
-                    ((float*)&constraint->tangentImpulse2)[j] = 0.0f;
-                    ((float*)&constraint->totalNormalImpulse2)[j] = 0.0f;
-                    ((float*)&constraint->normalMass2)[j] = 0.0f;
-                    ((float*)&constraint->tangentMass2)[j] = 0.0f;
-
-                    ((float*)&constraint->restitution)[j] = 0.0f;
-                    ((float*)&constraint->relativeVelocity1)[j] = 0.0f;
-                    ((float*)&constraint->relativeVelocity2)[j] = 0.0f;
-                }
             }
+            colorIndex++;
         }
     }
-    public unsafe void WarmStartContactsTask(int startIndex, int endIndex, StepContext context, int colorIndex)
+    public unsafe void WarmStartContactsTask(ref SolverBlock block, StepContext context)
     {
         var states = context.states.Data;
-        var constraints = ((ContactConstraintsSSE)context.graph.colors[colorIndex].wideConstraints).wideConstraints;
+        var constraints = ((ContactConstraintsSSE)context.graph.colors[block.colorIndex].wideConstraints).wideConstraints;
         {
-            for (int wideIndex = startIndex; wideIndex < endIndex; wideIndex++)
+            for (int wideIndex = block.startIndex; wideIndex < block.startIndex + block.count; wideIndex++)
             {
                 ContactConstraintWide* c = constraints + wideIndex;
                 BodyStateW bA = GatherBodies(states, (int*)&c->indexA);
@@ -2088,17 +2051,17 @@ public class ContactSolverSSE : IContactSolverW
             }
         }
     }
-    public unsafe void SolveContactsTask(int startIndex, int endIndex, StepContext context, int colorIndex, bool useBias)
+    public unsafe void SolveContactsTask(ref SolverBlock block, StepContext context, bool useBias)
     {
         var states = context.states.Data;
-        var constraints = ((ContactConstraintsSSE)context.graph.colors[colorIndex].wideConstraints).wideConstraints;
+        var constraints = ((ContactConstraintsSSE)context.graph.colors[block.colorIndex].wideConstraints).wideConstraints;
         {
             Vector128<float> inv_h = Vector128.Create(context.inv_h);
             Vector128<float> contactSpeed = Vector128.Create(-context.world.contactSpeed);
             Vector128<float> oneW = Vector128<float>.One;
-            for (int i = startIndex; i < endIndex; i++)
+            for (int wideIndex = block.startIndex; wideIndex < block.startIndex + block.count; wideIndex++)
             {
-                ContactConstraintWide* c = constraints + i;
+                ContactConstraintWide* c = constraints + wideIndex;
                 BodyStateW bA = GatherBodies(states, (int*)&c->indexA);
                 BodyStateW bB = GatherBodies(states, (int*)&c->indexB);
                 Vector128<float> biasRate, massScale, impulseScale;
@@ -2163,7 +2126,6 @@ public class ContactSolverSSE : IContactSolverW
                     Vector128<float> dvx = Sse.Subtract(Sse.Subtract(bB.v.X, Sse.Multiply(bB.w, rB.Y)), Sse.Subtract(bA.v.X, Sse.Multiply(bA.w, rA.Y)));
                     Vector128<float> dvy = Sse.Subtract(Sse.Add(bB.v.Y, Sse.Multiply(bB.w, rB.X)), Sse.Add(bA.v.Y, Sse.Multiply(bA.w, rA.X)));
                     Vector128<float> vn = Sse.Add(Sse.Multiply(dvx, c->normal.X), Sse.Multiply(dvy, c->normal.Y));
-                    //different than 1, is this intended?
                     Vector128<float> negImpulse = Sse.Add(Sse.Multiply(c->normalMass2, Sse.Add(Sse.Multiply(pointMassScale, vn), bias)), Sse.Multiply(pointImpulseScale, c->normalImpulse2));
                     Vector128<float> newImpulse = Sse.Max(Sse.Subtract(c->normalImpulse2, negImpulse), Vector128<float>.Zero);
                     Vector128<float> impulse = Sse.Subtract(newImpulse, c->normalImpulse2);
@@ -2185,85 +2147,89 @@ public class ContactSolverSSE : IContactSolverW
                     };
                     bB.w = Sse.Add(bB.w, Sse.Multiply(c->invIB, Sse.Subtract(Sse.Multiply(rB.X, Py), Sse.Multiply(rB.Y, Px))));
                 }
-                Vector128<float> tangentX = c->normal.Y;
-                Vector128<float> tangentY = Sse.Subtract(Vector128<float>.Zero, c->normal.X);
+                if (!useBias)
                 {
-                    Vector2W rA = c->anchorA1, rB = c->anchorB1;
-                    Vector128<float> dvx = Sse.Subtract(Sse.Subtract(bB.v.X, Sse.Multiply(bB.w, rB.Y)), Sse.Subtract(bA.v.X, Sse.Multiply(bA.w, rA.Y)));
-                    Vector128<float> dvy = Sse.Subtract(Sse.Add(bB.v.Y, Sse.Multiply(bB.w, rB.X)), Sse.Add(bA.v.Y, Sse.Multiply(bA.w, rA.X)));
-                    Vector128<float> vt = Sse.Add(Sse.Multiply(dvx, tangentX), Sse.Multiply(dvy, tangentY));
-                    vt = Sse.Subtract(vt, c->tangentSpeed);
-                    Vector128<float> negImpulse = Sse.Multiply(c->tangentMass1, vt);
-                    Vector128<float> maxFriction = Sse.Multiply(c->friction, c->normalImpulse1);
-                    Vector128<float> newImpulse = Sse.Subtract(c->tangentImpulse1, negImpulse);
-                    //no symclamp?
-                    newImpulse = Sse.Max(Sse.Subtract(Vector128<float>.Zero, maxFriction), Sse.Min(newImpulse, maxFriction));
-                    Vector128<float> impulse = Sse.Subtract(newImpulse, c->tangentImpulse1);
-                    c->tangentImpulse1 = newImpulse;
-                    Vector128<float> Px = Sse.Multiply(impulse, tangentX);
-                    Vector128<float> Py = Sse.Multiply(impulse, tangentY);
-                    bA.v = new()
+                    if (!AllZeroW(c->rollingResistance))
                     {
-                        X = Sse.Subtract(bA.v.X, Sse.Multiply(c->invMassA, Px)),
-                        Y = Sse.Subtract(bA.v.Y, Sse.Multiply(c->invMassA, Py))
-                    };
-                    bA.w = Sse.Subtract(bA.w, Sse.Multiply(c->invIA, Sse.Subtract(Sse.Multiply(rA.X, Py), Sse.Multiply(rA.Y, Px))));
-                    bB.v = new()
+                        Vector128<float> deltaLambda = Sse.Multiply(c->rollingMass, Sse.Subtract(bA.w, bB.w));
+                        Vector128<float> lambda = c->rollingImpulse;
+                        Vector128<float> maxLambda = Sse.Multiply(c->rollingResistance, totalNormalImpulse);
+                        c->rollingImpulse = SymClampW(Sse.Add(lambda, deltaLambda), maxLambda);
+                        deltaLambda = Sse.Subtract(c->rollingImpulse, lambda);
+                        bA.w = Sse.Subtract(bA.w, Sse.Multiply(c->invIA, deltaLambda));
+                        bB.w = Sse.Add(bB.w, Sse.Multiply(c->invIB, deltaLambda));
+                    }
+                    Vector128<float> tangentX = c->normal.Y;
+                    Vector128<float> tangentY = Sse.Subtract(Vector128<float>.Zero, c->normal.X);
                     {
-                        X = Sse.Add(bB.v.X, Sse.Multiply(c->invMassB, Px)),
-                        Y = Sse.Add(bB.v.Y, Sse.Multiply(c->invMassB, Py))
-                    };
-                    bB.w = Sse.Add(bB.w, Sse.Multiply(c->invIB, Sse.Subtract(Sse.Multiply(rB.X, Py), Sse.Multiply(rB.Y, Px))));
-                }
-                {
-                    Vector2W rA = c->anchorA2, rB = c->anchorB2;
-                    Vector128<float> dvx = Sse.Subtract(Sse.Subtract(bB.v.X, Sse.Multiply(bB.w, rB.Y)), Sse.Subtract(bA.v.X, Sse.Multiply(bA.w, rA.Y)));
-                    Vector128<float> dvy = Sse.Subtract(Sse.Add(bB.v.Y, Sse.Multiply(bB.w, rB.X)), Sse.Add(bA.v.Y, Sse.Multiply(bA.w, rA.X)));
-                    Vector128<float> vt = Sse.Add(Sse.Multiply(dvx, tangentX), Sse.Multiply(dvy, tangentY));
-                    vt = Sse.Subtract(vt, c->tangentSpeed);
-                    Vector128<float> negImpulse = Sse.Multiply(c->tangentMass2, vt);
-                    Vector128<float> maxFriction = Sse.Multiply(c->friction, c->normalImpulse2);
-                    Vector128<float> newImpulse = Sse.Subtract(c->tangentImpulse2, negImpulse);
-                    newImpulse = Sse.Max(Sse.Subtract(Vector128<float>.Zero, maxFriction), Sse.Min(newImpulse, maxFriction));
-                    Vector128<float> impulse = Sse.Subtract(newImpulse, c->tangentImpulse2);
-                    c->tangentImpulse2 = newImpulse;
-                    Vector128<float> Px = Sse.Multiply(impulse, tangentX);
-                    Vector128<float> Py = Sse.Multiply(impulse, tangentY);
-                    bA.v = new()
+                        Vector2W rA = c->anchorA1, rB = c->anchorB1;
+                        Vector128<float> dvx = Sse.Subtract(Sse.Subtract(bB.v.X, Sse.Multiply(bB.w, rB.Y)), Sse.Subtract(bA.v.X, Sse.Multiply(bA.w, rA.Y)));
+                        Vector128<float> dvy = Sse.Subtract(Sse.Add(bB.v.Y, Sse.Multiply(bB.w, rB.X)), Sse.Add(bA.v.Y, Sse.Multiply(bA.w, rA.X)));
+                        Vector128<float> vt = Sse.Add(Sse.Multiply(dvx, tangentX), Sse.Multiply(dvy, tangentY));
+                        vt = Sse.Subtract(vt, c->tangentSpeed);
+                        Vector128<float> negImpulse = Sse.Multiply(c->tangentMass1, vt);
+                        Vector128<float> maxFriction = Sse.Multiply(c->friction, c->normalImpulse1);
+                        Vector128<float> newImpulse = Sse.Subtract(c->tangentImpulse1, negImpulse);
+                        //no symclamp?
+                        newImpulse = Sse.Max(Sse.Subtract(Vector128<float>.Zero, maxFriction), Sse.Min(newImpulse, maxFriction));
+                        Vector128<float> impulse = Sse.Subtract(newImpulse, c->tangentImpulse1);
+                        c->tangentImpulse1 = newImpulse;
+                        Vector128<float> Px = Sse.Multiply(impulse, tangentX);
+                        Vector128<float> Py = Sse.Multiply(impulse, tangentY);
+                        bA.v = new()
+                        {
+                            X = Sse.Subtract(bA.v.X, Sse.Multiply(c->invMassA, Px)),
+                            Y = Sse.Subtract(bA.v.Y, Sse.Multiply(c->invMassA, Py))
+                        };
+                        bA.w = Sse.Subtract(bA.w, Sse.Multiply(c->invIA, Sse.Subtract(Sse.Multiply(rA.X, Py), Sse.Multiply(rA.Y, Px))));
+                        bB.v = new()
+                        {
+                            X = Sse.Add(bB.v.X, Sse.Multiply(c->invMassB, Px)),
+                            Y = Sse.Add(bB.v.Y, Sse.Multiply(c->invMassB, Py))
+                        };
+                        bB.w = Sse.Add(bB.w, Sse.Multiply(c->invIB, Sse.Subtract(Sse.Multiply(rB.X, Py), Sse.Multiply(rB.Y, Px))));
+                    }
                     {
-                        X = Sse.Subtract(bA.v.X, Sse.Multiply(c->invMassA, Px)),
-                        Y = Sse.Subtract(bA.v.Y, Sse.Multiply(c->invMassA, Py))
-                    };
-                    bA.w = Sse.Subtract(bA.w, Sse.Multiply(c->invIA, Sse.Subtract(Sse.Multiply(rA.X, Py), Sse.Multiply(rA.Y, Px))));
-                    bB.v = new()
-                    {
-                        X = Sse.Add(bB.v.X, Sse.Multiply(c->invMassB, Px)),
-                        Y = Sse.Add(bB.v.Y, Sse.Multiply(c->invMassB, Py))
-                    };
-                    bB.w = Sse.Add(bB.w, Sse.Multiply(c->invIB, Sse.Subtract(Sse.Multiply(rB.X, Py), Sse.Multiply(rB.Y, Px))));
-                }
-                {
-                    Vector128<float> deltaLambda = Sse.Multiply(c->rollingMass, Sse.Subtract(bA.w, bB.w));
-                    Vector128<float> lambda = c->rollingImpulse;
-                    Vector128<float> maxLambda = Sse.Multiply(c->rollingResistance, totalNormalImpulse);
-                    c->rollingImpulse = SymClampW(Sse.Add(lambda, deltaLambda), maxLambda);
-                    deltaLambda = Sse.Subtract(c->rollingImpulse, lambda);
-                    bA.w = Sse.Subtract(bA.w, Sse.Multiply(c->invIA, deltaLambda));
-                    bB.w = Sse.Add(bB.w, Sse.Multiply(c->invIB, deltaLambda));
+                        Vector2W rA = c->anchorA2, rB = c->anchorB2;
+                        Vector128<float> dvx = Sse.Subtract(Sse.Subtract(bB.v.X, Sse.Multiply(bB.w, rB.Y)), Sse.Subtract(bA.v.X, Sse.Multiply(bA.w, rA.Y)));
+                        Vector128<float> dvy = Sse.Subtract(Sse.Add(bB.v.Y, Sse.Multiply(bB.w, rB.X)), Sse.Add(bA.v.Y, Sse.Multiply(bA.w, rA.X)));
+                        Vector128<float> vt = Sse.Add(Sse.Multiply(dvx, tangentX), Sse.Multiply(dvy, tangentY));
+                        vt = Sse.Subtract(vt, c->tangentSpeed);
+                        Vector128<float> negImpulse = Sse.Multiply(c->tangentMass2, vt);
+                        Vector128<float> maxFriction = Sse.Multiply(c->friction, c->normalImpulse2);
+                        Vector128<float> newImpulse = Sse.Subtract(c->tangentImpulse2, negImpulse);
+                        newImpulse = Sse.Max(Sse.Subtract(Vector128<float>.Zero, maxFriction), Sse.Min(newImpulse, maxFriction));
+                        Vector128<float> impulse = Sse.Subtract(newImpulse, c->tangentImpulse2);
+                        c->tangentImpulse2 = newImpulse;
+                        Vector128<float> Px = Sse.Multiply(impulse, tangentX);
+                        Vector128<float> Py = Sse.Multiply(impulse, tangentY);
+                        bA.v = new()
+                        {
+                            X = Sse.Subtract(bA.v.X, Sse.Multiply(c->invMassA, Px)),
+                            Y = Sse.Subtract(bA.v.Y, Sse.Multiply(c->invMassA, Py))
+                        };
+                        bA.w = Sse.Subtract(bA.w, Sse.Multiply(c->invIA, Sse.Subtract(Sse.Multiply(rA.X, Py), Sse.Multiply(rA.Y, Px))));
+                        bB.v = new()
+                        {
+                            X = Sse.Add(bB.v.X, Sse.Multiply(c->invMassB, Px)),
+                            Y = Sse.Add(bB.v.Y, Sse.Multiply(c->invMassB, Py))
+                        };
+                        bB.w = Sse.Add(bB.w, Sse.Multiply(c->invIB, Sse.Subtract(Sse.Multiply(rB.X, Py), Sse.Multiply(rB.Y, Px))));
+                    }
                 }
                 ScatterBodies(states, (int*)&c->indexA, ref bA);
                 ScatterBodies(states, (int*)&c->indexB, ref bB);
             }
         }
     }
-    public unsafe void ApplyRestitutionTask(int startIndex, int endIndex, StepContext context, int colorIndex)
+    public unsafe void ApplyRestitutionTask(ref SolverBlock block, StepContext context)
     {
         var states = context.states.Data;
-        var constraints = ((ContactConstraintsSSE)context.graph.colors[colorIndex].wideConstraints).wideConstraints;
+        var constraints = ((ContactConstraintsSSE)context.graph.colors[block.colorIndex].wideConstraints).wideConstraints;
         {
             Vector128<float> threshold = Vector128.Create(context.world.restitutionThreshold);
             Vector128<float> zero = Vector128<float>.Zero;
-            for (int i = startIndex; i < endIndex; i++)
+            for (int i = block.startIndex; i < block.startIndex + block.count; i++)
             {
                 ContactConstraintWide* c = constraints + i;
                 if (AllZeroW(c->restitution)) continue;
@@ -2333,15 +2299,27 @@ public class ContactSolverSSE : IContactSolverW
             }
         }
     }
-    public unsafe void StoreImpulsesTask(int startIndex, int endIndex, StepContext context)
+    public unsafe void StoreImpulsesTask(ref SolverBlock block, StepContext context, int workerIndex)
     {
-        ContactSim[] contacts = context.contacts;
-        Manifold dummy = new();
-        ContactConstraintWide* constraints = ((ContactConstraintsSSE)context.wideContactConstraints).wideConstraints;
+        var spans = context.contactPrepareSpans;
+        var wideBase = ((ContactConstraintsSSE)context.wideContactConstraints).wideConstraints;
+        TaskContext taskContext = context.world.taskContexts[workerIndex];
+        BitSet hitEventBitSet = taskContext.hitEventBitSet;
+        bool hasHitEvents = taskContext.hasHitEvents;
+        float negHitThreshold = -context.world.hitEventThreshold;
+        int wideIndex = block.startIndex;
+        int endWideIndex = block.startIndex + block.count;
+        int colorIndex = 0;
+        while (spans[colorIndex + 1].start <= wideIndex) colorIndex++;
+        while (wideIndex < endWideIndex)
         {
-            for (int constraintIndex = startIndex; constraintIndex < endIndex; constraintIndex++)
+            int colorWideEndIndex = Math.Min(spans[colorIndex + 1].start, endWideIndex);
+            int colorWideStart = spans[colorIndex].start;
+            int colorContactCount = spans[colorIndex].count;
+            var contactSims = spans[colorIndex].contacts;
+            for (; wideIndex < colorWideEndIndex; wideIndex++)
             {
-                ContactConstraintWide* c = constraints + constraintIndex;
+                ContactConstraintWide* c = wideBase + wideIndex;
                 float* rollingImpulse = (float*)&c->rollingImpulse;
                 float* normalImpulse1 = (float*)&c->normalImpulse1;
                 float* normalImpulse2 = (float*)&c->normalImpulse2;
@@ -2351,11 +2329,14 @@ public class ContactSolverSSE : IContactSolverW
                 float* totalNormalImpulse2 = (float*)&c->totalNormalImpulse2;
                 float* normalVelocity1 = (float*)&c->relativeVelocity1;
                 float* normalVelocity2 = (float*)&c->relativeVelocity2;
-                int baseIndex = 4 * constraintIndex;
+                int localWideIndex = wideIndex - colorWideStart;
+                int baseIndex = 8 * localWideIndex;
                 for (int laneIndex = 0; laneIndex < 4; ++laneIndex)
                 {
-                    ref Manifold m = ref dummy;
-                    if (contacts[baseIndex + laneIndex] != null) m = ref contacts[baseIndex + laneIndex].manifold;
+                    int contactIndex = baseIndex + laneIndex;
+                    if (contactIndex >= colorContactCount) break;
+                    ContactSim contactSim = contactSims[contactIndex];
+                    ref Manifold m = ref contactSim.manifold;
                     m.rollingImpulse = rollingImpulse[laneIndex];
                     m.point0.normalImpulse = normalImpulse1[laneIndex];
                     m.point0.tangentImpulse = tangentImpulse1[laneIndex];
@@ -2365,8 +2346,24 @@ public class ContactSolverSSE : IContactSolverW
                     m.point1.tangentImpulse = tangentImpulse2[laneIndex];
                     m.point1.totalNormalImpulse = totalNormalImpulse2[laneIndex];
                     m.point1.normalVelocity = normalVelocity2[laneIndex];
+                    if (contactSim.simFlags.HasFlag(ContactSimFlags.EnableHitEvent))
+                    {
+                        if (contactSim.manifold.pointCount > 0 && m.point0.normalVelocity < negHitThreshold && m.point0.totalNormalImpulse > 0)
+                        {
+                            hitEventBitSet.SetBit(contactSim.contactId);
+                            hasHitEvents = true;
+                            break;
+                        }
+                        if (contactSim.manifold.pointCount > 1 && m.point1.normalVelocity < negHitThreshold && m.point1.totalNormalImpulse > 0)
+                        {
+                            hitEventBitSet.SetBit(contactSim.contactId);
+                            hasHitEvents = true;
+                            break;
+                        }
+                    }
                 }
             }
+            colorIndex++;
         }
     }
 }
@@ -2447,12 +2444,11 @@ public class ContactSolverFloat : IContactSolverW
     }
     unsafe BodyStateW GatherBodies(BodyState* states, int* indices)
     {
-        BodyState identity = new();
         int i1 = indices[0] - 1, i2 = indices[1] - 1, i3 = indices[2] - 1, i4 = indices[3] - 1;
-        BodyState s1 = i1 == -1 ? identity : states[i1];
-        BodyState s2 = i2 == -1 ? identity : states[i2];
-        BodyState s3 = i3 == -1 ? identity : states[i3];
-        BodyState s4 = i4 == -1 ? identity : states[i4];
+        BodyState s1 = i1 == -1 ? BodyState.Identity : states[i1];
+        BodyState s2 = i2 == -1 ? BodyState.Identity : states[i2];
+        BodyState s3 = i3 == -1 ? BodyState.Identity : states[i3];
+        BodyState s4 = i4 == -1 ? BodyState.Identity : states[i4];
 
         return new()
         {
@@ -2507,49 +2503,60 @@ public class ContactSolverFloat : IContactSolverW
             state->angularVelocity = simdBody.w.w;
         }
     }
-    public unsafe void PrepareContactsTask(int startIndex, int endIndex, StepContext context)
+    public unsafe void PrepareContactsTask(ref SolverBlock block, StepContext context)
     {
         World world = context.world;
-        ContactSim[] contacts = context.contacts;
-        var awakeStates = context.states;
+        var states = context.states;
         Softness contactSoftness = context.contactSoftness;
         Softness staticSoftness = context.staticSoftness;
+        var spans = context.contactPrepareSpans;
+        var wideBase = (ContactConstraintsFloat)context.wideContactConstraints;
         bool enableSoftening = world.enableContactSoftening;
         float warmStartScale = world.enableWarmStarting ? 1 : 0;
-        for (int i = startIndex; i < endIndex; i++)
+        int wideIndex = block.startIndex, endWideIndex = block.startIndex + block.count;
+        int colorIndex = 0;
+        while (spans[colorIndex + 1].start <= wideIndex) colorIndex++;
+        while (wideIndex < endWideIndex)
         {
-            var constraint = ((ContactConstraintsFloat)context.wideContactConstraints).wideConstraints + i;
-            for (int j = 0; j < 4; j++)
+            int colorWideStart = spans[colorIndex].start;
+            int colorWideEndIndex = Math.Min(spans[colorIndex + 1].start, endWideIndex);
+            int colorContactCount = spans[colorIndex].count;
+            var contactSims = spans[colorIndex].contacts;
+            for (; wideIndex < colorWideEndIndex; wideIndex++)
             {
-                ref ContactSim contactSim = ref contacts[4 * i + j];
-                if (contactSim != null)
+                var constraint = wideBase.wideConstraints + wideIndex;
+                int localWideIndex = wideIndex - colorWideStart;
+                for (int lane = 0; lane < 4; lane++)
                 {
-                    Manifold manifold = contactSim.manifold;
+                    int contactIndex = 4 * localWideIndex + lane;
+                    if (contactIndex >= colorContactCount) break;
+                    ContactSim contactSim = contactSims[contactIndex];
+                    ref Manifold manifold = ref contactSim.manifold;
                     int indexA = contactSim.bodySimIndexA, indexB = contactSim.bodySimIndexB;
 
-                    ((int*)&constraint->indexA)[j] = indexA + 1;
-                    ((int*)&constraint->indexB)[j] = indexB + 1;
+                    ((int*)&constraint->indexA)[lane] = indexA + 1;
+                    ((int*)&constraint->indexB)[lane] = indexB + 1;
                     Vector2 vA = Vector2.Zero;
                     float wA = 0, mA = contactSim.invMassA, iA = contactSim.invIA;
                     if (indexA != -1)
                     {
-                        vA = awakeStates[indexA].linearVelocity;
-                        wA = awakeStates[indexA].angularVelocity;
+                        vA = states[indexA].linearVelocity;
+                        wA = states[indexA].angularVelocity;
                     }
                     Vector2 vB = Vector2.Zero;
                     float wB = 0, mB = contactSim.invMassB, iB = contactSim.invIB;
                     if (indexB != -1)
                     {
-                        vB = awakeStates[indexB].linearVelocity;
-                        wB = awakeStates[indexB].angularVelocity;
+                        vB = states[indexB].linearVelocity;
+                        wB = states[indexB].angularVelocity;
                     }
-                    ((float*)&constraint->invMassA)[j] = mA;
-                    ((float*)&constraint->invMassB)[j] = mB;
-                    ((float*)&constraint->invIA)[j] = iA;
-                    ((float*)&constraint->invIB)[j] = iB;
+                    ((float*)&constraint->invMassA)[lane] = mA;
+                    ((float*)&constraint->invMassB)[lane] = mB;
+                    ((float*)&constraint->invIA)[lane] = iA;
+                    ((float*)&constraint->invIB)[lane] = iB;
                     {
                         float k = iA + iB;
-                        ((float*)&constraint->rollingMass)[j] = k > 0.0f ? 1.0f / k : 0.0f;
+                        ((float*)&constraint->rollingMass)[lane] = k > 0.0f ? 1.0f / k : 0.0f;
                     }
                     Softness soft = contactSoftness;
                     if (indexA == -1 || indexB == -1) soft = staticSoftness;
@@ -2563,18 +2570,18 @@ public class ContactSolverFloat : IContactSolverW
                     }
 
                     Vector2 normal = manifold.normal;
-                    ((float*)&constraint->normal.X)[j] = normal.x;
-                    ((float*)&constraint->normal.Y)[j] = normal.y;
+                    ((float*)&constraint->normal.X)[lane] = normal.x;
+                    ((float*)&constraint->normal.Y)[lane] = normal.y;
 
-                    ((float*)&constraint->friction)[j] = contactSim.friction;
-                    ((float*)&constraint->tangentSpeed)[j] = contactSim.tangentSpeed;
-                    ((float*)&constraint->restitution)[j] = contactSim.restitution;
-                    ((float*)&constraint->rollingResistance)[j] = contactSim.rollingResistance;
-                    ((float*)&constraint->rollingImpulse)[j] = warmStartScale * manifold.rollingImpulse;
+                    ((float*)&constraint->friction)[lane] = contactSim.friction;
+                    ((float*)&constraint->tangentSpeed)[lane] = contactSim.tangentSpeed;
+                    ((float*)&constraint->restitution)[lane] = contactSim.restitution;
+                    ((float*)&constraint->rollingResistance)[lane] = contactSim.rollingResistance;
+                    ((float*)&constraint->rollingImpulse)[lane] = warmStartScale * manifold.rollingImpulse;
 
-                    ((float*)&constraint->biasRate)[j] = soft.biasRate;
-                    ((float*)&constraint->massScale)[j] = soft.massScale;
-                    ((float*)&constraint->impulseScale)[j] = soft.impulseScale;
+                    ((float*)&constraint->biasRate)[lane] = soft.biasRate;
+                    ((float*)&constraint->massScale)[lane] = soft.massScale;
+                    ((float*)&constraint->impulseScale)[lane] = soft.impulseScale;
 
                     Vector2 tangent = normal.RightPerp();
 
@@ -2584,31 +2591,31 @@ public class ContactSolverFloat : IContactSolverW
                         Vector2 rA = mp.anchorA;
                         Vector2 rB = mp.anchorB;
 
-                        ((float*)&constraint->anchorA1.X)[j] = rA.x;
-                        ((float*)&constraint->anchorA1.Y)[j] = rA.y;
-                        ((float*)&constraint->anchorB1.X)[j] = rB.x;
-                        ((float*)&constraint->anchorB1.Y)[j] = rB.y;
+                        ((float*)&constraint->anchorA1.X)[lane] = rA.x;
+                        ((float*)&constraint->anchorA1.Y)[lane] = rA.y;
+                        ((float*)&constraint->anchorB1.X)[lane] = rB.x;
+                        ((float*)&constraint->anchorB1.Y)[lane] = rB.y;
 
-                        ((float*)&constraint->baseSeparation1)[j] = mp.separation - Vector2.Dot(rB - rA, normal);
+                        ((float*)&constraint->baseSeparation1)[lane] = mp.separation - Vector2.Dot(rB - rA, normal);
 
-                        ((float*)&constraint->normalImpulse1)[j] = warmStartScale * mp.normalImpulse;
-                        ((float*)&constraint->tangentImpulse1)[j] = warmStartScale * mp.tangentImpulse;
-                        ((float*)&constraint->totalNormalImpulse1)[j] = 0.0f;
+                        ((float*)&constraint->normalImpulse1)[lane] = warmStartScale * mp.normalImpulse;
+                        ((float*)&constraint->tangentImpulse1)[lane] = warmStartScale * mp.tangentImpulse;
+                        ((float*)&constraint->totalNormalImpulse1)[lane] = 0.0f;
 
                         float rnA = Vector2.Cross(rA, normal);
                         float rnB = Vector2.Cross(rB, normal);
                         float kNormal = mA + mB + iA * rnA * rnA + iB * rnB * rnB;
-                        ((float*)&constraint->normalMass1)[j] = kNormal > 0.0f ? 1.0f / kNormal : 0.0f;
+                        ((float*)&constraint->normalMass1)[lane] = kNormal > 0.0f ? 1.0f / kNormal : 0.0f;
 
                         float rtA = Vector2.Cross(rA, tangent);
                         float rtB = Vector2.Cross(rB, tangent);
                         float kTangent = mA + mB + iA * rtA * rtA + iB * rtB * rtB;
-                        ((float*)&constraint->tangentMass1)[j] = kTangent > 0.0f ? 1.0f / kTangent : 0.0f;
+                        ((float*)&constraint->tangentMass1)[lane] = kTangent > 0.0f ? 1.0f / kTangent : 0.0f;
 
                         // relative velocity for restitution
                         Vector2 vrA = vA + Vector2.CrossSV(wA, rA);
                         Vector2 vrB = vB + Vector2.CrossSV(wB, rB);
-                        ((float*)&constraint->relativeVelocity1)[j] = Vector2.Dot(normal, vrB - vrA);
+                        ((float*)&constraint->relativeVelocity1)[lane] = Vector2.Dot(normal, vrB - vrA);
                     }
 
                     int pointCount = manifold.pointCount;
@@ -2621,104 +2628,58 @@ public class ContactSolverFloat : IContactSolverW
                         Vector2 rA = mp.anchorA;
                         Vector2 rB = mp.anchorB;
 
-                        ((float*)&constraint->anchorA2.X)[j] = rA.x;
-                        ((float*)&constraint->anchorA2.Y)[j] = rA.y;
-                        ((float*)&constraint->anchorB2.X)[j] = rB.x;
-                        ((float*)&constraint->anchorB2.Y)[j] = rB.y;
+                        ((float*)&constraint->anchorA2.X)[lane] = rA.x;
+                        ((float*)&constraint->anchorA2.Y)[lane] = rA.y;
+                        ((float*)&constraint->anchorB2.X)[lane] = rB.x;
+                        ((float*)&constraint->anchorB2.Y)[lane] = rB.y;
 
-                        ((float*)&constraint->baseSeparation2)[j] = mp.separation - Vector2.Dot(rB - rA, normal);
+                        ((float*)&constraint->baseSeparation2)[lane] = mp.separation - Vector2.Dot(rB - rA, normal);
 
-                        ((float*)&constraint->normalImpulse2)[j] = warmStartScale * mp.normalImpulse;
-                        ((float*)&constraint->tangentImpulse2)[j] = warmStartScale * mp.tangentImpulse;
-                        ((float*)&constraint->totalNormalImpulse2)[j] = 0.0f;
+                        ((float*)&constraint->normalImpulse2)[lane] = warmStartScale * mp.normalImpulse;
+                        ((float*)&constraint->tangentImpulse2)[lane] = warmStartScale * mp.tangentImpulse;
+                        ((float*)&constraint->totalNormalImpulse2)[lane] = 0.0f;
 
                         float rnA = Vector2.Cross(rA, normal);
                         float rnB = Vector2.Cross(rB, normal);
                         float kNormal = mA + mB + iA * rnA * rnA + iB * rnB * rnB;
-                        ((float*)&constraint->normalMass2)[j] = kNormal > 0.0f ? 1.0f / kNormal : 0.0f;
+                        ((float*)&constraint->normalMass2)[lane] = kNormal > 0.0f ? 1.0f / kNormal : 0.0f;
 
                         float rtA = Vector2.Cross(rA, tangent);
                         float rtB = Vector2.Cross(rB, tangent);
                         float kTangent = mA + mB + iA * rtA * rtA + iB * rtB * rtB;
-                        ((float*)&constraint->tangentMass2)[j] = kTangent > 0.0f ? 1.0f / kTangent : 0.0f;
+                        ((float*)&constraint->tangentMass2)[lane] = kTangent > 0.0f ? 1.0f / kTangent : 0.0f;
 
                         // relative velocity for restitution
                         Vector2 vrA = vA + Vector2.CrossSV(wA, rA);
                         Vector2 vrB = vB + Vector2.CrossSV(wB, rB);
-                        ((float*)&constraint->relativeVelocity2)[j] = Vector2.Dot(normal, vrB - vrA);
+                        ((float*)&constraint->relativeVelocity2)[lane] = Vector2.Dot(normal, vrB - vrA);
                     }
                     else
                     {
                         // dummy data that has no effect
-                        ((float*)&constraint->baseSeparation2)[j] = 0.0f;
-                        ((float*)&constraint->normalImpulse2)[j] = 0.0f;
-                        ((float*)&constraint->tangentImpulse2)[j] = 0.0f;
-                        ((float*)&constraint->totalNormalImpulse2)[j] = 0.0f;
-                        ((float*)&constraint->anchorA2.X)[j] = 0.0f;
-                        ((float*)&constraint->anchorA2.Y)[j] = 0.0f;
-                        ((float*)&constraint->anchorB2.X)[j] = 0.0f;
-                        ((float*)&constraint->anchorB2.Y)[j] = 0.0f;
-                        ((float*)&constraint->normalMass2)[j] = 0.0f;
-                        ((float*)&constraint->tangentMass2)[j] = 0.0f;
-                        ((float*)&constraint->relativeVelocity2)[j] = 0.0f;
+                        ((float*)&constraint->baseSeparation2)[lane] = 0.0f;
+                        ((float*)&constraint->normalImpulse2)[lane] = 0.0f;
+                        ((float*)&constraint->tangentImpulse2)[lane] = 0.0f;
+                        ((float*)&constraint->totalNormalImpulse2)[lane] = 0.0f;
+                        ((float*)&constraint->anchorA2.X)[lane] = 0.0f;
+                        ((float*)&constraint->anchorA2.Y)[lane] = 0.0f;
+                        ((float*)&constraint->anchorB2.X)[lane] = 0.0f;
+                        ((float*)&constraint->anchorB2.Y)[lane] = 0.0f;
+                        ((float*)&constraint->normalMass2)[lane] = 0.0f;
+                        ((float*)&constraint->tangentMass2)[lane] = 0.0f;
+                        ((float*)&constraint->relativeVelocity2)[lane] = 0.0f;
                     }
                 }
-                else
-                {
-                    ((int*)&constraint->indexA)[j] = 0;
-                    ((int*)&constraint->indexB)[j] = 0;
-
-                    ((float*)&constraint->invMassA)[j] = 0.0f;
-                    ((float*)&constraint->invMassB)[j] = 0.0f;
-                    ((float*)&constraint->invIA)[j] = 0.0f;
-                    ((float*)&constraint->invIB)[j] = 0.0f;
-
-                    ((float*)&constraint->normal.X)[j] = 0.0f;
-                    ((float*)&constraint->normal.Y)[j] = 0.0f;
-                    ((float*)&constraint->friction)[j] = 0.0f;
-                    ((float*)&constraint->tangentSpeed)[j] = 0.0f;
-                    ((float*)&constraint->rollingResistance)[j] = 0.0f;
-                    ((float*)&constraint->rollingMass)[j] = 0.0f;
-                    ((float*)&constraint->rollingImpulse)[j] = 0.0f;
-                    ((float*)&constraint->biasRate)[j] = 0.0f;
-                    ((float*)&constraint->massScale)[j] = 0.0f;
-                    ((float*)&constraint->impulseScale)[j] = 0.0f;
-
-                    ((float*)&constraint->anchorA1.X)[j] = 0.0f;
-                    ((float*)&constraint->anchorA1.Y)[j] = 0.0f;
-                    ((float*)&constraint->anchorB1.X)[j] = 0.0f;
-                    ((float*)&constraint->anchorB1.Y)[j] = 0.0f;
-                    ((float*)&constraint->baseSeparation1)[j] = 0.0f;
-                    ((float*)&constraint->normalImpulse1)[j] = 0.0f;
-                    ((float*)&constraint->tangentImpulse1)[j] = 0.0f;
-                    ((float*)&constraint->totalNormalImpulse1)[j] = 0.0f;
-                    ((float*)&constraint->normalMass1)[j] = 0.0f;
-                    ((float*)&constraint->tangentMass1)[j] = 0.0f;
-
-                    ((float*)&constraint->anchorA2.X)[j] = 0.0f;
-                    ((float*)&constraint->anchorA2.Y)[j] = 0.0f;
-                    ((float*)&constraint->anchorB2.X)[j] = 0.0f;
-                    ((float*)&constraint->anchorB2.Y)[j] = 0.0f;
-                    ((float*)&constraint->baseSeparation2)[j] = 0.0f;
-                    ((float*)&constraint->normalImpulse2)[j] = 0.0f;
-                    ((float*)&constraint->tangentImpulse2)[j] = 0.0f;
-                    ((float*)&constraint->totalNormalImpulse2)[j] = 0.0f;
-                    ((float*)&constraint->normalMass2)[j] = 0.0f;
-                    ((float*)&constraint->tangentMass2)[j] = 0.0f;
-
-                    ((float*)&constraint->restitution)[j] = 0.0f;
-                    ((float*)&constraint->relativeVelocity1)[j] = 0.0f;
-                    ((float*)&constraint->relativeVelocity2)[j] = 0.0f;
-                }
             }
+            colorIndex++;
         }
     }
-    public unsafe void WarmStartContactsTask(int startIndex, int endIndex, StepContext context, int colorIndex)
+    public unsafe void WarmStartContactsTask(ref SolverBlock block, StepContext context)
     {
         var states = context.states.Data;
-        var constraints = ((ContactConstraintsFloat)context.graph.colors[colorIndex].wideConstraints).wideConstraints;
+        var constraints = ((ContactConstraintsFloat)context.graph.colors[block.colorIndex].wideConstraints).wideConstraints;
         {
-            for (int wideIndex = startIndex; wideIndex < endIndex; wideIndex++)
+            for (int wideIndex = block.startIndex; wideIndex < block.startIndex + block.count; wideIndex++)
             {
                 ContactConstraintWide* c = constraints + wideIndex;
                 BodyStateW bA = GatherBodies(states, (int*)&c->indexA);
@@ -2774,17 +2735,17 @@ public class ContactSolverFloat : IContactSolverW
             }
         }
     }
-    public unsafe void SolveContactsTask(int startIndex, int endIndex, StepContext context, int colorIndex, bool useBias)
+    public unsafe void SolveContactsTask(ref SolverBlock block, StepContext context, bool useBias)
     {
         var states = context.states.Data;
-        var constraints = ((ContactConstraintsFloat)context.graph.colors[colorIndex].wideConstraints).wideConstraints;
+        var constraints = ((ContactConstraintsFloat)context.graph.colors[block.colorIndex].wideConstraints).wideConstraints;
         {
             FloatW inv_h = new(context.inv_h);
             FloatW contactSpeed = new(-context.world.contactSpeed);
             FloatW oneW = new(1);
-            for (int i = startIndex; i < endIndex; i++)
+            for (int wideIndex = block.startIndex; wideIndex < block.startIndex + block.count; wideIndex++)
             {
-                ContactConstraintWide* c = constraints + i;
+                ContactConstraintWide* c = constraints + wideIndex;
                 BodyStateW bA = GatherBodies(states, (int*)&c->indexA);
                 BodyStateW bB = GatherBodies(states, (int*)&c->indexB);
                 FloatW biasRate, massScale, impulseScale;
@@ -2849,7 +2810,6 @@ public class ContactSolverFloat : IContactSolverW
                     FloatW dvx = (bB.v.X - bB.w * rB.Y) - (bA.v.X - bA.w * rA.Y);
                     FloatW dvy = (bB.v.Y + bB.w * rB.X) - (bA.v.Y + bA.w * rA.X);
                     FloatW vn = dvx * c->normal.X + dvy * c->normal.Y;
-                    //different than 1, is this intended?
                     FloatW negImpulse = c->normalMass2 * (pointMassScale * vn + bias) + pointImpulseScale * c->normalImpulse2;
                     FloatW newImpulse = MaxW(c->normalImpulse2 - negImpulse, FloatW.Zero);
                     FloatW impulse = newImpulse - c->normalImpulse2;
@@ -2871,85 +2831,89 @@ public class ContactSolverFloat : IContactSolverW
                     };
                     bB.w = MulAddW(bB.w, c->invIB, rB.X * Py - rB.Y * Px);
                 }
-                FloatW tangentX = c->normal.Y;
-                FloatW tangentY = FloatW.Zero - c->normal.X;
+                if (!useBias)
                 {
-                    Vector2W rA = c->anchorA1, rB = c->anchorB1;
-                    FloatW dvx = (bB.v.X - bB.w * rB.Y) - (bA.v.X - bA.w * rA.Y);
-                    FloatW dvy = (bB.v.Y + bB.w * rB.X) - (bA.v.Y + bA.w * rA.X);
-                    FloatW vt = dvx * tangentX + dvy * tangentY;
-                    vt -= c->tangentSpeed;
-                    FloatW negImpulse = c->tangentMass1 * vt;
-                    FloatW maxFriction = c->friction * c->normalImpulse1;
-                    FloatW newImpulse = c->tangentImpulse1 - negImpulse;
-                    //no symclamp?
-                    newImpulse = MaxW(FloatW.Zero - maxFriction, MinW(newImpulse, maxFriction));
-                    FloatW impulse = newImpulse - c->tangentImpulse1;
-                    c->tangentImpulse1 = newImpulse;
-                    FloatW Px = impulse * tangentX;
-                    FloatW Py = impulse * tangentY;
-                    bA.v = new()
+                    if (!AllZeroW(c->rollingResistance))
                     {
-                        X = MulSubW(bA.v.X, c->invMassA, Px),
-                        Y = MulSubW(bA.v.Y, c->invMassA, Py)
-                    };
-                    bA.w = MulSubW(bA.w, c->invIA, rA.X * Py - rA.Y * Px);
-                    bB.v = new()
+                        FloatW deltaLambda = c->rollingMass * (bA.w - bB.w);
+                        FloatW lambda = c->rollingImpulse;
+                        FloatW maxLambda = c->rollingResistance * totalNormalImpulse;
+                        c->rollingImpulse = SymClampW(lambda + deltaLambda, maxLambda);
+                        deltaLambda = c->rollingImpulse - lambda;
+                        bA.w = MulSubW(bA.w, c->invIA, deltaLambda);
+                        bB.w = MulAddW(bB.w, c->invIB, deltaLambda);
+                    }
+                    FloatW tangentX = c->normal.Y;
+                    FloatW tangentY = FloatW.Zero - c->normal.X;
                     {
-                        X = MulAddW(bB.v.X, c->invMassB, Px),
-                        Y = MulAddW(bB.v.Y, c->invMassB, Py)
-                    };
-                    bB.w = MulAddW(bB.w, c->invIB, rB.X * Py - rB.Y * Px);
-                }
-                {
-                    Vector2W rA = c->anchorA2, rB = c->anchorB2;
-                    FloatW dvx = (bB.v.X - bB.w * rB.Y) - (bA.v.X - bA.w * rA.Y);
-                    FloatW dvy = (bB.v.Y + bB.w * rB.X) - (bA.v.Y + bA.w * rA.X);
-                    FloatW vt = dvx * tangentX + dvy * tangentY;
-                    vt -= c->tangentSpeed;
-                    FloatW negImpulse = c->tangentMass2 * vt;
-                    FloatW maxFriction = c->friction * c->normalImpulse2;
-                    FloatW newImpulse = c->tangentImpulse2 - negImpulse;
-                    newImpulse = MaxW(FloatW.Zero - maxFriction, MinW(newImpulse, maxFriction));
-                    FloatW impulse = newImpulse - c->tangentImpulse2;
-                    c->tangentImpulse2 = newImpulse;
-                    FloatW Px = impulse * tangentX;
-                    FloatW Py = impulse * tangentY;
-                    bA.v = new()
+                        Vector2W rA = c->anchorA1, rB = c->anchorB1;
+                        FloatW dvx = (bB.v.X - bB.w * rB.Y) - (bA.v.X - bA.w * rA.Y);
+                        FloatW dvy = (bB.v.Y + bB.w * rB.X) - (bA.v.Y + bA.w * rA.X);
+                        FloatW vt = dvx * tangentX + dvy * tangentY;
+                        vt -= c->tangentSpeed;
+                        FloatW negImpulse = c->tangentMass1 * vt;
+                        FloatW maxFriction = c->friction * c->normalImpulse1;
+                        FloatW newImpulse = c->tangentImpulse1 - negImpulse;
+                        //no symclamp?
+                        newImpulse = MaxW(FloatW.Zero - maxFriction, MinW(newImpulse, maxFriction));
+                        FloatW impulse = newImpulse - c->tangentImpulse1;
+                        c->tangentImpulse1 = newImpulse;
+                        FloatW Px = impulse * tangentX;
+                        FloatW Py = impulse * tangentY;
+                        bA.v = new()
+                        {
+                            X = MulSubW(bA.v.X, c->invMassA, Px),
+                            Y = MulSubW(bA.v.Y, c->invMassA, Py)
+                        };
+                        bA.w = MulSubW(bA.w, c->invIA, rA.X * Py - rA.Y * Px);
+                        bB.v = new()
+                        {
+                            X = MulAddW(bB.v.X, c->invMassB, Px),
+                            Y = MulAddW(bB.v.Y, c->invMassB, Py)
+                        };
+                        bB.w = MulAddW(bB.w, c->invIB, rB.X * Py - rB.Y * Px);
+                    }
                     {
-                        X = MulSubW(bA.v.X, c->invMassA, Px),
-                        Y = MulSubW(bA.v.Y, c->invMassA, Py)
-                    };
-                    bA.w = MulSubW(bA.w, c->invIA, rA.X * Py - rA.Y * Px);
-                    bB.v = new()
-                    {
-                        X = MulAddW(bB.v.X, c->invMassB, Px),
-                        Y = MulAddW(bB.v.Y, c->invMassB, Py)
-                    };
-                    bB.w = MulAddW(bB.w, c->invIB, rB.X * Py - rB.Y * Px);
-                }
-                {
-                    FloatW deltaLambda = c->rollingMass * (bA.w - bB.w);
-                    FloatW lambda = c->rollingImpulse;
-                    FloatW maxLambda = c->rollingResistance * totalNormalImpulse;
-                    c->rollingImpulse = SymClampW(lambda + deltaLambda, maxLambda);
-                    deltaLambda = c->rollingImpulse - lambda;
-                    bA.w = MulSubW(bA.w, c->invIA, deltaLambda);
-                    bB.w = MulAddW(bB.w, c->invIB, deltaLambda);
+                        Vector2W rA = c->anchorA2, rB = c->anchorB2;
+                        FloatW dvx = (bB.v.X - bB.w * rB.Y) - (bA.v.X - bA.w * rA.Y);
+                        FloatW dvy = (bB.v.Y + bB.w * rB.X) - (bA.v.Y + bA.w * rA.X);
+                        FloatW vt = dvx * tangentX + dvy * tangentY;
+                        vt -= c->tangentSpeed;
+                        FloatW negImpulse = c->tangentMass2 * vt;
+                        FloatW maxFriction = c->friction * c->normalImpulse2;
+                        FloatW newImpulse = c->tangentImpulse2 - negImpulse;
+                        newImpulse = MaxW(FloatW.Zero - maxFriction, MinW(newImpulse, maxFriction));
+                        FloatW impulse = newImpulse - c->tangentImpulse2;
+                        c->tangentImpulse2 = newImpulse;
+                        FloatW Px = impulse * tangentX;
+                        FloatW Py = impulse * tangentY;
+                        bA.v = new()
+                        {
+                            X = MulSubW(bA.v.X, c->invMassA, Px),
+                            Y = MulSubW(bA.v.Y, c->invMassA, Py)
+                        };
+                        bA.w = MulSubW(bA.w, c->invIA, rA.X * Py - rA.Y * Px);
+                        bB.v = new()
+                        {
+                            X = MulAddW(bB.v.X, c->invMassB, Px),
+                            Y = MulAddW(bB.v.Y, c->invMassB, Py)
+                        };
+                        bB.w = MulAddW(bB.w, c->invIB, rB.X * Py - rB.Y * Px);
+                    }
                 }
                 ScatterBodies(states, (int*)&c->indexA, ref bA);
                 ScatterBodies(states, (int*)&c->indexB, ref bB);
             }
         }
     }
-    public unsafe void ApplyRestitutionTask(int startIndex, int endIndex, StepContext context, int colorIndex)
+    public unsafe void ApplyRestitutionTask(ref SolverBlock block, StepContext context)
     {
         var states = context.states.Data;
-        var constraints = ((ContactConstraintsFloat)context.graph.colors[colorIndex].wideConstraints).wideConstraints;
+        var constraints = ((ContactConstraintsFloat)context.graph.colors[block.colorIndex].wideConstraints).wideConstraints;
         {
             FloatW threshold = new(context.world.restitutionThreshold);
             FloatW zero = FloatW.Zero;
-            for (int i = startIndex; i < endIndex; i++)
+            for (int i = block.startIndex; i < block.startIndex + block.count; i++)
             {
                 ContactConstraintWide* c = constraints + i;
                 if (AllZeroW(c->restitution)) continue;
@@ -3019,15 +2983,27 @@ public class ContactSolverFloat : IContactSolverW
             }
         }
     }
-    public unsafe void StoreImpulsesTask(int startIndex, int endIndex, StepContext context)
+    public unsafe void StoreImpulsesTask(ref SolverBlock block, StepContext context, int workerIndex)
     {
-        ContactSim[] contacts = context.contacts;
-        Manifold dummy = new();
-        ContactConstraintWide* constraints = ((ContactConstraintsFloat)context.wideContactConstraints).wideConstraints;
+        var spans = context.contactPrepareSpans;
+        var wideBase = ((ContactConstraintsFloat)context.wideContactConstraints).wideConstraints;
+        TaskContext taskContext = context.world.taskContexts[workerIndex];
+        BitSet hitEventBitSet = taskContext.hitEventBitSet;
+        bool hasHitEvents = taskContext.hasHitEvents;
+        float negHitThreshold = -context.world.hitEventThreshold;
+        int wideIndex = block.startIndex;
+        int endWideIndex = block.startIndex + block.count;
+        int colorIndex = 0;
+        while (spans[colorIndex + 1].start <= wideIndex) colorIndex++;
+        while (wideIndex < endWideIndex)
         {
-            for (int constraintIndex = startIndex; constraintIndex < endIndex; constraintIndex++)
+            int colorWideEndIndex = Math.Min(spans[colorIndex + 1].start, endWideIndex);
+            int colorWideStart = spans[colorIndex].start;
+            int colorContactCount = spans[colorIndex].count;
+            var contactSims = spans[colorIndex].contacts;
+            for (; wideIndex < colorWideEndIndex; wideIndex++)
             {
-                ContactConstraintWide* c = constraints + constraintIndex;
+                ContactConstraintWide* c = wideBase + wideIndex;
                 float* rollingImpulse = (float*)&c->rollingImpulse;
                 float* normalImpulse1 = (float*)&c->normalImpulse1;
                 float* normalImpulse2 = (float*)&c->normalImpulse2;
@@ -3037,11 +3013,14 @@ public class ContactSolverFloat : IContactSolverW
                 float* totalNormalImpulse2 = (float*)&c->totalNormalImpulse2;
                 float* normalVelocity1 = (float*)&c->relativeVelocity1;
                 float* normalVelocity2 = (float*)&c->relativeVelocity2;
-                int baseIndex = 4 * constraintIndex;
+                int localWideIndex = wideIndex - colorWideStart;
+                int baseIndex = 8 * localWideIndex;
                 for (int laneIndex = 0; laneIndex < 4; ++laneIndex)
                 {
-                    ref Manifold m = ref dummy;
-                    if (contacts[baseIndex + laneIndex] != null) m = ref contacts[baseIndex + laneIndex].manifold;
+                    int contactIndex = baseIndex + laneIndex;
+                    if (contactIndex >= colorContactCount) break;
+                    ContactSim contactSim = contactSims[contactIndex];
+                    ref Manifold m = ref contactSim.manifold;
                     m.rollingImpulse = rollingImpulse[laneIndex];
                     m.point0.normalImpulse = normalImpulse1[laneIndex];
                     m.point0.tangentImpulse = tangentImpulse1[laneIndex];
@@ -3051,8 +3030,24 @@ public class ContactSolverFloat : IContactSolverW
                     m.point1.tangentImpulse = tangentImpulse2[laneIndex];
                     m.point1.totalNormalImpulse = totalNormalImpulse2[laneIndex];
                     m.point1.normalVelocity = normalVelocity2[laneIndex];
+                    if (contactSim.simFlags.HasFlag(ContactSimFlags.EnableHitEvent))
+                    {
+                        if (contactSim.manifold.pointCount > 0 && m.point0.normalVelocity < negHitThreshold && m.point0.totalNormalImpulse > 0)
+                        {
+                            hitEventBitSet.SetBit(contactSim.contactId);
+                            hasHitEvents = true;
+                            break;
+                        }
+                        if (contactSim.manifold.pointCount > 1 && m.point1.normalVelocity < negHitThreshold && m.point1.totalNormalImpulse > 0)
+                        {
+                            hitEventBitSet.SetBit(contactSim.contactId);
+                            hasHitEvents = true;
+                            break;
+                        }
+                    }
                 }
             }
+            colorIndex++;
         }
     }
 }

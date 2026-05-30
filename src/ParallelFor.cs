@@ -68,7 +68,6 @@ public partial class World
             {
                 handles[i] = enqueueTaskFcn(ParallelForTrampoline, tasks[i], userTaskContext);
                 this.taskCount++;
-                activeTaskCount += handles[i] == null ? 0 : 1;
             }
             else
             {
@@ -76,13 +75,7 @@ public partial class World
                 ParallelForTrampoline(tasks[i]);
             }
         }
-        for (int i = 0; i < taskCount; i++)
-        {
-            if (handles[i] != null)
-            {
-                finishTaskFcn(handles[i], userTaskContext);
-                activeTaskCount--;
-            }
-        }
+        for (int i = 0; i < taskCount; i++) if (handles[i] != null)
+            finishTaskFcn(handles[i], userTaskContext);
     }
 }

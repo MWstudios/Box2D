@@ -96,8 +96,8 @@ public unsafe record class DistanceJoint : IJoint
         SolverSet setB = world.solverSets[bodyB.setIndex];
         int localIndexA = bodyA.localIndex, localIndexB = bodyB.localIndex;
         BodySim bodySimA = setA.bodySims[localIndexA], bodySimB = setB.bodySims[localIndexB];
-        float mA = bodySimA.invMass, iA = bodySimA.invMass;
-        float mB = bodySimB.invMass, iB = bodySimB.invMass;
+        float mA = bodySimA.invMass, iA = bodySimA.invInertia;
+        float mB = bodySimB.invMass, iB = bodySimB.invInertia;
         joint.invMassA = mA; joint.invMassB = mB;
         joint.invIA = iA; joint.invIB = iB;
         indexA = bodyA.setIndex == (int)SetType.Awake ? localIndexA : -1;
@@ -125,9 +125,8 @@ public unsafe record class DistanceJoint : IJoint
         Debug.Assert(joint.type == JointType.Distance);
         float mA = joint.invMassA, mB = joint.invMassB;
         float iA = joint.invIA, iB = joint.invIB;
-        BodyState dummyState = new();
-        BodyState* stateA = &dummyState; if (indexA != -1) stateA = context.states.Data + indexA;
-        BodyState* stateB = &dummyState; if (indexB != -1) stateB = context.states.Data + indexB;
+        BodyState* stateA = BodyState.IdentityPtr; if (indexA != -1) stateA = context.states.Data + indexA;
+        BodyState* stateB = BodyState.IdentityPtr; if (indexB != -1) stateB = context.states.Data + indexB;
         Vector2 rA = stateA->deltaRotation * anchorA;
         Vector2 rB = stateB->deltaRotation * anchorB;
         Vector2 ds = stateB->deltaPosition - stateA->deltaPosition + (rB - rA);
@@ -150,9 +149,9 @@ public unsafe record class DistanceJoint : IJoint
         Debug.Assert(joint.type == JointType.Distance);
         float mA = joint.invMassA, mB = joint.invMassB;
         float iA = joint.invIA, iB = joint.invIB;
-        BodyState dummyState = new();
-        BodyState* stateA = &dummyState; if (indexA != -1) stateA = context.states.Data + indexA;
-        BodyState* stateB = &dummyState; if (indexB != -1) stateB = context.states.Data + indexB;
+        
+        BodyState* stateA = BodyState.IdentityPtr; if (indexA != -1) stateA = context.states.Data + indexA;
+        BodyState* stateB = BodyState.IdentityPtr; if (indexB != -1) stateB = context.states.Data + indexB;
         Vector2 vA = stateA->linearVelocity; float wA = stateA->angularVelocity;
         Vector2 vB = stateB->linearVelocity; float wB = stateB->angularVelocity;
         Vector2 rA = stateA->deltaRotation * anchorA;

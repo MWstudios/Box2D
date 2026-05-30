@@ -31,7 +31,7 @@ public enum SolverStageType
     PrepareJoints, PrepareContacts, IntegrateVelocities,
     WarmStart, Solve, IntegratePositions, Relax, Restitution, StoreImpulses
 }
-public enum SolverBlockType : short
+public enum SolverBlockType : byte
 {
     Body, Joint, Contact, GraphJoint, GraphContact
 }
@@ -85,15 +85,38 @@ public struct SolverBlock
     public int startIndex;
     public ushort count;
     public SolverBlockType blockType;
+    public byte colorIndex;
+}
+/// <summary>A unit of multithreaded work along with atomic synchronization. The syncIndex grows
+/// monotonically allowing the solver block to be re-used across sub-steps.</summary>
+public struct SyncBlock
+{
+    public SolverBlock block;
     public int syncIndex;
 }
 public unsafe class SolverStage
 {
+    public SyncBlock* blocks;
     public SolverStageType type;
-    public SolverBlock* blocks;
     public int blockCount;
-    public int colorIndex;
+    public byte colorIndex;
     public int completionCount;
+}
+/// <summary>Prepare/store run as a flat parallel-for over the whole wide-constraint
+/// range. Each span maps a slice of that range back to the owning color's
+/// contacts so workers can decode flat wide-slot indices without touching
+/// graph state. The spans array has one entry per active color plus a sentinel
+/// whose start == wideContactCount.</summary>
+public struct ContactPrepareSpan
+{
+    public int start, count;
+    public List<ContactSim> contacts;
+}
+/// <summary>Similar for joints</summary>
+public struct JointPrepareSpan
+{
+    public int start, count;
+    public List<JointSim> joints;
 }
 public partial class StepContext
 {
@@ -131,17 +154,21 @@ public partial class StepContext
     public int[] bulletBodies;
     public int bulletBodyCount;
 
-    /// <summary>joint pointers for simplified parallel-for access.</summary>
-    public JointSim[] joints;
-
     /// <summary>contact pointers for simplified parallel-for access.<br/>
-    /// - parallel-for collide with no gaps<br/>
-    /// - parallel-for prepare and store contacts with NULL gaps for SIMD remainders
-    /// despite being an array of pointers, these are contiguous sub-arrays corresponding
-    /// to constraint graph colors</summary>
-    public ContactSim[] contacts;
+    /// - parallel-for collide with no gaps, includes touching and non-touching</summary>
+    public ContactSim[] contactSims;
 
+    /// <summary>Flat view of the wide contact constraint array used by prepare and store.
+    /// prepareSpans has activeColorCount + 1 entries, the last being a sentinel
+    /// at wideContactCount. wideContactConstraints is the contiguous base
+    /// pointer; per-color slices live at colors[i].wideConstraints.</summary>
     public IContactConstraintsSIMD wideContactConstraints;
+    public ContactPrepareSpan[] contactPrepareSpans;
+    public int wideContactCount;
+
+    public JointPrepareSpan[] jointPrepareSpans;
+    public int jointCount;
+
     public int activeColorCount;
     public int workerCount;
 
@@ -150,6 +177,13 @@ public partial class StepContext
 
     /// <summary>sync index (16-bits) | stage type (16-bits)</summary>
     public uint atomicSyncBits;
+
+    /// <summary>Race flag claimed by whichever runner reaches b2SolverTask with workerIndex 0 first.
+    /// The calling thread of b2World_Step also races for this slot so the orchestrator can
+    /// always make progress, regardless of how the user's task system schedules tasks (out
+    /// of order, fewer threads than workers, or synchronously inside enqueueTaskFcn). The
+    /// loser of the race no-ops as workerIndex 0.</summary>
+    public int mainClaimed;
 }
 public unsafe partial class World
 {
@@ -159,15 +193,11 @@ public unsafe partial class World
         public int workerIndex;
         public object userTask;
     }
-    public static void IntegrateVelocitiesTask(int startIndex, int endIndex, StepContext context)
+    public static void IntegrateVelocitiesTask(ref SolverBlock block, StepContext context)
     {
         Vector2 gravity = context.world.gravity;
         float h = context.h;
-        float maxLinearSpeed = context.maxLinearVelocity;
-        float maxAngularSpeed = Box2D.MaxRotation * context.inv_dt;
-        float maxLinearSpeedSquared = maxLinearSpeed * maxLinearSpeed;
-        float maxAngularSpeedSquared = maxAngularSpeed * maxAngularSpeed;
-        for (int i = startIndex; i < endIndex; i++)
+        for (int i = block.startIndex; i < block.startIndex + block.count; i++)
         {
             BodySim sim = context.sims[i];
             BodyState* state = context.states.Data + i;
@@ -180,73 +210,39 @@ public unsafe partial class World
             float angularVelocityDelta = h * sim.invInertia * sim.torque;
             v = Vector2.MulAdd(linearVelocityDelta, linearDamping, v);
             w = angularVelocityDelta + angularDamping * w;
-            if (Vector2.Dot(v, v) > maxLinearSpeedSquared)
-            {
-                float ratio = maxLinearSpeed / v.Length();
-                v = ratio * v;
-                sim.flags |= BodyFlags.IsSpeedCapped;
-            }
-            if (w * w > maxAngularSpeedSquared && !sim.flags.HasFlag(BodyFlags.AllowFastRotation))
-            {
-                float ratio = maxAngularSpeed / Math.Abs(w);
-                w *= ratio;
-                sim.flags |= BodyFlags.IsSpeedCapped;
-            }
-            if (state->flags.HasFlag(BodyFlags.LockLinearX)) v.x = 0;
-            if (state->flags.HasFlag(BodyFlags.LockLinearY)) v.y = 0;
-            if (state->flags.HasFlag(BodyFlags.LockAngularZ)) w = 0;
             state->linearVelocity = v;
             state->angularVelocity = w;
          }
     }
-    public static void PrepareJointsTask(int startIndex, int endIndex, StepContext context)
-    {
-        for (int i = startIndex; i < endIndex; i++)
-        {
-            JointSim joint = context.joints[i];
-            joint.PrepareJoint(context);
-        }
-    }
-    public static void WarmStartJointsTask(int startIndex, int endIndex, StepContext context, int colorIndex)
-    {
-        GraphColor color = context.graph.colors[colorIndex];
-        Debug.Assert(0 <= startIndex && startIndex < color.jointSims.Count);
-        Debug.Assert(startIndex <= endIndex && endIndex <= color.jointSims.Count);
-        for (int i = startIndex; i < endIndex; i++)
-        {
-            JointSim joint = color.jointSims[i];
-            joint.WarmStart(context);
-        }
-    }
-    public static void SolveJointsTask(int startIndex, int endIndex, StepContext context, int colorIndex, bool useBias, int workerIndex)
-    {
-        GraphColor color = context.graph.colors[colorIndex];
-        Debug.Assert(0 <= startIndex && startIndex < color.jointSims.Count);
-        Debug.Assert(startIndex <= endIndex && endIndex <= color.jointSims.Count);
-        BitSet jointStateBitSet = context.world.taskContexts[workerIndex].jointStateBitSet;
-        for (int i = startIndex; i < endIndex; i++)
-        {
-            JointSim joint = color.jointSims[i];
-            joint.Solve(context, useBias);
-            if (useBias && (joint.forceThreshold < float.MaxValue || joint.torqueThreshold < float.MaxValue)
-                && !jointStateBitSet.GetBit(joint.jointId))
-            {
-                joint.GetJointReaction(context.inv_h, out float force, out float torque);
-                if (force >= joint.forceThreshold || torque >= joint.torqueThreshold)
-                    jointStateBitSet.SetBit(joint.jointId);
-            }
-        }
-    }
-    public static void IntegratePositionsTask(int startIndex, int endIndex, StepContext context)
+    public static void IntegratePositionsTask(ref SolverBlock block, StepContext context)
     {
         float h = context.h;
-        Debug.Assert(startIndex <= endIndex);
-        for (int i = startIndex; i < endIndex; i++)
+        float maxLinearSpeed = context.maxLinearVelocity;
+        float maxAngularSpeed = Box2D.MaxRotation * context.inv_dt;
+        float maxLinearSpeedSquared = maxLinearSpeed * maxLinearSpeed;
+        float maxAngularSpeedSquared = maxAngularSpeed * maxAngularSpeed;
+        for (int i = block.startIndex; i < block.startIndex + block.count; i++)
         {
             BodyState* state = context.states.Data + i;
-            if (state->flags.HasFlag(BodyFlags.LockLinearX)) state->linearVelocity.x = 0;
-            if (state->flags.HasFlag(BodyFlags.LockLinearY)) state->linearVelocity.y = 0;
-            if (state->flags.HasFlag(BodyFlags.LockAngularZ)) state->angularVelocity = 0;
+            Vector2 v = state->linearVelocity;
+            float w = state->angularVelocity;
+            v.x = state->flags.HasFlag(BodyFlags.LockLinearX) ? 0 : v.x;
+            v.y = state->flags.HasFlag(BodyFlags.LockLinearY) ? 0 : v.y;
+            w = state->flags.HasFlag(BodyFlags.LockAngularZ) ? 0 : w;
+            if (Vector2.Dot(v, v) > maxLinearSpeedSquared)
+            {
+                float ratio = maxLinearSpeed / v.Length();
+                v *= ratio;
+                state->flags |= BodyFlags.IsSpeedCapped;
+            }
+            if (w * w > maxAngularSpeedSquared && !state->flags.HasFlag(BodyFlags.AllowFastRotation))
+            {
+                float ratio = maxAngularSpeed / Math.Abs(w);
+                w *= ratio;
+                state->flags |= BodyFlags.IsSpeedCapped;
+            }
+            state->linearVelocity = v;
+            state->angularVelocity = w;
             state->deltaPosition = Vector2.MulAdd(state->deltaPosition, h, state->linearVelocity);
             state->deltaRotation = state->deltaRotation.Integrate(h * state->angularVelocity);
         }
@@ -442,25 +438,21 @@ public unsafe partial class World
             if (context.sensorFractions[i] < context.fraction)
                 taskContext.sensorHits.Add(context.sensorHits[i]);
     }
-    public static void FinalizeBodiesTask(int startIndex, int endIndex, int threadIndex, object context)
+    public static void FinalizeBodiesTask(int startIndex, int endIndex, int workerIndex, object context)
     {
         StepContext stepContext = (StepContext)context;
         World world = stepContext.world;
         Debug.Assert(endIndex <= world.bodyMoveEvents.Count);
-        TaskContext taskContext = world.taskContexts[threadIndex];
+        TaskContext taskContext = world.taskContexts[workerIndex];
         ref BitSet enlargedSimBitSet = ref taskContext.enlargedSimBitSet;
         ref BitSet awakeIslandBitSet = ref taskContext.awakeIslandBitSet;
-        Debug.Assert(startIndex <= endIndex);
         for (int simIndex = startIndex; simIndex < endIndex; simIndex++)
         {
             BodyState* state = stepContext.states.Data + simIndex;
             BodySim sim = stepContext.sims[simIndex];
-            if (state->flags.HasFlag(BodyFlags.LockLinearX)) state->linearVelocity.x = 0;
-            if (state->flags.HasFlag(BodyFlags.LockLinearY)) state->linearVelocity.y = 0;
-            if (state->flags.HasFlag(BodyFlags.LockAngularZ)) state->angularVelocity = 0;
             Vector2 v = state->linearVelocity;
             float w = state->angularVelocity;
-            Debug.Assert(v.IsValid());
+            Debug.Assert(v.IsValid() && float.IsFinite(w));
             Debug.Assert(float.IsFinite(w));
             sim.center += state->deltaPosition;
             sim.transform.q = (state->deltaRotation * sim.transform.q).Normalize();
@@ -483,12 +475,14 @@ public unsafe partial class World
             sim.torque = 0;
             Debug.Assert(!body.flags.HasFlag(BodyFlags.DirtyMass));
             body.flags &= ~(BodyFlags.IsFast | BodyFlags.IsSpeedCapped | BodyFlags.HadTimeOfImpact);
-            body.flags |= (sim.flags & (BodyFlags.IsSpeedCapped | BodyFlags.HadTimeOfImpact));
+            body.flags |= sim.flags & (BodyFlags.IsSpeedCapped | BodyFlags.HadTimeOfImpact);
+            body.flags |= state->flags & (BodyFlags.IsSpeedCapped | BodyFlags.HadTimeOfImpact);
             sim.flags &= ~(BodyFlags.IsFast | BodyFlags.IsSpeedCapped | BodyFlags.HadTimeOfImpact);
+            state->flags &= ~(BodyFlags.IsFast | BodyFlags.IsSpeedCapped | BodyFlags.HadTimeOfImpact);
             if (!world.enableSleep || !body.enableSleep || sleepVelocity > body.sleepThreshold)
             {
                 body.sleepTime = 0;
-                if (body.type == BodyType.Dynamic && world.enableContinuous && maxVelocity * stepContext.dt > 0.5f * sim.minExtent)
+                if (body.type == BodyType.Dynamic && world.enableContinuous && Math.Max(maxDeltaPosition, maxVelocity * stepContext.dt) > 0.5f * sim.minExtent)
                 {
                     sim.flags |= BodyFlags.IsFast;
                     if (sim.flags.HasFlag(BodyFlags.IsBullet))
@@ -546,117 +540,129 @@ public unsafe partial class World
             }
         }
     }
-    /// <summary>Compute the number of work blocks needed given an item count and desired block size.
-    /// If there are too many blocks for the worker count, the block size is enlarged.</summary>
-    public static int ComputeBlockCount(int itemCount, int defaultBlockSize, int maxBlockCount)
+    public struct BlockDim
     {
-        if (itemCount == 0) return 0;
-        if (itemCount > defaultBlockSize * maxBlockCount) return maxBlockCount;
-        return ((itemCount - 1) / defaultBlockSize) + 1;
+        /// <summary>number of items per block (except last block)</summary>
+        public int size;
+        /// <summary>total number of blocks</summary>
+        public int count;
+    }
+    /// <summary>A block is a range of tasks, a start index and count as a sub-array. Each worker receives at
+    /// most M blocks of work. The workers may receive less blocks if there is not sufficient work.
+    /// Each block of work has a minimum number of elements (block size). This in turn may limit the
+    /// number of blocks. If there are many elements then the block size is increased so there are
+    /// still at most M blocks of work per worker. M is a tunable number that has two goals:
+    /// 1. keep M small to reduce overhead
+    /// 2. keep M large enough for other workers to be able to steal work
+    /// The block size is a power of two to make math efficient.</summary>
+    public static BlockDim ComputeBlockCount(int itemCount, int minSize, int maxBlockCount)
+    {
+        BlockDim dim = new();
+        if (itemCount == 0) return dim;
+        dim.size = itemCount <= minSize * maxBlockCount ? minSize : (itemCount + maxBlockCount - 1) / maxBlockCount;
+        dim.count = (itemCount + dim.size - 1) / dim.size;
+        Debug.Assert(dim.count >= 1);
+        Debug.Assert(dim.size * dim.count >= itemCount);
+        return dim;
     }
     /// <summary>Initialize solver blocks for a contiguous range of items. Computes block size internally
     /// from the same parameters used by b2ComputeBlockCount.</summary>
-    public static void InitBlocks(SolverBlock* blocks, int blockCount, int itemCount, int defaultBlockSize, int maxBlockCount, SolverBlockType blockType)
+    public static void InitBlocks(SyncBlock* blocks, BlockDim dim, int itemCount, SolverBlockType blockType, byte colorIndex)
     {
-        if (blockCount == 0) return;
-        int blockSize = itemCount > defaultBlockSize * maxBlockCount ? itemCount / maxBlockCount : defaultBlockSize;
+        if (dim.count == 0) return;
+        Debug.Assert(itemCount >= dim.count);
+        int blockSize = dim.size;
         Debug.Assert(blockSize <= short.MaxValue);
-        for (int i = 0; i < blockCount; i++)
+        for (int i = 0; i < dim.count; i++)
         {
-            blocks[i].startIndex = i * blockSize;
-            blocks[i].count = (ushort)blockSize;
-            blocks[i].blockType = blockType;
+            blocks[i].block.startIndex = i * blockSize;
+            blocks[i].block.count = (ushort)blockSize;
+            blocks[i].block.blockType = blockType;
+            blocks[i].block.colorIndex = colorIndex;
             Interlocked.Exchange(ref blocks[i].syncIndex, 0);
         }
-        blocks[blockCount - 1].count = (ushort)(itemCount - (blockCount - 1) * blockSize);
+        blocks[dim.count - 1].block.count = (ushort)(itemCount - (dim.count - 1) * blockSize);
     }
-    public static void InitStage(SolverStage[] stages, ref int stageIndex, SolverStageType type, SolverBlock* blocks, int blockCount, int colorIndex)
+    public static void InitStage(SolverStage[] stages, ref int stageIndex, SolverStageType type, SyncBlock* blocks, int blockCount, byte colorIndex)
     {
         stages[stageIndex] = new() { type = type, blocks = blocks, blockCount = blockCount, colorIndex = colorIndex };
         Interlocked.Exchange(ref stages[stageIndex].completionCount, 0);
         stageIndex++;
     }
-    /// <summary>Initialize one stage per color for each iteration. Used for warm start, solve, relax, and restitution.</summary>Indices"></param>
-    /// <returns></returns>
-    public static void InitColorStages(SolverStage[] stages, ref int stageIndex, SolverStageType type, int iterations, int activeColorCount, SolverBlock*[] graphColorBlocks, int[] colorBlockCounts, int[] activeColorIndices)
+    /// <summary>Initialize one stage per color for each iteration. Used for warm start, solve, relax, and restitution.
+    /// All iterations of a given color share the same b2SyncBlock array so the per-block syncIndex
+    /// grows monotonically across stages within that color.</summary>
+    public static void InitColorStages(SolverStage[] stages, ref int stageIndex, SolverStageType type, int iterations, int activeColorCount, SyncBlock*[] colorBlocks, int[] colorBlockCounts, int[] activeColorIndices)
     {
         for (int j = 0; j < iterations; j++) for (int i = 0; i < activeColorCount; i++)
-            InitStage(stages, ref stageIndex, type, graphColorBlocks[i], colorBlockCounts[i], activeColorIndices[i]);
+            InitStage(stages, ref stageIndex, type, colorBlocks[i], colorBlockCounts[i], (byte)activeColorIndices[i]);
     }
     public static void ExecuteBlock(SolverStage stage, StepContext context, ref SolverBlock block, int workerIndex)
     {
-        int startIndex = block.startIndex, endIndex = startIndex + block.count;
         IContactSolverW contactSolver = IContactSolverW.Instance();
         switch (stage.type)
         {
             case SolverStageType.PrepareJoints:
-                PrepareJointsTask(startIndex, endIndex, context);
+                PrepareJointsTask(ref block, context);
                 break;
             case SolverStageType.PrepareContacts:
-                contactSolver.PrepareContactsTask(startIndex, endIndex, context);
+                contactSolver.PrepareContactsTask(ref block, context);
                 break;
             case SolverStageType.IntegrateVelocities:
-                IntegrateVelocitiesTask(startIndex, endIndex, context);
+                IntegrateVelocitiesTask(ref block, context);
                 break;
             case SolverStageType.WarmStart:
-                if (block.blockType == SolverBlockType.GraphContact) contactSolver.WarmStartContactsTask(startIndex, endIndex, context, stage.colorIndex);
-                else if (block.blockType == SolverBlockType.GraphJoint) WarmStartJointsTask(startIndex, endIndex, context, stage.colorIndex);
+                if (block.blockType == SolverBlockType.GraphContact) contactSolver.WarmStartContactsTask(ref block, context);
+                else if (block.blockType == SolverBlockType.GraphJoint) WarmStartJointsTask(ref block, context, stage.colorIndex);
                 break;
             case SolverStageType.Solve:
-                if (block.blockType == SolverBlockType.GraphContact) contactSolver.SolveContactsTask(startIndex, endIndex, context, stage.colorIndex, true);
-                else if (block.blockType == SolverBlockType.GraphJoint) SolveJointsTask(startIndex, endIndex, context, stage.colorIndex, true, workerIndex);
+                if (block.blockType == SolverBlockType.GraphContact) contactSolver.SolveContactsTask(ref block, context, true);
+                else if (block.blockType == SolverBlockType.GraphJoint) SolveJointsTask(ref block, context, stage.colorIndex, true, workerIndex);
                 break;
             case SolverStageType.IntegratePositions:
-                IntegratePositionsTask(startIndex, endIndex, context);
+                IntegratePositionsTask(ref block, context);
                 break;
             case SolverStageType.Relax:
-                if (block.blockType == SolverBlockType.GraphContact) contactSolver.SolveContactsTask(startIndex, endIndex, context, stage.colorIndex, false);
-                else if (block.blockType == SolverBlockType.GraphJoint) SolveJointsTask(startIndex, endIndex, context, stage.colorIndex, false, workerIndex);
+                if (block.blockType == SolverBlockType.GraphContact) contactSolver.SolveContactsTask(ref block, context, false);
+                else if (block.blockType == SolverBlockType.GraphJoint) SolveJointsTask(ref block, context, stage.colorIndex, false, workerIndex);
                 break;
             case SolverStageType.Restitution:
-                if (block.blockType == SolverBlockType.GraphContact) contactSolver.ApplyRestitutionTask(startIndex, endIndex, context, stage.colorIndex);
+                if (block.blockType == SolverBlockType.GraphContact) contactSolver.ApplyRestitutionTask(ref block, context);
                 break;
             case SolverStageType.StoreImpulses:
-                contactSolver.StoreImpulsesTask(startIndex, endIndex, context);
+                contactSolver.StoreImpulsesTask(ref block, context, workerIndex);
                 break;
             default:
                 break;
         }
     }
+    /// <summary>This staggers the worker start indices so they avoid touching the same solver blocks</summary>
     public static int GetWorkerStartIndex(int workerIndex, int blockCount, int workerCount)
     {
         if (blockCount <= workerCount) return workerIndex < blockCount ? workerIndex : -1;
         int blocksPerWorker = blockCount / workerCount, remainder = blockCount - blocksPerWorker * workerCount;
         return blocksPerWorker * workerIndex + Math.Min(remainder, workerIndex);
     }
+    /// <summary>Execute a stage, which is an array of solver blocks, each controlled with an atomic sync index.
+    /// Each worker starts at its home index and sweeps the ring, CAS-claiming any unclaimed blocks.</summary>
     public static void ExecuteStage(SolverStage stage, StepContext context, int previousSyncIndex, int syncIndex, int workerIndex)
     {
         int completedCount = 0, blockCount = stage.blockCount;
-        int expectedSyncIndex = previousSyncIndex;
         int startIndex = GetWorkerStartIndex(workerIndex, blockCount, context.workerCount);
         if (startIndex == -1) return;
         Debug.Assert(0 <= startIndex && startIndex < blockCount);
         int blockIndex = startIndex;
-        while (Interlocked.CompareExchange(ref stage.blocks[blockIndex].syncIndex, syncIndex, expectedSyncIndex) == expectedSyncIndex)
+        for (int i = 0; i < blockCount; i++)
         {
-            Debug.Assert(stage.type != SolverStageType.PrepareContacts || syncIndex < 2);
-            Debug.Assert(completedCount < blockCount);
-            ExecuteBlock(stage, context, ref stage.blocks[blockIndex], workerIndex);
-            completedCount++;
+            if (Interlocked.CompareExchange(ref stage.blocks[blockIndex].syncIndex, syncIndex, previousSyncIndex) == previousSyncIndex)
+            {
+                Debug.Assert(stage.type != SolverStageType.PrepareContacts || syncIndex < 2);
+                Debug.Assert(completedCount < blockCount);
+                ExecuteBlock(stage, context, ref stage.blocks[blockIndex].block, workerIndex);
+                completedCount++;
+            }
             blockIndex++;
             if (blockIndex >= blockCount) blockIndex = 0;
-            expectedSyncIndex = previousSyncIndex;
-        }
-        blockIndex = startIndex - 1;
-        while (true)
-        {
-            if (blockIndex < 0) blockIndex = blockCount - 1;
-            expectedSyncIndex = previousSyncIndex;
-            if (Interlocked.CompareExchange(ref stage.blocks[blockIndex].syncIndex, syncIndex, expectedSyncIndex) != expectedSyncIndex)
-                break;
-            ExecuteBlock(stage, context, ref stage.blocks[blockIndex], workerIndex);
-            completedCount++;
-            blockIndex--;
         }
         Interlocked.Add(ref stage.completionCount, completedCount);
     }
@@ -665,7 +671,7 @@ public unsafe partial class World
         int blockCount = stage.blockCount;
         if (blockCount == 0) return;
         int workerIndex = 0;
-        if (blockCount == 1) ExecuteBlock(stage, context, ref stage.blocks[0], workerIndex);
+        if (blockCount == 1) ExecuteBlock(stage, context, ref stage.blocks[0].block, workerIndex);
         else
         {
             Interlocked.Exchange(ref context.atomicSyncBits, syncBits);
@@ -687,6 +693,7 @@ public unsafe partial class World
         const int ITERATIONS = 1, RELAX_ITERATIONS = 1;
         if (workerContext.workerIndex == 0)
         {
+            if (Interlocked.CompareExchange(ref context.mainClaimed, 1, 0) != 0) return;
             Stopwatch ticks = new(); ticks.Start();
             int bodySyncIndex = 1, stageIndex = 0;
             uint jointSyncIndex = 1, syncBits = (jointSyncIndex << 16) | (uint)stageIndex;
@@ -698,10 +705,10 @@ public unsafe partial class World
             Debug.Assert(stages[stageIndex].type == SolverStageType.PrepareContacts);
             ExecuteMainStage(stages[stageIndex], context, syncBits);
             stageIndex++; contactSyncIndex++;
-            int graphSyncIndex = 1;
-            context.PrepareOverflowJoints();
-            context.PrepareOverflowContacts();
+            context.PrepareJoints_Overflow();
+            context.PrepareContacts_Overflow();
             profile.prepareConstraints += (float)ticks.Elapsed.TotalMilliseconds;
+            int graphSyncIndex = 1;
             ticks.Restart();
             for (int subStepIndex = 0; subStepIndex < context.subStepCount; subStepIndex++)
             {
@@ -712,8 +719,8 @@ public unsafe partial class World
                 iterationStageIndex++; bodySyncIndex++;
                 profile.integrateVelocities += (float)ticks.Elapsed.TotalMilliseconds;
                 ticks.Restart();
-                context.WarmStartOverflowJoints();
-                context.WarmStartOverflowContacts();
+                context.WarmStartJoints_Overflow();
+                context.WarmStartContacts_Overflow();
                 for (int colorIndex = 0; colorIndex < context.activeColorCount; colorIndex++)
                 {
                     syncBits = ((uint)graphSyncIndex << 16) | (uint)iterationStageIndex;
@@ -727,8 +734,8 @@ public unsafe partial class World
                 bool useBias = true;
                 for (int j = 0; j < ITERATIONS; j++)
                 {
-                    context.SolveOverflowJoints(useBias);
-                    context.SolveOverflowContacts(useBias);
+                    context.SolveJoints_Overflow(useBias);
+                    context.SolveContacts_Overflow(useBias);
                     for (int colorIndex = 0; colorIndex < context.activeColorCount; colorIndex++)
                     {
                         syncBits = ((uint)graphSyncIndex << 16) | (uint)iterationStageIndex;
@@ -748,8 +755,8 @@ public unsafe partial class World
                 ticks.Restart();
                 for (int j = 0; j < RELAX_ITERATIONS; j++)
                 {
-                    context.SolveOverflowJoints(useBias);
-                    context.SolveOverflowContacts(useBias);
+                    context.SolveJoints_Overflow(useBias);
+                    context.SolveContacts_Overflow(useBias);
                     for (int colorIndex = 0; colorIndex < context.activeColorCount; colorIndex++)
                     {
                         syncBits = ((uint)graphSyncIndex << 16) | (uint)iterationStageIndex;
@@ -764,7 +771,7 @@ public unsafe partial class World
             }
             stageIndex += 1 + context.activeColorCount + ITERATIONS * context.activeColorCount + 1 + RELAX_ITERATIONS * context.activeColorCount;
             {
-                context.ApplyOverflowRestitution();
+                context.ApplyRestitution_Overflow();
                 int iterStageIndex = stageIndex;
                 for (int colorIndex = 0; colorIndex < context.activeColorCount; colorIndex++)
                 {
@@ -777,7 +784,7 @@ public unsafe partial class World
             }
             profile.applyRestitution += (float)ticks.Elapsed.TotalMilliseconds;
             ticks.Restart();
-            context.StoreOverflowImpulses();
+            context.StoreImpulses_Overflow();
             syncBits = (contactSyncIndex << 16) | (uint)stageIndex;
             Debug.Assert(stages[stageIndex].type == SolverStageType.StoreImpulses);
             ExecuteMainStage(stages[stageIndex], context, syncBits);
@@ -807,10 +814,10 @@ public unsafe partial class World
             lastSyncBits = syncBits;
         }
     }
-    public static void BulletBodyTask(int startIndex, int endIndex, int threadIndex, object context)
+    public static void BulletBodyTask(int startIndex, int endIndex, int workerIndex, object context)
     {
         StepContext stepContext = (StepContext)context;
-        TaskContext taskContext = stepContext.world.taskContexts[threadIndex];
+        TaskContext taskContext = stepContext.world.taskContexts[workerIndex];
         Debug.Assert(startIndex <= endIndex);
         for (int i = startIndex; i < endIndex; i++)
         {
@@ -818,7 +825,18 @@ public unsafe partial class World
             stepContext.world.SolveContinuous(simIndex, taskContext);
         }
     }
-    public unsafe void Solve(StepContext stepContext)
+
+    int[] solve_activeColorIndices = new int[Box2D.GraphColorCount],
+        solve_colorContactCounts = new int[Box2D.GraphColorCount],
+        solve_colorJointCounts = new int[Box2D.GraphColorCount];
+    BlockDim[] solve_graphContactDims = new BlockDim[Box2D.GraphColorCount],
+        solve_graphJointDims = new BlockDim[Box2D.GraphColorCount];
+    ContactPrepareSpan[] solve_contactPrepareSpans = new ContactPrepareSpan[Box2D.GraphColorCount + 1];
+    JointPrepareSpan[] solve_jointPrepareSpans = new JointPrepareSpan[Box2D.GraphColorCount + 1];
+    SyncBlock*[] solve_graphColorBlocks = new SyncBlock*[Box2D.GraphColorCount];
+    int[] solve_graphBlockCounts = new int[Box2D.GraphColorCount];
+    WorkerContext[] solve_workerContext = new WorkerContext[Box2D.MaxWorkers];
+    public void Solve(StepContext stepContext)
     {
         int SIMD_SHIFT = Avx.IsSupported ? 3 : AdvSimd.IsSupported ? 2 : Sse.IsSupported ? 2 : 0;
         int SIMD_WIDTH = Avx.IsSupported ? 8 : AdvSimd.IsSupported ? 4 : Sse.IsSupported ? 4 : 1;
@@ -838,84 +856,95 @@ public unsafe partial class World
             return;
         }
         {
+            Stopwatch setupTicks = new(); setupTicks.Start();
             Interlocked.Exchange(ref stepContext.bulletBodyCount, 0);
             stepContext.bulletBodies = new int[awakeBodyCount];
-            Stopwatch prepareTicks = new(); prepareTicks.Start();
             stepContext.sims = awakeSet.bodySims;
             stepContext.states = awakeSet.bodyStates;
-            int awakeJointCount = 0, activeColorCount = 0;
+            int activeColorCount = 0;
             for (int i = 0; i < Box2D.GraphColorCount - 1; i++)
             {
                 int perColorContactCount = constraintGraph.colors[i].contactSims.Count;
                 int perColorJointCount = constraintGraph.colors[i].jointSims.Count;
                 activeColorCount += perColorContactCount + perColorJointCount > 0 ? 1 : 0;
-                awakeJointCount += perColorJointCount;
             }
             for (int i = bodyMoveEvents.Count; i < awakeBodyCount; i++) bodyMoveEvents.Add(new());
-            int blocksPerWorker = 4;
-            int maxBlockCount = blocksPerWorker * workerCount;
-            int bodyBlockCount = ComputeBlockCount(awakeBodyCount, 1 << 5, maxBlockCount);
-            int[] activeColorIndices = new int[Box2D.GraphColorCount],
-                colorContactCounts = new int[Box2D.GraphColorCount],
-                colorJointCounts = new int[Box2D.GraphColorCount],
-                colorBlockCounts = new int[Box2D.GraphColorCount];
+            int maxBlockCount = 4 * workerCount;
+            int minBodiesPerBlock = 32;
+            BlockDim bodyDim = ComputeBlockCount(awakeBodyCount, minBodiesPerBlock, maxBlockCount);
+            int minContactsPerBlock = 4, minJointsPerBlock = 4;
+            //int[] activeColorIndices = new int[Box2D.GraphColorCount],
+            //    colorContactCounts = new int[Box2D.GraphColorCount],
+            //    colorJointCounts = new int[Box2D.GraphColorCount];
+            //BlockDim[] graphContactDims = new BlockDim[Box2D.GraphColorCount],
+            //    graphJointDims = new BlockDim[Box2D.GraphColorCount];
             int graphBlockCount = 0;
             int wideContactCount = 0;
+            int jointCount = 0;
             int c = 0;
             for (int i = 0; i < Box2D.GraphColorCount - 1; i++)
             {
                 int colorContactCount = constraintGraph.colors[i].contactSims.Count;
                 int colorJointCount = constraintGraph.colors[i].jointSims.Count;
-                if (colorContactCount + colorJointCount > 0)
-                {
-                    activeColorIndices[c] = i;
-                    int colorContactCountW = colorContactCount > 0 ? ((colorContactCount - 1) >> SIMD_SHIFT) + 1 : 0;
-                    colorContactCounts[c] = colorContactCountW;
-                    colorJointCounts[c] = colorJointCount;
-                    int contactBlockCount_ = ComputeBlockCount(colorContactCountW, blocksPerWorker, maxBlockCount);
-                    int jointBlockCount_ = ComputeBlockCount(colorJointCount, blocksPerWorker, maxBlockCount);
-                    colorBlockCounts[c] = contactBlockCount_ + jointBlockCount_;
-                    graphBlockCount += colorBlockCounts[c];
-                    wideContactCount += colorContactCountW;
-                    c++;
-                }
+                if (colorContactCount + colorJointCount == 0) continue;
+                solve_activeColorIndices[c] = i;
+                int colorContactCountW = colorContactCount > 0 ? ((colorContactCount - 1) >> SIMD_SHIFT) + 1 : 0;
+                wideContactCount += colorContactCountW;
+                solve_colorContactCounts[c] = colorContactCountW;
+                solve_colorJointCounts[c] = colorJointCount;
+                jointCount += colorJointCount;
+                solve_graphContactDims[c] = ComputeBlockCount(colorContactCountW, minContactsPerBlock, maxBlockCount);
+                solve_graphJointDims[c] = ComputeBlockCount(colorJointCount, minJointsPerBlock, maxBlockCount);
+                graphBlockCount += solve_graphContactDims[c].count + solve_graphJointDims[c].count;
+                c++;
             }
             activeColorCount = c;
-            ContactSim[] contacts = new ContactSim[SIMD_WIDTH * wideContactCount];
-            JointSim[] joints = new JointSim[awakeJointCount];
+            BlockDim contactPrepareDim = ComputeBlockCount(wideContactCount, minContactsPerBlock, maxBlockCount);
+            BlockDim jointPrepareDim = ComputeBlockCount(jointCount, minJointsPerBlock, maxBlockCount);
             IContactConstraintsSIMD wideContactConstraints = IContactConstraintsSIMD.Alloc(wideContactCount);
-            int overflowContactCount = constraintGraph.colors[Box2D.GraphColorCount - 1].contactSims.Count;
-            ContactConstraint[] overflowContactConstraints = new ContactConstraint[overflowContactCount];
-            constraintGraph.colors[Box2D.GraphColorCount - 1].overflowConstraints = overflowContactConstraints;
+            GraphColor overflow = constraintGraph.colors[Box2D.GraphColorCount - 1];
+            int overflowCount = overflow.contactSims.Count;
+            //var contactPrepareSpans = new ContactPrepareSpan[Box2D.GraphColorCount + 1];
+            //var jointPrepareSpans = new JointPrepareSpan[Box2D.GraphColorCount + 1];
             {
-                int contactBase = 0;
+                int wideBase = 0;
                 int jointBase = 0;
                 for (int i = 0; i < activeColorCount; i++)
                 {
-                    int j = activeColorIndices[i];
+                    int j = solve_activeColorIndices[i];
                     GraphColor color = constraintGraph.colors[j];
                     int colorContactCount = color.contactSims.Count;
-                    if (colorContactCount == 0) color.wideConstraints = null;
+                    solve_contactPrepareSpans[i].start = wideBase;
+                    solve_contactPrepareSpans[i].count = colorContactCount;
+                    solve_contactPrepareSpans[i].contacts = color.contactSims;
+                    if (colorContactCount == 0)
+                    {
+                        color.wideConstraints = null;
+                        color.wideConstraintCount = 0;
+                    }
                     else
                     {
-                        color.wideConstraints = wideContactConstraints.PointTo(contactBase);
-                        for (int k = 0; k < colorContactCount; ++k)
-                            contacts[SIMD_WIDTH * contactBase + k] = color.contactSims[k];
+                        color.wideConstraints = wideContactConstraints.PointTo(wideBase);
                         int colorContactCountW = ((colorContactCount - 1) >> SIMD_SHIFT) + 1;
-                        for (int k = colorContactCount; k < SIMD_WIDTH * colorContactCountW; ++k)
-                            contacts[SIMD_WIDTH * contactBase + k] = null;
-                        contactBase += colorContactCountW;
+                        color.wideConstraintCount = colorContactCountW;
+                        if ((colorContactCount & (SIMD_WIDTH - 1)) != 0) //wipes full lane, even necessary data
+                            color.wideConstraints.Clear(colorContactCountW - 1, 1);
+                        wideBase += colorContactCountW;
                     }
-
-                    int colorJointCount = color.jointSims.Count;
-                    for (int k = 0; k < colorJointCount; ++k) joints[jointBase + k] = color.jointSims[k];
-                    jointBase += colorJointCount;
+                    solve_jointPrepareSpans[i].start = jointBase;
+                    solve_jointPrepareSpans[i].count = color.jointSims.Count;
+                    solve_jointPrepareSpans[i].joints = color.jointSims;
+                    jointBase += color.jointSims.Count;
                 }
-                Debug.Assert(contactBase == wideContactCount);
-                Debug.Assert(jointBase == awakeJointCount);
+                solve_contactPrepareSpans[activeColorCount].start = wideContactCount;
+                solve_contactPrepareSpans[activeColorCount].count = 0;
+                solve_contactPrepareSpans[activeColorCount].contacts = null;
+                Debug.Assert(wideBase == wideContactCount);
+                solve_jointPrepareSpans[activeColorCount].start = jointCount;
+                solve_jointPrepareSpans[activeColorCount].count = 0;
+                solve_jointPrepareSpans[activeColorCount].joints = null;
+                Debug.Assert(jointBase == jointCount);
             }
-            int contactBlockCount = ComputeBlockCount(wideContactCount, blocksPerWorker, maxBlockCount);
-            int jointBlockCount = ComputeBlockCount(awakeJointCount, blocksPerWorker, maxBlockCount);
             int stageCount = 1; // b2_stagePrepareJoints
             stageCount += 1; // b2_stagePrepareContacts
             stageCount += 1; // b2_stageIntegrateVelocities
@@ -926,10 +955,10 @@ public unsafe partial class World
             stageCount += activeColorCount; // b2_stageRestitution
             stageCount += 1; // b2_stageStoreImpulses
             SolverStage[] stages = new SolverStage[stageCount];
-            SolverBlock* bodyBlocks = (SolverBlock*)arena.AllocateArenaItem(bodyBlockCount * sizeof(SolverBlock), "body blocks"),
-                contactBlocks = (SolverBlock*)arena.AllocateArenaItem(contactBlockCount * sizeof(SolverBlock), "contact blocks"),
-                jointBlocks = (SolverBlock*)arena.AllocateArenaItem(jointBlockCount * sizeof(SolverBlock), "joint blocks"),
-                graphBlocks = (SolverBlock*)arena.AllocateArenaItem(graphBlockCount * sizeof(SolverBlock), "graph blocks");
+            SyncBlock* bodyBlocks = (SyncBlock*)stack.Alloc(bodyDim.count * sizeof(SyncBlock), "body blocks"),
+                contactBlocks = (SyncBlock*)stack.Alloc(contactPrepareDim.count * sizeof(SyncBlock), "contact blocks"),
+                jointBlocks = (SyncBlock*)stack.Alloc(jointPrepareDim.count * sizeof(SyncBlock), "joint blocks"),
+                graphBlocks = (SyncBlock*)stack.Alloc(graphBlockCount * sizeof(SyncBlock), "graph blocks");
             object splitIslandTask = null;
             if (splitIslandId != -1)
             {
@@ -941,80 +970,86 @@ public unsafe partial class World
                 }
                 else SplitIslandTask(this);
             }
-            InitBlocks(bodyBlocks, bodyBlockCount, awakeBodyCount, 1 << 5, maxBlockCount, SolverBlockType.Body);
-            InitBlocks(jointBlocks, jointBlockCount, awakeJointCount, blocksPerWorker, maxBlockCount, SolverBlockType.Joint);
-            InitBlocks(contactBlocks, contactBlockCount, wideContactCount, blocksPerWorker, maxBlockCount, SolverBlockType.Contact);
-            SolverBlock*[] graphColorBlocks = new SolverBlock*[Box2D.GraphColorCount];
-            SolverBlock* baseGraphBlock = graphBlocks;
+            InitBlocks(bodyBlocks, bodyDim, awakeBodyCount, SolverBlockType.Body, byte.MaxValue);
+            InitBlocks(contactBlocks, contactPrepareDim, wideContactCount, SolverBlockType.Contact, byte.MaxValue);
+            InitBlocks(jointBlocks, jointPrepareDim, jointCount, SolverBlockType.Joint, byte.MaxValue);
+            //SyncBlock*[] graphColorBlocks = new SyncBlock*[Box2D.GraphColorCount];
+            SyncBlock* baseGraphBlock = graphBlocks;
+            //int[] graphBlockCounts = new int[Box2D.GraphColorCount];
             for (int i = 0; i < activeColorCount; i++)
             {
-                graphColorBlocks[i] = baseGraphBlock;
-                int count = ComputeBlockCount(colorJointCounts[i], blocksPerWorker, maxBlockCount);
-                InitBlocks(baseGraphBlock, count, colorJointCounts[i], blocksPerWorker, maxBlockCount, SolverBlockType.GraphJoint);
-                baseGraphBlock += count;
-                count = ComputeBlockCount(colorContactCounts[i], blocksPerWorker, maxBlockCount);
-                InitBlocks(baseGraphBlock, count, colorContactCounts[i], blocksPerWorker, maxBlockCount, SolverBlockType.GraphContact);
-                baseGraphBlock += count;
+                solve_graphColorBlocks[i] = baseGraphBlock;
+                byte colorIndex = (byte)solve_activeColorIndices[i];
+                InitBlocks(baseGraphBlock, solve_graphJointDims[i], solve_colorJointCounts[i], SolverBlockType.GraphJoint, colorIndex);
+                baseGraphBlock += solve_graphJointDims[i].count;
+                InitBlocks(baseGraphBlock, solve_graphContactDims[i], solve_colorContactCounts[i], SolverBlockType.GraphContact, colorIndex);
+                baseGraphBlock += solve_graphContactDims[i].count;
+                solve_graphBlockCounts[i] = solve_graphJointDims[i].count + solve_graphContactDims[i].count;
             }
             Debug.Assert((baseGraphBlock - graphBlocks) == graphBlockCount);
             int stageIndex = 0;
-            InitStage(stages, ref stageIndex, SolverStageType.PrepareJoints, jointBlocks, jointBlockCount, -1);
-            InitStage(stages, ref stageIndex, SolverStageType.PrepareContacts, contactBlocks, contactBlockCount, -1);
-            InitStage(stages, ref stageIndex, SolverStageType.IntegrateVelocities, bodyBlocks, bodyBlockCount, -1);
-            InitColorStages(stages, ref stageIndex, SolverStageType.WarmStart, 1, activeColorCount, graphColorBlocks, colorBlockCounts, activeColorIndices);
-            InitColorStages(stages, ref stageIndex, SolverStageType.Solve, ITERATIONS, activeColorCount, graphColorBlocks, colorBlockCounts, activeColorIndices);
-            InitStage(stages, ref stageIndex, SolverStageType.IntegratePositions, bodyBlocks, bodyBlockCount, -1);
-            InitColorStages(stages, ref stageIndex, SolverStageType.Relax, RELAX_ITERATIONS, activeColorCount, graphColorBlocks, colorBlockCounts, activeColorIndices);
-            InitColorStages(stages, ref stageIndex, SolverStageType.Restitution, 1, activeColorCount, graphColorBlocks, colorBlockCounts, activeColorIndices);
-            InitStage(stages, ref stageIndex, SolverStageType.StoreImpulses, contactBlocks, contactBlockCount, -1);
+            InitStage(stages, ref stageIndex, SolverStageType.PrepareJoints, jointBlocks, jointPrepareDim.count, byte.MaxValue);
+            InitStage(stages, ref stageIndex, SolverStageType.PrepareContacts, contactBlocks, contactPrepareDim.count, byte.MaxValue);
+            InitStage(stages, ref stageIndex, SolverStageType.IntegrateVelocities, bodyBlocks, bodyDim.count, byte.MaxValue);
+            InitColorStages(stages, ref stageIndex, SolverStageType.WarmStart, 1, activeColorCount, solve_graphColorBlocks, solve_graphBlockCounts, solve_activeColorIndices);
+            InitColorStages(stages, ref stageIndex, SolverStageType.Solve, ITERATIONS, activeColorCount, solve_graphColorBlocks, solve_graphBlockCounts, solve_activeColorIndices);
+            InitStage(stages, ref stageIndex, SolverStageType.IntegratePositions, bodyBlocks, bodyDim.count, byte.MaxValue);
+            InitColorStages(stages, ref stageIndex, SolverStageType.Relax, RELAX_ITERATIONS, activeColorCount, solve_graphColorBlocks, solve_graphBlockCounts, solve_activeColorIndices);
+            InitColorStages(stages, ref stageIndex, SolverStageType.Restitution, 1, activeColorCount, solve_graphColorBlocks, solve_graphBlockCounts, solve_activeColorIndices);
+            InitStage(stages, ref stageIndex, SolverStageType.StoreImpulses, contactBlocks, contactPrepareDim.count, byte.MaxValue);
             Debug.Assert(stageIndex == stageCount);
             Debug.Assert(workerCount <= Box2D.MaxWorkers);
-            WorkerContext[] workerContext = new WorkerContext[Box2D.MaxWorkers];
+            //WorkerContext[] workerContext = new WorkerContext[Box2D.MaxWorkers];
             stepContext.graph = constraintGraph;
-            stepContext.joints = joints;
-            stepContext.contacts = contacts;
-            stepContext.wideContactConstraints = wideContactConstraints;
             stepContext.activeColorCount = activeColorCount;
             stepContext.workerCount = workerCount;
             stepContext.stages = stages;
+            stepContext.wideContactConstraints = wideContactConstraints;
+            stepContext.contactPrepareSpans = solve_contactPrepareSpans;
+            stepContext.wideContactCount = wideContactCount;
+            stepContext.jointPrepareSpans = solve_jointPrepareSpans;
             Interlocked.Exchange(ref stepContext.atomicSyncBits, 0);
-            profile.prepareStages = (float)prepareTicks.Elapsed.TotalMilliseconds;
-            prepareTicks.Stop();
+            profile.solverSetup = (float)setupTicks.Elapsed.TotalMilliseconds;
+            setupTicks.Stop();
             Stopwatch constraintTicks = new(); constraintTicks.Start();
             int jointIdCapacity = jointIdPool.GetIdCapacity();
+            int contactIdCapacity = contactIdPool.GetIdCapacity();
             for (int i = 0; i < workerCount; i++)
             {
                 TaskContext taskContext = taskContexts[i];
                 taskContext.jointStateBitSet.SetBitCountAndClear(jointIdCapacity);
-                workerContext[i] = new()
+                taskContext.hitEventBitSet.SetBitCountAndClear(contactIdCapacity);
+                taskContext.hasHitEvents = false;
+                solve_workerContext[i] = new()
                 {
                     context = stepContext,
                     workerIndex = i
                 };
                 if (taskCount < Box2D.MaxTasks)
                 {
-                    workerContext[i].userTask = enqueueTaskFcn(SolverTask, workerContext[i], userTaskContext);
+                    solve_workerContext[i].userTask = enqueueTaskFcn(SolverTask, solve_workerContext[i], userTaskContext);
                     taskCount++;
-                    activeTaskCount += workerContext[i].userTask == null ? 0 : 1;
+                    activeTaskCount += solve_workerContext[i].userTask == null ? 0 : 1;
                 }
                 else
                 {
-                    workerContext[i].userTask = null;
-                    SolverTask(workerContext[i]);
+                    solve_workerContext[i].userTask = null;
+                    SolverTask(solve_workerContext[i]);
                 }
+            }
+            SolverTask(new WorkerContext { context = stepContext });
+            for (int i = 0; i < workerCount; i++) if (solve_workerContext[i].userTask != null)
+            {
+                finishTaskFcn(solve_workerContext[i].userTask, userTaskContext);
+                activeTaskCount--;
             }
             if (splitIslandTask != null)
-            { finishTaskFcn(splitIslandTask, userTaskContext); activeTaskCount--; }
-            splitIslandId = -1;
-            for (int i = 0; i < workerCount; i++)
             {
-                if (workerContext[i].userTask != null)
-                {
-                    finishTaskFcn(workerContext[i].userTask, userTaskContext);
-                    activeTaskCount--;
-                }
+                finishTaskFcn(splitIslandTask, userTaskContext);
+                activeTaskCount--;
             }
-            profile.solveConstraints = (float)constraintTicks.Elapsed.TotalMilliseconds;
+            splitIslandId = -1;
+            profile.constraints = (float)constraintTicks.Elapsed.TotalMilliseconds;
             constraintTicks.Stop();
             Stopwatch transformTicks = new(); transformTicks.Start();
             int awakeIslandCount = awakeSet.islandSims.Count;
@@ -1028,10 +1063,10 @@ public unsafe partial class World
                 taskContext.splitSleepTime = 0;
             }
             ParallelFor(FinalizeBodiesTask, awakeBodyCount, 64, stepContext);
-            arena.FreeArenaItem(graphBlocks);
-            arena.FreeArenaItem(jointBlocks);
-            arena.FreeArenaItem(contactBlocks);
-            arena.FreeArenaItem(bodyBlocks);
+            stack.Free(graphBlocks);
+            stack.Free(jointBlocks);
+            stack.Free(contactBlocks);
+            stack.Free(bodyBlocks);
             wideContactConstraints.Free();
             profile.transforms = (float)transformTicks.Elapsed.TotalMilliseconds;
         }
@@ -1064,40 +1099,61 @@ public unsafe partial class World
         {
             Stopwatch hitTicks = new(); hitTicks.Start();
             Debug.Assert(contactHitEvents.Count == 0);
-            for (int i = 0; i < Box2D.GraphColorCount; i++)
+            bool anyHitEvents = false;
+            for (int i = 0; i < workerCount; i++) if (taskContexts[i].hasHitEvents)
+            { anyHitEvents = true; break; }
+            if (anyHitEvents)
             {
-                GraphColor color = constraintGraph.colors[i];
-                int contactCount = color.contactSims.Count;
-                for (int j = 0; j < contactCount; j++)
+                BitSet hitEventBitSet = taskContexts[0].hitEventBitSet;
+                for (int i = 1; i < workerCount; i++) if (taskContexts[i].hasHitEvents)
+                        hitEventBitSet.InPlaceUnion(taskContexts[i].hitEventBitSet);
+                for (int k = 0; k < hitEventBitSet.blockCount; k++)
                 {
-                    ContactSim contactSim = color.contactSims[j];
-                    if (!contactSim.simFlags.HasFlag(ContactSimFlags.EnableHitEvent)) continue;
-                    ContactHitEvent event_ = new() { approachSpeed = hitEventThreshold };
-                    bool hit = false;
-                    if (contactSim.manifold.pointCount > 0)
+                    ulong word = hitEventBitSet.bits[k];
+                    while (word != 0)
                     {
-                        ref ManifoldPoint mp = ref contactSim.manifold.point0;
-                        float approachSpeed = -mp.normalVelocity;
-                        if (approachSpeed > event_.approachSpeed && mp.totalNormalImpulse > 0)
-                        { event_.approachSpeed = approachSpeed; event_.point = mp.clipPoint; hit = true; }
+                        uint ctz = CTZ.CTZ64(word);
+                        int contactId = (int)(64 * k + ctz);
+                        Contact contact = contacts[contactId];
+                        Debug.Assert(contact.setIndex == (int)SetType.Awake && contact.colorIndex != -1);
+                        GraphColor color = constraintGraph.colors[contact.colorIndex];
+                        ContactSim contactSim = constraintGraph.colors[contact.colorIndex].contactSims[contact.localIndex];
+                        ContactHitEvent event_ = new() { approachSpeed = hitEventThreshold };
+                        bool found = false;
+                        if (contactSim.manifold.pointCount > 0)
+                        {
+                            float approachSpeed = -contactSim.manifold.point0.normalVelocity;
+                            if (approachSpeed > event_.approachSpeed && contactSim.manifold.point0.totalNormalImpulse > 0)
+                            {
+                                event_.point = contactSim.manifold.point0.clipPoint;
+                                found = true;
+                            }
+                        }
+                        if (contactSim.manifold.pointCount > 1)
+                        {
+                            float approachSpeed = -contactSim.manifold.point1.normalVelocity;
+                            if (approachSpeed > event_.approachSpeed && contactSim.manifold.point1.totalNormalImpulse > 0)
+                            {
+                                event_.point = contactSim.manifold.point1.clipPoint;
+                                found = true;
+                            }
+                        }
+                        if (found)
+                        {
+                            event_.normal = contactSim.manifold.normal;
+                            Shape shapeA = shapes[contactSim.shapeIdA], shapeB = shapes[contactSim.shapeIdB];
+                            event_.shapeIdA = new() { index1 = shapeA.id + 1, world0 = this, generation = shapeA.generation };
+                            event_.shapeIdB = new() { index1 = shapeB.id + 1, world0 = this, generation = shapeB.generation };
+                            event_.contactId = new()
+                            {
+                                index1 = contact.contactId + 1,
+                                world0 = this,
+                                generation = contact.generation,
+                            };
+                            contactHitEvents.Add(event_);
+                        }
                     }
-                    if (contactSim.manifold.pointCount > 1)
-                    {
-                        ref ManifoldPoint mp = ref contactSim.manifold.point1;
-                        float approachSpeed = -mp.normalVelocity;
-                        if (approachSpeed > event_.approachSpeed && mp.totalNormalImpulse > 0)
-                        { event_.approachSpeed = approachSpeed; event_.point = mp.clipPoint; hit = true; }
-                    }
-                    if (hit)
-                    {
-                        event_.normal = contactSim.manifold.normal;
-                        Shape shapeA = shapes[contactSim.shapeIdA], shapeB = shapes[contactSim.shapeIdB];
-                        event_.shapeIdA = new() { index1 = shapeA.id + 1, world0 = this, generation = shapeA.generation };
-                        event_.shapeIdB = new() { index1 = shapeB.id + 1, world0 = this, generation = shapeB.generation };
-                        Contact contact = contacts[contactSim.contactId];
-                        event_.contactId = new() { index1 = contact.contactId + 1, world0 = this, generation = contact.generation };
-                        contactHitEvents.Add(event_);
-                    }
+                    word &= word - 1;
                 }
             }
             profile.hitEvents = (float)hitTicks.Elapsed.TotalMilliseconds;

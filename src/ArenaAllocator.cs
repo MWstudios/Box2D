@@ -4,31 +4,31 @@ using System.Runtime.InteropServices;
 
 namespace Box2D;
 
-public unsafe struct ArenaEntry
+public unsafe struct StackEntry
 {
     public void* data;
     public string name = string.Empty;
     public int size = 0;
     public bool usedMalloc = false;
-    public ArenaEntry() { }
+    public StackEntry() { }
 }
-public unsafe class ArenaAllocator
+public unsafe class B2Stack
 {
     public void* data;
     public int capacity;
     public int index = 0;
     public int allocation = 0;
     public int maxAllocation = 0;
-    public List<ArenaEntry> entries = new(32);
-    public ArenaAllocator(int capacity)
+    public List<StackEntry> entries = new(32);
+    public B2Stack(int capacity)
     {
         data = NativeMemory.AlignedAlloc((nuint)(this.capacity = capacity), 32);
     }
     public void Destroy() { NativeMemory.AlignedFree(data); }
-    public void* AllocateArenaItem(int size, string name)
+    public void* Alloc(int size, string name)
     {
         int size32 = ((size - 1) | 0x1F) + 1;
-        ArenaEntry entry = new() { size = size32, name = name };
+        StackEntry entry = new() { size = size32, name = name };
         if (index + size32 > capacity)
         {
             entry.data = NativeMemory.AlignedAlloc((nuint)size32, 32);
@@ -47,18 +47,18 @@ public unsafe class ArenaAllocator
         entries.Add(entry);
         return entry.data;
     }
-    public unsafe void FreeArenaItem(void* mem)
+    public void Free(void* mem)
     {
         int entryCount = entries.Count;
         Debug.Assert(entryCount > 0);
-        ArenaEntry entry = entries[entryCount - 1];
+        StackEntry entry = entries[entryCount - 1];
         Debug.Assert(mem == entry.data);
         if (entry.usedMalloc) NativeMemory.AlignedFree(mem);
         else index -= entry.size;
         allocation -= entry.size;
         entries.RemoveAt(entries.Count - 1);
     }
-    public void GrowArena()
+    public void Grow()
     {
         Debug.Assert(allocation == 0);
         if (maxAllocation > capacity)
@@ -69,6 +69,6 @@ public unsafe class ArenaAllocator
         }
     }
     public int GetCapacity() => capacity;
-    public int GetArenaAllocation() => allocation;
+    public int GetAllocation() => allocation;
     public int GetMaxAllocation() => maxAllocation;
 }

@@ -48,9 +48,11 @@ public class BroadPhase
     /// <summary>Tracks shape pairs that have a b2Contact
     /// todo pairSet can grow quite large on the first time step and remain large</summary>
     public HashSet<ulong> pairSet = new(32);
-    public BroadPhase()
+    public BroadPhase(ref Capacity capacity)
     {
-        for (int i = 0; i < trees.Length; i++) trees[i] = new();
+        trees[(int)BodyType.Static] = new(Math.Max(16, capacity.staticShapeCount));
+        trees[(int)BodyType.Kinematic] = new(16);
+        trees[(int)BodyType.Dynamic] = new(Math.Max(16, capacity.dynamicShapeCount));
     }
     public void Destroy() { for (int i = 0; i < trees.Length; i++) trees[i].Destroy(); }
     public void BufferMove(int queryProxy)
@@ -108,11 +110,6 @@ public class BroadPhase
             typeIndexB = (int)B2_PROXY_TYPE(proxyKeyB), proxyIdB = B2_PROXY_ID(proxyKeyB);
         AABB aabbA = trees[typeIndexA].GetAABB(proxyIdA), aabbB = trees[typeIndexB].GetAABB(proxyIdB);
         return AABB.Overlaps(aabbA, aabbB);
-    }
-    public void RebuildTrees()
-    {
-        trees[(int)BodyType.Dynamic].Rebuild(false);
-        trees[(int)BodyType.Kinematic].Rebuild(false);
     }
     public int GetShapeIndex(int proxyKey)
     {
@@ -230,7 +227,12 @@ public partial class World
             stats.leafVisits += statsDynamic.leafVisits;
         }
     }
-    static void UpdateTreesTask(object context) => ((World)context).broadPhase.RebuildTrees();
+    static void UpdateTreesTask(object context)
+    {
+        var trees = ((World)context).broadPhase.trees;
+        trees[(int)BodyType.Dynamic].Rebuild(false);
+        trees[(int)BodyType.Kinematic].Rebuild(false);
+    }
     public void UpdateBroadPhasePairs()
     {
         BroadPhase bp = broadPhase;

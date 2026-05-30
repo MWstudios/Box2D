@@ -79,9 +79,9 @@ public unsafe record class WeldJoint : IJoint
         //Debug.Assert(joint.type == JointType.Weld); // why not?
         float mA = joint.invMassA, mB = joint.invMassB;
         float iA = joint.invIA, iB = joint.invIB;
-        BodyState dummyState = new();
-        BodyState* stateA = &dummyState; if (indexA != -1) stateA = context.states.Data + indexA;
-        BodyState* stateB = &dummyState; if (indexB != -1) stateB = context.states.Data + indexB;
+        
+        BodyState* stateA = BodyState.IdentityPtr; if (indexA != -1) stateA = context.states.Data + indexA;
+        BodyState* stateB = BodyState.IdentityPtr; if (indexB != -1) stateB = context.states.Data + indexB;
         Vector2 rA = stateA->deltaRotation * frameA.p, rB = stateB->deltaRotation * frameB.p;
         if (stateA->flags.HasFlag(BodyFlags.Dynamic))
         {
@@ -99,9 +99,9 @@ public unsafe record class WeldJoint : IJoint
         Debug.Assert(joint.type == JointType.Weld);
         float mA = joint.invMassA, mB = joint.invMassB;
         float iA = joint.invIA, iB = joint.invIB;
-        BodyState dummyState = new();
-        BodyState* stateA = &dummyState; if (indexA != -1) stateA = context.states.Data + indexA;
-        BodyState* stateB = &dummyState; if (indexB != -1) stateB = context.states.Data + indexB;
+        
+        BodyState* stateA = BodyState.IdentityPtr; if (indexA != -1) stateA = context.states.Data + indexA;
+        BodyState* stateB = BodyState.IdentityPtr; if (indexB != -1) stateB = context.states.Data + indexB;
         Vector2 vA = stateA->linearVelocity, vB = stateB->linearVelocity;
         float wA = stateA->angularVelocity, wB = stateB->angularVelocity;
         {

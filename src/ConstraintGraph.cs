@@ -20,6 +20,7 @@ public class GraphColor
     /// <summary>transient</summary>
     public ContactConstraint[] overflowConstraints = null;
     public IContactConstraintsSIMD wideConstraints = null;
+    public int wideConstraintCount;
     public GraphColor() { }
 }
 public interface IContactConstraintsSIMD
@@ -36,6 +37,7 @@ public interface IContactConstraintsSIMD
         { wideConstraints = (ContactSolverFloat.ContactConstraintWide*)NativeMemory.AlignedAlloc((nuint)(sizeof(ContactSolverFloat.ContactConstraintWide) * length), 32), owns = true };
     }
     public IContactConstraintsSIMD PointTo(int offset);
+    public void Clear(int offset, int count);
     public void Free() { }
 }
 public unsafe struct ContactConstraintsAVX : IContactConstraintsSIMD
@@ -44,6 +46,7 @@ public unsafe struct ContactConstraintsAVX : IContactConstraintsSIMD
     public bool owns;
     public IContactConstraintsSIMD PointTo(int offset) => new ContactConstraintsAVX { wideConstraints = wideConstraints + offset };
     public void Free() { if (owns) NativeMemory.AlignedFree(wideConstraints); }
+    public void Clear(int offset, int count) => NativeMemory.Clear(wideConstraints + offset, (nuint)(count * sizeof(ContactSolverAVX.ContactConstraintWide)));
 }
 public unsafe struct ContactConstraintsNeon : IContactConstraintsSIMD
 {
@@ -51,6 +54,7 @@ public unsafe struct ContactConstraintsNeon : IContactConstraintsSIMD
     public bool owns;
     public IContactConstraintsSIMD PointTo(int offset) => new ContactConstraintsNeon { wideConstraints = wideConstraints + offset };
     public void Free() { if (owns) NativeMemory.AlignedFree(wideConstraints); }
+    public void Clear(int offset, int count) => NativeMemory.Clear(wideConstraints + offset, (nuint)(count * sizeof(ContactSolverNeon.ContactConstraintWide)));
 }
 public unsafe struct ContactConstraintsSSE : IContactConstraintsSIMD
 {
@@ -58,6 +62,7 @@ public unsafe struct ContactConstraintsSSE : IContactConstraintsSIMD
     public bool owns;
     public IContactConstraintsSIMD PointTo(int offset) => new ContactConstraintsSSE { wideConstraints = wideConstraints + offset };
     public void Free() { if (owns) NativeMemory.AlignedFree(wideConstraints); }
+    public void Clear(int offset, int count) => NativeMemory.Clear(wideConstraints + offset, (nuint)(count * sizeof(ContactSolverSSE.ContactConstraintWide)));
 }
 public unsafe struct ContactConstraintsFloat : IContactConstraintsSIMD
 {
@@ -65,19 +70,21 @@ public unsafe struct ContactConstraintsFloat : IContactConstraintsSIMD
     public bool owns;
     public IContactConstraintsSIMD PointTo(int offset) => new ContactConstraintsFloat { wideConstraints = wideConstraints + offset };
     public void Free() { if (owns) NativeMemory.AlignedFree(wideConstraints); }
+    public void Clear(int offset, int count) => NativeMemory.Clear(wideConstraints + offset, (nuint)(count * sizeof(ContactSolverFloat.ContactConstraintWide)));
 }
 public class ConstraintGraph
 {
     /// <summary>including overflow at the end</summary>
     public GraphColor[] colors = new GraphColor[Box2D.GraphColorCount];
-    public ConstraintGraph(int bodyCapacity)
+    public ConstraintGraph(ref Capacity capacity)
     {
         Debug.Assert(Box2D.GraphColorCount >= 2, "must have at least two constraint graph colors");
-        bodyCapacity = Math.Max(bodyCapacity, 8);
+        int bodyCapacity = Math.Max(capacity.staticBodyCount + capacity.dynamicBodyCount, 16);
         for (int i = 0; i < Box2D.GraphColorCount - 1; i++)
         {
             colors[i] = new() { bodySet = new((uint)bodyCapacity) };
             colors[i].bodySet.SetBitCountAndClear(bodyCapacity);
+            colors[i].contactSims.EnsureCapacity(16);
         }
         colors[^1] = new() { bodySet = new(0) };
     }

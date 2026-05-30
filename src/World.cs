@@ -22,6 +22,12 @@ public class TaskContext
     ///<summary> These bits align with the contact id capacity and signal a change in contact status</summary>
     public BitSet contactStateBitSet;
 
+    /// <summary>These bits align with the contact id capacity and signal a hit event.</summary>
+    public BitSet hitEventBitSet;
+
+    /// <summary>Fast-path flag: true when this worker set at least one bit in hitEventBitSet this step.</summary>
+    public bool hasHitEvents;
+
     ///<summary> These bits align with the joint id capacity and signal a change in contact status</summary>
     public BitSet jointStateBitSet;
 
@@ -36,15 +42,17 @@ public class TaskContext
     public float splitSleepTime;
     public int splitIslandId;
 
+    /// <summary>Number of contacts recycled this step (collide pass).</summary>
+    public int recycledContactCount;
 }
 
 /// <summary>The world struct manages all physics entities, dynamic simulation,  and asynchronous queries.
 /// The world also contains efficient memory management facilities.</summary>
 public partial class World
 {
-    public ArenaAllocator arena = new(2048);
-    public BroadPhase broadPhase = new();
-    public ConstraintGraph constraintGraph = new(16);
+    public B2Stack stack = new(2048);
+    public BroadPhase broadPhase;
+    public ConstraintGraph constraintGraph;
 
     ///<summary> The body id pool is used to allocate and recycle body ids. Body ids
     /// provide a stable identifier for users, but incur caches misses when used
@@ -144,6 +152,8 @@ public partial class World
 
     public Profile profile;
 
+    public Capacity maxCapacity;
+
     public PreSolveFcn preSolveFcn;
     public object preSolveContext;
 
@@ -198,6 +208,7 @@ public partial class World
             {
                 sensorHits = new(8),
                 contactStateBitSet = new(1024),
+                hitEventBitSet = new(1024),
                 jointStateBitSet = new(1024),
                 enlargedSimBitSet = new(256),
                 awakeIslandBitSet = new(256)
@@ -207,6 +218,9 @@ public partial class World
     }
     public World(ref WorldDef def)
     {
+        broadPhase = new(ref def.capacity);
+        constraintGraph = new(ref def.capacity);
+
         Debug.Assert(def.internalValue == Box2D.SECRET_COOKIE);
         solverSets.Add(new() { setIndex = solverSetIdPool.AllocId() });
         Debug.Assert(solverSets[(int)SetType.Static].setIndex == (int)SetType.Static);
@@ -248,6 +262,7 @@ public partial class World
     }
     public void Destroy()
     {
+        scheduler?.Destroy();
         debugBodySet.Destroy();
         debugJointSet.Destroy();
         debugContactSet.Destroy();
@@ -277,7 +292,7 @@ public partial class World
             SolverSet set = solverSets[i];
             if (set.setIndex != -1) DestroySolverSet(i);
         }
-        arena.Destroy();
+        stack.Destroy();
         generation++;
     }
     public static void CollideTask(int startIndex, int endIndex, int threadIndex, object context)
@@ -285,7 +300,7 @@ public partial class World
         StepContext stepContext = (StepContext)context;
         World world = stepContext.world;
         TaskContext taskContext = world.taskContexts[threadIndex];
-        var contactSims = stepContext.contacts;
+        var contactSims = stepContext.contactSims;
         List<Shape> shapes = world.shapes;
         List<Body> bodies = world.bodies;
         Debug.Assert(startIndex < endIndex);
@@ -349,9 +364,12 @@ public partial class World
                                 mp.persisted = true;
                             }
                         }
+                        taskContext.recycledContactCount++;
                         continue;
                     }
                 }
+                contactSim.cachedTransformA = transformA;
+                contactSim.cachedTransformB = transformB;
                 contactSim.simFlags |= ContactSimFlags.RelativeTransformValid;
                 Vector2 centerOffsetA = transformA.q * bodySimA.localCenter;
                 Vector2 centerOffsetB = transformB.q * bodySimB.localCenter;
@@ -366,8 +384,6 @@ public partial class World
                     contactSim.simFlags |= ContactSimFlags.StoppedTouching;
                     taskContext.contactStateBitSet.SetBit(contactId);
                 }
-                contactSim.cachedTransformA = transformA;
-                contactSim.cachedTransformB = transformB;
                 if (contactSim.manifold.pointCount > 0)
                 {
                     contactSim.manifold.point0.baseSeparation = contactSim.manifold.point0.separation;
@@ -425,13 +441,16 @@ public partial class World
                 contactSims[contactIndex++] = base_[i];
         }
         Debug.Assert(contactIndex == contactCount);
-        context.contacts = contactSims;
+        context.contactSims = contactSims;
         int contactIdCapacity = world.contactIdPool.GetIdCapacity();
         for (int i = 0; i < world.workerCount; i++)
+        {
             world.taskContexts[i].contactStateBitSet.SetBitCountAndClear(contactIdCapacity);
+            world.taskContexts[i].recycledContactCount = 0;
+        }
         int minRange = 64;
         world.ParallelFor(CollideTask, contactCount, minRange, context);
-        context.contacts = null;
+        context.contactSims = null;
         contactSims = null;
         ref BitSet bitSet = ref world.taskContexts[0].contactStateBitSet;
         for (int i = 1; i < world.workerCount; i++)
