@@ -222,13 +222,7 @@ public static class WorldAPI
                             {
                                 ref ManifoldPoint mp = ref contactSim.manifold.point0;
                                 if (j == 1) mp = ref contactSim.manifold.point1;
-                                Vector2 p = draw.contactDrawType switch
-                                {
-                                    ContactDrawType.AnchorA => mp.clipPoint + mp.anchorA,
-                                    ContactDrawType.AnchorB => mp.clipPoint + mp.anchorB,
-                                    ContactDrawType.Average => Vector2.Lerp(bodySimA.center + mp.anchorA, bodySimB.center + mp.anchorB, 0.5f),
-                                    _ => mp.clipPoint
-                                };
+                                Vector2 p = draw.drawAnchorA ? bodySimA.center + mp.anchorA : bodySimB.center + mp.anchorB;
                                 if (draw.drawGraphColors && contact.colorIndex != -1)
                                 {
                                     float pointSize = contact.colorIndex == Box2D.GraphColorCount - 1 ? 7.5f : 5;

@@ -1009,8 +1009,6 @@ public enum HexColor
     Box2DGreen = 0x8CC924,
     Box2DYellow = 0xFFEE8C
 }
-/// <summary>The type of contact point drawing</summary>
-public enum ContactDrawType { None, Clip, AnchorA, AnchorB, Average }
 /// <summary>This struct holds callbacks you can implement to draw a Box2D world.
 /// This structure should be zero initialized.</summary>
 public partial class DebugDraw
@@ -1040,7 +1038,9 @@ public partial class DebugDraw
     /// <summary>Global scaling for joint drawing</summary>
     public float jointScale;
     /// <summary>Option to draw contact points</summary>
-    public ContactDrawType contactDrawType;
+    public bool drawContacts;
+    /// <summary>Draw anchor A for contact points (instead of anchorB)</summary>
+    public bool drawAnchorA;
     /// <summary>Option to draw shapes</summary>
     public bool drawShapes = true;
     /// <summary>Option to draw chain shape normals</summary>
@@ -1055,8 +1055,6 @@ public partial class DebugDraw
     public bool drawMass;
     /// <summary>Option to draw body names</summary>
     public bool drawBodyNames;
-    /// <summary>Option to draw contact points</summary>
-    public bool drawContacts;
     /// <summary>Option to visualize the graph coloring used for contacts and joints</summary>
     public bool drawGraphColors;
     /// <summary>Option to draw contact feature ids</summary>
