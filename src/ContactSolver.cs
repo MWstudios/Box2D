@@ -1134,46 +1134,45 @@ public class ContactSolverNeon : IContactSolverW
         };
 
     }
-    [Obsolete("vtrnq instruction is not in C#")] unsafe void ScatterBodies(BodyState* states, int* indices, ref BodyStateW simdBody)
+    unsafe void ScatterBodies(BodyState* states, int* indices, ref BodyStateW simdBody)
     {
-        if (indices[0] != -1)
-        {
-            BodyState* state = states + indices[0];
-            state->linearVelocity.x = simdBody.v.X.GetElement(0);
-            state->linearVelocity.y = simdBody.v.Y.GetElement(0);
-            state->angularVelocity = simdBody.w.GetElement(0);
-        }
-        if (indices[1] != -1)
-        {
-            BodyState* state = states + indices[1];
-            state->linearVelocity.x = simdBody.v.X.GetElement(1);
-            state->linearVelocity.y = simdBody.v.Y.GetElement(1);
-            state->angularVelocity = simdBody.w.GetElement(1);
-        }
-        if (indices[2] != -1)
-        {
-            BodyState* state = states + indices[2];
-            state->linearVelocity.x = simdBody.v.X.GetElement(2);
-            state->linearVelocity.y = simdBody.v.Y.GetElement(2);
-            state->angularVelocity = simdBody.w.GetElement(2);
-        }
-        if (indices[3] != -1)
-        {
-            BodyState* state = states + indices[3];
-            state->linearVelocity.x = simdBody.v.X.GetElement(3);
-            state->linearVelocity.y = simdBody.v.Y.GetElement(3);
-            state->angularVelocity = simdBody.w.GetElement(3);
-        }
         Debug.Assert(((nuint)states & 0x1F) == 0);
         int i1 = indices[0] - 1, i2 = indices[1] - 1, i3 = indices[2] - 1, i4 = indices[3] - 1;
-        throw new NotImplementedException("vtrnq instruction is not in C#");
-        /*Vector256<float> r1 = AdvSimd.Arm64.TransposeEven(simdBody.v.X, simdBody.v.Y);
-        Vector256<float> r2 = AdvSimd.Arm64.TransposeOdd(simdBody.w, simdBody.flags);
-        if (i1 != -1 && states[i1].flags.HasFlag(BodyFlags.Dynamic)) AdvSimd.Store((float*)(states + i1), Vector128.Create(r1.GetLower().GetLower(), r2.GetLower().GetLower()));
-        if (i2 != -1 && states[i2].flags.HasFlag(BodyFlags.Dynamic)) AdvSimd.Store((float*)(states + i2), Vector128.Create(r1.GetUpper().GetLower(), r2.GetUpper().GetLower()));
-        if (i3 != -1 && states[i3].flags.HasFlag(BodyFlags.Dynamic)) AdvSimd.Store((float*)(states + i3), Vector128.Create(r1.GetLower().GetUpper(), r2.GetLower().GetUpper()));
-        if (i4 != -1 && states[i4].flags.HasFlag(BodyFlags.Dynamic)) AdvSimd.Store((float*)(states + i4), Vector128.Create(r1.GetUpper().GetUpper(), r2.GetUpper().GetUpper()));*/
-
+        if (AdvSimd.Arm64.IsSupported)
+        {
+            // Matches original Box2D 3.0 NEON b2ScatterBodies: transposes v.X/v.Y and w/flags
+            // via vtrnq_f32 (TransposeEven/TransposeOdd), then writes only the lower 128 bits
+            // of each body state (v.x, v.y, w, flags). dp and dq are not modified by the solver.
+            // See https://github.com/erincatto/box2d/blob/241aa82e4c76577a4621402b0fb95f2478a0318f/src/contact_solver.c#L1302
+            var te_v = AdvSimd.Arm64.TransposeEven(simdBody.v.X, simdBody.v.Y);
+            var to_v = AdvSimd.Arm64.TransposeOdd(simdBody.v.X, simdBody.v.Y);
+            var te_wf = AdvSimd.Arm64.TransposeEven(simdBody.w, simdBody.flags);
+            var to_wf = AdvSimd.Arm64.TransposeOdd(simdBody.w, simdBody.flags);
+            if (i1 != -1 && states[i1].flags.HasFlag(BodyFlags.Dynamic))
+                AdvSimd.Store((float*)(states + i1), Vector128.Create(te_v.GetLower(), te_wf.GetLower()));
+            if (i2 != -1 && states[i2].flags.HasFlag(BodyFlags.Dynamic))
+                AdvSimd.Store((float*)(states + i2), Vector128.Create(to_v.GetLower(), to_wf.GetLower()));
+            if (i3 != -1 && states[i3].flags.HasFlag(BodyFlags.Dynamic))
+                AdvSimd.Store((float*)(states + i3), Vector128.Create(te_v.GetUpper(), te_wf.GetUpper()));
+            if (i4 != -1 && states[i4].flags.HasFlag(BodyFlags.Dynamic))
+                AdvSimd.Store((float*)(states + i4), Vector128.Create(to_v.GetUpper(), to_wf.GetUpper()));
+        }
+        else
+        {
+            // Fallback (non-ARM64) — matches original C scalar b2ScatterBodies:
+            // only writes linearVelocity and angularVelocity, no flags/dp/dq.
+            for (int i = 0; i < 4; i++)
+            {
+                int idx = indices[i] - 1;
+                if (idx != -1)
+                {
+                    BodyState* state = states + idx;
+                    state->linearVelocity.x = simdBody.v.X.GetElement(i);
+                    state->linearVelocity.y = simdBody.v.Y.GetElement(i);
+                    state->angularVelocity = simdBody.w.GetElement(i);
+                }
+            }
+        }
     }
     public unsafe void PrepareContactsTask(ref SolverBlock block, StepContext context)
     {

@@ -3,14 +3,12 @@
 This is a near complete port of [Box2D 3](https://github.com/erincatto/box2d) (as of commit [241aa82](https://github.com/erincatto/box2d/tree/241aa82e4c76577a4621402b0fb95f2478a0318f))
 and [LiquidFun](https://github.com/google/liquidfun) into C#. Testing macros such as B2_VALIDATE, samples and other benchmarks are not included.
 
-**Note: Due to a missing SIMD assembly instruction in C#, the ARM64 version is incomplete and will throw exeptions.** Let me know if you have a C# replacement for `vtrnq_f32()`.
-
 This port also does not mean that porting to other languages (Java, Python) is now easier. Not everything could be replicated in purely managed environment; some pointer logic from C and native memory management is still left in the code.
 
 A few changes have also been made:
 - Struct unions have been turned into polymorphic classes.
 - Normal C# arrays instead of arena allocations.
-- Some LiquidFun functions are now multithreaded or have new AVX counterparts. The SIMD functions from the original have been excluded (I was unable to transcribe them to C#).
+- Some LiquidFun functions are now multithreaded or have new AVX counterparts. The ARM64 NEON SIMD path has been implemented using `AdvSimd.Arm64.TransposeEven`/`TransposeOdd` (equivalent to the `vtrnq_f32` intrinsic).
 - LiquidFun also uses [HPCSharp](https://github.com/DragonSpit/HPCSharp) to sort arrays.
 - All fields and methods in Box2D (except integrity checks) have been made public.
 - To not get lost in the chaos, the original Box2D API has been moved to the `Box2D.API` namespace and split into classes. LiquidFun got a new one, `ParticleAPI`.
