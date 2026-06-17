@@ -20,7 +20,11 @@ public static partial class Box2D
     public static float LengthUnitsPerMeter { get; set; } = 1;
     /// <summary>Used to detect bad values. Positions greater than about 16km will have precision
     /// problems, so 100km as a limit should be fine in all cases.</summary>
+#if BOX2D_DOUBLE_PRECISION
+    public static double Huge = 1000000000 * LengthUnitsPerMeter;
+#else
     public static float Huge = 100000 * LengthUnitsPerMeter;
+#endif
     /// <summary>Maximum parallel workers. Used for some fixed size arrays.</summary>
     public static int MaxWorkers = 32;
     /// <summary>Maximum number of tasks queued per world step. b2EnqueueTaskCallback will never be called

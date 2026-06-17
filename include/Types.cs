@@ -28,7 +28,7 @@ public delegate float RestitutionCallback(float restitutionA, ulong userMaterial
 public class RayResult
 {
     public ShapeID shapeID;
-    public Vector2 point;
+    public Position point;
     public Vector2 normal;
     public float fraction;
     public int nodeVisits;
@@ -156,7 +156,7 @@ public struct BodyDef
     /// <summary>The initial world position of the body. Bodies should be created with the desired position.</summary>
     /// <remarks>Creating bodies at the origin and then moving them nearly doubles the cost of body creation, especially
     /// if the body is moved after shapes have been added.</remarks>
-    public Vector2 position = Vector2.Zero;
+    public Position position = Position.Zero;
     /// <summary>The initial world rotation of the body. Use b2MakeRot() if you have an angle.</summary>
     public Rotation rotation = Rotation.Identity;
     /// <summary>The initial linear velocity of the body's origin. Usually in meters per second.</summary>
@@ -734,10 +734,11 @@ public struct ContactHitEvent
     /// <summary>Id of the contact.</summary>
     ///	<remarks>this contact may have been destroyed</remarks>
     public ContactID contactId;
-    /// <summary>Point where the shapes hit at the beginning of the time step.
-    /// This is a mid-point between the two surfaces. It could be at speculative
-    /// point where the two shapes were not touching at the beginning of the time step.</summary>
-    public Vector2 point;
+    /// <summary>Point where the shapes hit. This is a mid-point between the two surfaces. It could be
+    /// a speculative point where the shapes were not touching at the beginning of the time
+    /// step. The point is reconstructed after the step, so when both bodies are moving it may
+    /// trail the impact by up to one step of motion.</summary>
+    public Position point;
     /// <summary>Normal vector pointing from shape A to shape B</summary>
     public Vector2 normal;
     /// <summary>The speed the shapes are approaching. Always positive. Typically in meters per second.</summary>
@@ -768,7 +769,7 @@ public struct ContactEvents
 public struct BodyMoveEvent
 {
     public object userData;
-    public Transform transform;
+    public WorldTransform transform;
     public BodyID bodyId;
     public bool fellAsleep;
 }
@@ -831,7 +832,7 @@ public delegate bool CustomFilterFcn(ShapeID shapeIdA, ShapeID shapeIdB, object 
 /// - the supplied manifold has impulse values from the previous step</summary>
 /// <returns>false if you want to disable the contact this step</returns>
 /// <remarks>Do not attempt to modify the world inside this callback</remarks>
-public delegate bool PreSolveFcn(ShapeID shapeIdA, ShapeID shapeIdB, Vector2 point, Vector2 normal, object context);
+public delegate bool PreSolveFcn(ShapeID shapeIdA, ShapeID shapeIdB, Position point, Vector2 normal, object context);
 /// <summary>Prototype callback for overlap queries.
 /// Called for each shape found in the query.
 /// @see b2World_OverlapABB</summary>
@@ -852,7 +853,7 @@ public delegate bool OverlapResultFcn(ShapeID shapeId, object context);
 /// <param name="fraction">the fraction along the ray at the point of intersection, zero for a shape cast with initial overlap</param>
 /// <param name="context">the user context</param>
 /// <returns>-1 to filter, 0 to terminate, fraction to clip the ray for closest hit, 1 to continue</returns>
-public delegate float CastResultFcn(ShapeID shapeId, Vector2 point, Vector2 normal, float fraction, object context);
+public delegate float CastResultFcn(ShapeID shapeId, Position point, Vector2 normal, float fraction, object context);
 /// <summary>Used to collect collision planes for character movers.</summary>
 /// <returns>true to continue gathering planes.</returns>
 public delegate bool PlaneResultFcn(ShapeID shapeId, ref PlaneResult plane, object context);
@@ -1067,6 +1068,10 @@ public partial class DebugDraw
     public bool drawFrictionForces;
     /// <summary>Option to draw islands as bounding boxes</summary>
     public bool drawIslands;
+    /// <summary> World point that drawn coordinates are relative to. In large world mode set this to the
+    /// camera position each frame so callbacks receive float coordinates near the origin. Defaults
+    /// to zero, which is bit identical to passing world coordinates directly.</summary>
+    public Position origin;
     /// <summary>User context that is passed as an argument to drawing callback functions</summary>
     public object context;
 }

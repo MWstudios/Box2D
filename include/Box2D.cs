@@ -17,4 +17,8 @@ public static partial class Box2D
         a.RemoveAt(a.Count - 1);
         return movedIndex;
     }
+#if BOX2D_DOUBLE_PRECISION
+    public static bool IsDoublePrecision() => true;
+#endif
+    public static bool IsDoublePrecision() => false;
 }

@@ -77,8 +77,9 @@ public unsafe record class DistanceJoint : IJoint
     }
     public Vector2 GetForce(World world, JointSim base_)
     {
-        Transform transformA = world.GetBodyTransform(base_.bodyIdA);
-        Transform transformB = world.GetBodyTransform(base_.bodyIdB);
+        WorldTransform wxfA = world.GetBodyTransform(base_.bodyIdA);
+        Transform transformA = wxfA.ToRelativeTransform(wxfA.p);
+        Transform transformB = world.GetBodyTransform(base_.bodyIdB).ToRelativeTransform(wxfA.p);
         Vector2 pA = transformA.TransformPoint(base_.localFrameA.p);
         Vector2 pB = transformB.TransformPoint(base_.localFrameB.p);
         Vector2 axis = (pB - pA).Normalize();

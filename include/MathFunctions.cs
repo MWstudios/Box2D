@@ -23,6 +23,7 @@ public struct Vector2
     public Vector2 LeftPerp() => new(-y, x);
     /// <summary>Get a right pointing perpendicular vector. Equivalent to b2CrossVS(v, 1.0f)</summary>
     public Vector2 RightPerp() => new(y, -x);
+    public static implicit operator Position(Vector2 v) => new(v.x, v.y);
     /// <summary>Vector addition</summary>
     public static Vector2 operator +(Vector2 a, Vector2 b) => new(a.x + b.x, a.y + b.y);
     /// <summary>Vector subtraction</summary>
@@ -194,6 +195,51 @@ public struct Transform
     ///    = A.q' * B.q * v1 + A.q' * (B.p - A.p)</summary>
     public static Transform InvMulTransforms(Transform a, Transform b) => new(a.q.InvRotateVector(b.p - a.p), Rotation.InvMulRot(a.q, b.q));
     public override string ToString() => $"{{{q}, {p}}}";
+    /// <summary>Promote a float transform to a world transform. Lossless.</summary>
+    public static implicit operator WorldTransform(Transform t) => new(t.p, t.q);
+}
+/// <summary>A world position. Double precision in large world mode so coordinates stay accurate far from the origin.</summary>
+public struct Position
+{
+    public static readonly Position Zero = new(0, 0);
+    public Position(float x, float y) { this.x = x; this.y = y; }
+    /// <summary>Is this a valid vector? Not NaN or infinity.</summary>
+    public bool IsValid() => float.IsFinite(x) && float.IsFinite(y);
+#if BOX2D_DOUBLE_PRECISION
+    public double x, y;
+#else
+    public float x, y;
+#endif
+    public static implicit operator Vector2(Position v) => new(v.x, v.y);
+    /// <summary>a - b, demoted to float. The primary precision boundary operation.</summary>
+    public static Vector2 operator -(Position a, Position b) => new((float)(a.x - b.x), (float)(a.y - b.y));
+    /// <summary>Offset a world position by a vector</summary>
+    public static Position operator +(Position p, Vector2 d) => new(p.x + d.x, p.y + d.y);
+    /// <summary>Offset a world position by a vector</summary>
+    public static Position operator -(Position p, Vector2 d) => new(p.x - d.x, p.y - d.y);
+    /// <summary>World position interpolation for sweeps and sampling.</summary>
+    public static Position Lerp(Position a, Position b, float t) => new((1 - t) * a.x + t * b.x, (1 - t) * a.y + t * b.y);
+}
+public struct WorldTransform
+{
+    public static readonly WorldTransform Identity = new(new(0, 0), new(1, 0));
+    public WorldTransform(Position p, Rotation q) { this.p = p; this.q = q; }
+    public Position p;
+    public Rotation q;
+    /// <summary>Is this a valid transform? Not NaN or infinity. Rotation is normalized.</summary>
+    public bool IsValid() => p.IsValid() && q.IsValid();
+    /// <summary>Transform a local point to a world position. Rotation in float, translation in double.</summary>
+    public Position TransformWorldPoint(Vector2 p) => new(this.p.x + q.c * p.x - q.s * p.y, this.p.y + q.s * p.x + q.c * p.y);
+    /// <summaryTransform a world position to a local point. One double subtraction, then float.</summary>
+    public Vector2 InvTransformWorldPoint(Position p)
+    {
+        float vx = (float)(p.x - this.p.x), vy = (float)(p.y - this.p.y);
+        return new(q.c * vx + q.s + vy, -q.s * vx + q.c * vy);
+    }
+    /// <summary>Relative transform of frame B in frame A. The narrow phase boundary.</summary>
+    public static Transform InvMulWorldTransforms(WorldTransform A, WorldTransform B) => new(A.q.InvRotateVector(B.p - A.p), Rotation.InvMulRot(A.q, B.q));
+    /// <summary>Shift a world transform into the frame of a base position.</summary>
+    public Transform ToRelativeTransform(Position base_) => new(p - base_, q);
 }
 /// <summary>A 2-by-2 Matrix</summary>
 public struct Mat22
@@ -296,6 +342,36 @@ public struct AABB
         if (upperBound.y < b.upperBound.y) { upperBound.y = b.upperBound.y; changed = true; }
         return changed;
     }
+    /// <summary>Narrow a world coordinate to float, rounding toward negative infinity. Use with
+    /// b2RoundUpFloat to build a conservative float box that always contains double bounds,
+    /// where plain rounding far from the origin could clip. nextafterf is an exact IEEE
+    /// operation, so this is cross-platform deterministic. With large world mode off this is
+    /// a plain conversion.</summary>
+    public static float RoundDownFloat(double x)
+    {
+#if BOX2D_DOUBLE_PRECISION
+        float f = (float)x;
+        return f > x ? MathF.BitIncrement(f) : f;
+#else
+        return (float)x;
+#endif
+    }
+    /// <summary>Narrow a world coordinate to float, rounding toward positive infinity.</summary>
+    public static float RoundUpFloat(double x)
+    {
+#if BOX2D_DOUBLE_PRECISION
+        float f = (float)x;
+        return f < x ? MathF.BitDecrement(f) : f;
+#else
+        return (float)x;
+#endif
+    }
+    /// <summary>Translate a relative AABB into world space, rounding outward so the float box always contains
+    /// the true box far from the origin where a float coordinate cannot resolve the shape extent.
+    /// Float ULP at 1e8 dwarfs the AABB margin, plain truncation could clip a shape out of its own
+    /// box. The broadphase pair order rides on the deterministic directed rounding.</summary>
+    public AABB Offset(Position origin) => new(new(RoundDownFloat(origin.x + (double)lowerBound.x), RoundDownFloat(origin.y + (double)lowerBound.y)),
+        new(RoundUpFloat(origin.x + (double)upperBound.x), RoundUpFloat(origin.y + (double)upperBound.y)));
     public override string ToString() => $"[{lowerBound}, {upperBound}]";
 }
 /// <summary>separation = dot(normal, point) - offset</summary>

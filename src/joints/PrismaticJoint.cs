@@ -74,10 +74,9 @@ public unsafe record class PrismaticJoint : IJoint
     public float GetAngularSeparation(float relativeAngle) => relativeAngle;
     public Vector2 GetForce(World world, JointSim base_)
     {
-        int idA = base_.bodyIdA;
-        Transform transformA = world.GetBodyTransform(idA);
+        Rotation qA = world.GetBodyTransform(base_.bodyIdA).q;
         Vector2 localAxisA = base_.localFrameA.q * new Vector2(1, 0);
-        Vector2 axisA = transformA.q * localAxisA;
+        Vector2 axisA = qA * localAxisA;
         Vector2 perpA = axisA.LeftPerp();
         float inv_h = world.inv_h;
         float perpForce = inv_h * impulse.x;

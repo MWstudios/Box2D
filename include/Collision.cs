@@ -37,13 +37,28 @@ public struct ShapeCastInput
     /// <summary>Allow shape cast to encroach when initially touching. This only works if the radius is greater than zero.</summary>
     public bool canEncroach;
 }
-/// <summary>Low level ray cast or shape-cast output data. Returns a zero fraction and normal in the case of initial overlap.</summary>
+/// <summary>Low level ray cast or shape-cast output data. The hit point is in the local or relative frame
+/// of the input. Returns a zero fraction and normal in the case of initial overlap.</summary>
 public struct CastOutput
 {
     /// <summary>The surface normal at the hit point</summary>
     public Vector2 normal;
     /// <summary>The surface hit point</summary>
     public Vector2 point;
+    /// <summary>The fraction of the input translation at collision</summary>
+    public float fraction;
+    /// <summary>The number of iterations used</summary>
+    public int iterations;
+    /// <summary>Did the cast hit?</summary>
+    public bool hit;
+}
+/// <summary>World-space cast output. The hit point is a world position. The normal stays a float direction</summary>
+public struct WorldCastOutput
+{
+    /// <summary>The surface normal at the hit point</summary>
+    public Vector2 normal;
+    /// <summary>The surface hit point in world space</summary>
+    public Position point;
     /// <summary>The fraction of the input translation at collision</summary>
     public float fraction;
     /// <summary>The number of iterations used</summary>
@@ -69,11 +84,13 @@ public record Circle : IShape
     /// <summary>The radius</summary>
     public float radius;
     public float GetRadius() => radius;
-    ///<summary>Compute the bounding box of a transformed circle</summary>
-    public AABB ComputeAABB(Transform xf)
+    public AABB ComputeAABB(WorldTransform xf) => ComputeFatAABB(xf, 0);
+    public AABB ComputeFatAABB(WorldTransform xf, float extra)
     {
-        Vector2 p = xf.TransformPoint(center);
-        return new(new(p.x - radius, p.y - radius), new(p.x + radius, p.y + radius));
+        Position c = xf.TransformWorldPoint(center);
+        double r = radius + extra;
+        return new(new(AABB.RoundDownFloat(c.x - r), AABB.RoundDownFloat(c.y - r)),
+            new(AABB.RoundUpFloat(c.x + r), AABB.RoundUpFloat(c.y + r)));
     }
     public Vector2 GetCentroid() => center;
     public float GetPerimeter() => 2 * MathF.PI * radius;
@@ -139,8 +156,7 @@ public record Circle : IShape
         {
             proxyA = Distance.MakeProxy([center], radius),
             proxyB = input.proxy,
-            transformA = Transform.Identity,
-            transformB = Transform.Identity,
+            transform = Transform.Identity,
             translationB = input.translation,
             maxFraction = input.maxFraction,
             canEncroach = input.canEncroach
@@ -170,7 +186,7 @@ public record Circle : IShape
     public ShapeProxy MakeProxy() => Distance.MakeProxy([center], radius);
     ///<summary>Test a point for overlap with a circle in local space</summary>
     public bool TestPoint(Vector2 point) => Vector2.DistanceSquared(point, center) <= radius * radius;
-    public unsafe void ApplyWindForce(float airDensity, Vector2 wind, float drag, float lift, ref Transform transform,
+    public void ApplyWindForce(float airDensity, Vector2 wind, float drag, float lift, ref WorldTransform transform,
         BodySim sim, Vector2 lever, Vector2 shapeVelocity, out Vector2 force, out float torque)
     {
         Vector2 relativeVelocity = Vector2.MulSub(wind, drag, shapeVelocity);
@@ -191,13 +207,14 @@ public record Capsule : IShape
     /// <summary>The radius of the semicircles</summary>
     public float radius;
     public float GetRadius() => radius;
-    ///<summary>Compute the bounding box of a transformed capsule</summary>
-    public AABB ComputeAABB(Transform xf)
+    public AABB ComputeAABB(WorldTransform xf) => ComputeFatAABB(xf, 0);
+    public AABB ComputeFatAABB(WorldTransform xf, float extra)
     {
-        Vector2 v1 = xf.TransformPoint(center1), v2 = xf.TransformPoint(center2);
-        Vector2 r = new(radius, radius);
-        Vector2 lower = Vector2.Min(v1, v2) - r, upper = Vector2.Max(v1, v2) + r;
-        return new(lower, upper);
+        Position v1 = xf.TransformWorldPoint(center1);
+        Position v2 = xf.TransformWorldPoint(center2);
+        double r = radius + extra;
+        return new(new(AABB.RoundDownFloat((v1.x < v2.x ? v1.x : v2.x) - r), AABB.RoundDownFloat((v1.y < v2.y ? v1.y : v2.y) - r)),
+            new(AABB.RoundUpFloat((v1.x > v2.x ? v1.x : v2.x) + r), AABB.RoundDownFloat((v1.y > v2.y ? v1.y : v2.y) + r)));
     }
     public Vector2 GetCentroid() => Vector2.Lerp(center1, center2, 0.5f);
     public float GetPerimeter() => 2 * Vector2.Distance(center1, center2) + 2 * MathF.PI * radius;
@@ -311,8 +328,7 @@ public record Capsule : IShape
         {
             proxyA = Distance.MakeProxy([center1, center2], radius),
             proxyB = input.proxy,
-            transformA = Transform.Identity,
-            transformB = Transform.Identity,
+            transform = Transform.Identity,
             translationB = input.translation,
             maxFraction = input.maxFraction,
             canEncroach = input.canEncroach
@@ -352,7 +368,7 @@ public record Capsule : IShape
         Vector2 c = Vector2.MulAdd(p1, t, d);
         return Vector2.DistanceSquared(point, c) <= rr;
     }
-    public unsafe void ApplyWindForce(float airDensity, Vector2 wind, float drag, float lift, ref Transform transform,
+    public unsafe void ApplyWindForce(float airDensity, Vector2 wind, float drag, float lift, ref WorldTransform transform,
         BodySim sim, Vector2 lever, Vector2 shapeVelocity, out Vector2 force, out float torque)
     {
         Vector2 relativeVelocity = Vector2.MulSub(wind, drag, shapeVelocity);
@@ -386,21 +402,23 @@ public record Polygon : IShape
     /// <summary>The external radius for rounded polygons</summary>
     public float radius;
     public float GetRadius() => radius;
-    ///<summary>Compute the bounding box of a transformed polygon</summary>
-    public AABB ComputeAABB(Transform xf)
+    public AABB ComputeAABB(WorldTransform xf) => ComputeFatAABB(xf, 0);
+    public AABB ComputeFatAABB(WorldTransform xf, float extra)
     {
         Debug.Assert(vertices.Length > 0);
-        Vector2 lower = xf.TransformPoint(vertices[0]), upper = lower;
+        Position v = xf.TransformWorldPoint(vertices[0]);
+        double lx = v.x, ly = v.y, ux = v.x, uy = v.y;
         for (int i = 1; i < vertices.Length; i++)
         {
-            Vector2 v = xf.TransformPoint(vertices[i]);
-            lower = Vector2.Min(lower, v);
-            upper = Vector2.Max(upper, v);
+            v = xf.TransformWorldPoint(vertices[i]);
+            lx = v.x < lx ? v.x : lx;
+            ly = v.y < ly ? v.y : ly;
+            ux = v.x > ux ? v.x : ux;
+            uy = v.y > uy ? v.y : uy;
         }
-        Vector2 r = new(radius, radius);
-        lower -= r;
-        upper += r;
-        return new(lower, upper);
+        double r = radius + extra;
+        return new(new(AABB.RoundDownFloat(lx - r), AABB.RoundDownFloat(ly - r)),
+            new(AABB.RoundUpFloat(ux + r), AABB.RoundUpFloat(uy + r)));
     }
     public Vector2 GetCentroid() => centroid;
     public float GetPerimeter()
@@ -558,8 +576,7 @@ public record Polygon : IShape
         {
             proxyA = Distance.MakeProxy(vertices, radius),
             proxyB = Distance.MakeProxy([input.origin], 0),
-            transformA = Transform.Identity,
-            transformB = Transform.Identity,
+            transform = Transform.Identity,
             translationB = input.translation,
             maxFraction = input.maxFraction,
             canEncroach = false
@@ -573,8 +590,7 @@ public record Polygon : IShape
         {
             proxyA = Distance.MakeProxy(vertices, radius),
             proxyB = input.proxy,
-            transformA = Transform.Identity,
-            transformB = Transform.Identity,
+            transform = Transform.Identity,
             translationB = input.translation,
             maxFraction = input.maxFraction,
             canEncroach = input.canEncroach
@@ -609,15 +625,14 @@ public record Polygon : IShape
         {
             proxyA = Distance.MakeProxy(vertices, 0),
             proxyB = Distance.MakeProxy([point], 0),
-            transformA = Transform.Identity,
-            transformB = Transform.Identity,
+            transform = Transform.Identity,
             useRadii = false
         };
         SimplexCache cache = new();
         DistanceOutput output = input.ShapeDistance(ref cache, null);
         return output.distance <= radius;
     }
-    public unsafe void ApplyWindForce(float airDensity, Vector2 wind, float drag, float lift, ref Transform transform,
+    public unsafe void ApplyWindForce(float airDensity, Vector2 wind, float drag, float lift, ref WorldTransform transform,
         BodySim sim, Vector2 lever, Vector2 shapeVelocity, out Vector2 force, out float torque)
     {
         Vector2 relativeVelocity = Vector2.MulSub(wind, drag, shapeVelocity);
@@ -647,13 +662,13 @@ public record Segment : IShape
     public Vector2 point1;
     /// <summary>The second point</summary>
     public Vector2 point2;
-    ///<summary>Compute the bounding box of a transformed line segment</summary>
-    public AABB ComputeAABB(Transform xf)
+    public AABB ComputeAABB(WorldTransform xf) => ComputeFatAABB(xf, 0);
+    public AABB ComputeFatAABB(WorldTransform xf, float extra)
     {
-        Vector2 v1 = xf.TransformPoint(point1), v2 = xf.TransformPoint(point2);
-        Vector2 lower = Vector2.Min(v1, v2);
-        Vector2 upper = Vector2.Max(v1, v2);
-        return new(lower, upper);
+        Position v1 = xf.TransformWorldPoint(point1), v2 = xf.TransformWorldPoint(point2);
+        double e = extra;
+        return new(new(AABB.RoundDownFloat((v1.x < v2.x ? v1.x : v2.x) - e), AABB.RoundDownFloat((v1.y < v2.y ? v1.y : v2.y) - e)),
+            new(AABB.RoundUpFloat((v1.x > v2.x ? v1.x : v2.x) + e), AABB.RoundDownFloat((v1.y > v2.y ? v1.y : v2.y) + e)));
     }
     public Vector2 GetCentroid() => Vector2.Lerp(point1, point2, 0.5f);
     public float GetPerimeter() => 2 * Vector2.Distance(point1, point2);
@@ -704,8 +719,7 @@ public record Segment : IShape
         {
             proxyA = Distance.MakeProxy([point1, point2], 0),
             proxyB = input.proxy,
-            transformA = Transform.Identity,
-            transformB = Transform.Identity,
+            transform = Transform.Identity,
             translationB = input.translation,
             maxFraction = input.maxFraction,
             canEncroach = input.canEncroach
@@ -747,7 +761,8 @@ public record ChainSegment : IShape
     public Vector2 ghost2;
     /// <summary>The owning chain shape index (internal usage only)</summary>
     public int chainId;
-    public AABB ComputeAABB(Transform xf) => segment.ComputeAABB(xf);
+    public AABB ComputeAABB(WorldTransform xf) => segment.ComputeAABB(xf);
+    public AABB ComputeFatAABB(WorldTransform xf, float extra) => segment.ComputeFatAABB(xf, extra);
     public Vector2 GetCentroid() => segment.GetCentroid();
     public float GetPerimeter() => segment.GetPerimeter();
     public float GetProjectedPerimeter(Vector2 line) => segment.GetProjectedPerimeter(line);
@@ -814,17 +829,20 @@ public struct DistanceInput
     public Transform transformA;
     /// <summary>The world transform for shape B</summary>
     public Transform transformB;
+    /// <summary>Transform of shape B in shape A's frame, the relative pose B in A
+    /// (b2InvMulTransforms( worldA, worldB )). The query is origin independent and runs in frame A.</summary>
+    public Transform transform;
     /// <summary>Should the proxy radius be considered?</summary>
     public bool useRadii;
 }
 /// <summary>Output for b2ShapeDistance</summary>
 public struct DistanceOutput
 {
-    /// <summary>Closest point on shapeA</summary>
+    /// <summary>Closest point on shapeA, in shape A's frame</summary>
     public Vector2 pointA;
-    /// <summary>Closest point on shapeB</summary>
+    /// <summary>Closest point on shapeB, in shape A's frame</summary>
     public Vector2 pointB;
-    /// <summary>Normal vector that points from A to B. Invalid if distance is zero.</summary>
+    /// <summary>A to B normal in shape A's frame. Invalid if distance is zero.</summary>
     public Vector2 normal;
     /// <summary>The final distance, zero if overlapped</summary>
     public float distance;
@@ -864,11 +882,9 @@ public struct ShapeCastPairInput
     public ShapeProxy proxyA;
     /// <summary>The proxy for shape B</summary>
     public ShapeProxy proxyB;
-    /// <summary>The world transform for shape A</summary>
-    public Transform transformA;
-    /// <summary>The world transform for shape B</summary>
-    public Transform transformB;
-    /// <summary>The translation of shape B</summary>
+    /// <summary>Transform of shape B in shape A's frame, the relative pose B in A</summary>
+    public Transform transform;
+    /// <summary>The translation of shape B, in A's frame</summary>
     public Vector2 translationB;
     /// <summary>The fraction of the translation to consider, typically 1</summary>
     public float maxFraction;
@@ -929,18 +945,14 @@ public struct TOIOutput
 /// the time step.</summary>
 public struct ManifoldPoint
 {
-    /// <summary>Location of the contact point in world space when first clipped. Subject to precision
-	/// loss at large coordinates. This point lags behind when contact recycling is used.</summary>
-    /// <remarks>Should only be used for debugging. Use anchorA and/or anchorB for game logic.</remarks>
-    public Vector2 clipPoint;
-    /// <summary>Location of the contact point relative to shapeA's origin in world space.
+    /// <summary>Location of the contact point relative to bodyA's center of mass in world space.
 	/// This can be converted to a world point using:
-	/// <code>b2Vec2 worldPointA = b2Add(b2Body_GetCenter(myBodyIdA), anchorA);</code></summary>
+	/// <code>b2Pos worldPointA = b2OffsetPos(b2Body_GetWorldCenter(myBodyIdA), anchorA);</code></summary>
     /// <remarks>When used internally to the Box2D solver, this is relative to the body center of mass.</remarks>
     public Vector2 anchorA;
-    /// <summary>Location of the contact point relative to shapeB's origin in world space
+    /// <summary>Location of the contact point relative to bodyB's center of mass in world space.
     /// This can be converted to a world point using:
-	/// <code>b2Vec2 worldPointB = b2Add(b2Body_GetCenter(myBodyIdB), anchorB);</code></summary>
+	/// <code>b2Pos worldPointB = b2OffsetPos(b2Body_GetWorldCenter(myBodyIdB), anchorB);</code></summary>
     /// <remarks>When used internally to the Box2D solver, this is relative to the body center of mass.</remarks>
     public Vector2 anchorB;
     /// <summary>The separation of the contact point, negative if penetrating</summary>
@@ -962,7 +974,7 @@ public struct ManifoldPoint
     public ushort id;
     /// <summary>Did this contact point exist the previous step?</summary>
     public bool persisted;
-    public override string ToString() => $"p={clipPoint} A={anchorA} B={anchorB} separation={separation} normalImpulse={normalImpulse} tangentImpulse={tangentImpulse} totalNormalImpulse={totalNormalImpulse} normalVelocity={normalVelocity} id={id}";
+    public override string ToString() => $"A={anchorA} B={anchorB} separation={separation} normalImpulse={normalImpulse} tangentImpulse={tangentImpulse} totalNormalImpulse={totalNormalImpulse} normalVelocity={normalVelocity} id={id}";
 }
 /// <summary>A contact manifold describes the contact points between colliding shapes.
 /// Box2D uses speculative collision so some contact points may be separated.</summary>
@@ -1020,13 +1032,24 @@ public delegate bool TreeQueryCallbackFcn(int proxyId, ulong userData, object co
 /// - return a value less than input->maxFraction to clip the ray<br/>
 /// - return a value of input->maxFraction to continue the ray cast without clipping</summary>
 public delegate float TreeRayCastCallbackFcn(ref RayCastInput input, int proxyId, ulong userData, object context);
-/// <summary>This function receives clipped ray cast input for a proxy. The function<br/>
-/// returns the new ray fraction.<br/>
-/// - return a value of 0 to terminate the ray cast<br/>
-/// - return a value less than input->maxFraction to clip the ray<br/>
-/// - return a value of input->maxFraction to continue the ray cast without clipping</summary>
-public delegate float TreeShapeCastCallbackFcn(ref ShapeCastInput input, int proxyId, ulong userData, object context);
-/// <summary>These are the collision planes returned from b2World_CollideMover</summary>
+/// <summary>Input for casting an AABB through a dynamic tree</summary>
+public struct BoxCastInput
+{
+    /// <summary>The AABB to cast, in the tree's frame.</summary>
+    public AABB box;
+    /// <summary>he sweep translation.</summary>
+    public Vector2 translation;
+    /// <summary>The maximum fraction of the translation to consider, typically 1.</summary>
+    public float maxFraction;
+}
+/// <summary>This function receives clipped AABB cast input for a proxy. The function<br/>
+/// returns the new cast fraction.<br/>
+/// - return a value of 0 to terminate the cast<br/>
+/// - return a value less than input->maxFraction to clip the cast<br/>
+/// - return a value of input->maxFraction to continue the cast without clipping</summary>
+public delegate float TreeBoxCastCallbackFcn(ref BoxCastInput input, int proxyId, ulong userData, object context);
+/// <summary>These are the collision planes returned from b2World_CollideMover
+/// The plane and point are relative to the query origin, matching the mover capsule.</summary>
 public struct PlaneResult
 {
     /// <summary>The collision plane between the mover and a convex shape</summary>

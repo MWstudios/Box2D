@@ -21,10 +21,10 @@ public static class Collision
 {
     static ushort B2_MAKE_ID(int A, int B) => (ushort)((A << 8) | (byte)B);
     ///<summary>Compute the contact manifold between two circles</summary>
-    public static Manifold CollideCircles(Circle circleA, Transform xfA, Circle circleB, Transform xfB)
+    public static Manifold CollideCircles(Circle circleA, WorldTransform xfA, Circle circleB, WorldTransform xfB)
     {
         Manifold manifold = new();
-        Transform xf = Transform.InvMulTransforms(xfA, xfB);
+        Transform xf = WorldTransform.InvMulWorldTransforms(xfA, xfB);
         Vector2 pointA = circleA.center;
         Vector2 pointB = xf.TransformPoint(circleB.center);
         Vector2 normal = (pointB - pointA).GetLengthAndNormalize(out float distance);
@@ -38,7 +38,6 @@ public static class Collision
         ref ManifoldPoint mp = ref manifold.point0;
         mp.anchorA = xfA.q * contactPointA;
         mp.anchorB = mp.anchorA + (xfA.p - xfB.p);
-        mp.clipPoint = mp.anchorA + xfA.p;
         mp.separation = separation;
         mp.id = 0;
         manifold.pointCount = 1;
@@ -46,10 +45,10 @@ public static class Collision
     }
 
     ///<summary>Compute the contact manifold between a capsule and circle</summary>
-    public static Manifold CollideCapsuleAndCircle(Capsule capsuleA, Transform xfA, Circle circleB, Transform xfB)
+    public static Manifold CollideCapsuleAndCircle(Capsule capsuleA, WorldTransform xfA, Circle circleB, WorldTransform xfB)
     {
         Manifold manifold = new();
-        Transform xf = Transform.InvMulTransforms(xfA, xfB);
+        Transform xf = WorldTransform.InvMulWorldTransforms(xfA, xfB);
         Vector2 pB = xf.TransformPoint(circleB.center);
         Vector2 p1 = capsuleA.center1, p2 =capsuleA.center2;
         Vector2 e = p2 - p1;
@@ -75,23 +74,22 @@ public static class Collision
         ref ManifoldPoint mp = ref manifold.point0;
         mp.anchorA = xfA.q * contactPointA;
         mp.anchorB = mp.anchorA + (xfA.p - xfB.p);
-        mp.clipPoint = xfA.p - mp.anchorA;
         mp.separation = separation;
         mp.id = 0;
         manifold.pointCount = 1;
         return manifold;
     }
     ///<summary>Compute the contact manifold between an segment and a circle</summary>
-    public static Manifold CollideSegmentAndCircle(Segment segmentA, Transform xfA, Circle circleB, Transform xfB)
+    public static Manifold CollideSegmentAndCircle(Segment segmentA, WorldTransform xfA, Circle circleB, WorldTransform xfB)
     {
         Capsule capsuleA = new() { center1 = segmentA.point1, center2 = segmentA.point2, radius = 0 };
         return CollideCapsuleAndCircle(capsuleA, xfA, circleB, xfB);
     }
     ///<summary>Compute the contact manifold between a polygon and a circle</summary>
-    public static Manifold CollidePolygonAndCircle(Polygon polygonA, Transform xfA, Circle circleB, Transform xfB)
+    public static Manifold CollidePolygonAndCircle(Polygon polygonA, WorldTransform xfA, Circle circleB, WorldTransform xfB)
     {
         Manifold manifold = new();
-        Transform xf = Transform.InvMulTransforms(xfA, xfB);
+        Transform xf = WorldTransform.InvMulWorldTransforms(xfA, xfB);
         Vector2 center = xf.TransformPoint(circleB.center);
         float radiusA = polygonA.radius;
         float radiusB = circleB.radius;
@@ -124,7 +122,6 @@ public static class Collision
             ref ManifoldPoint mp = ref manifold.point0;
             mp.anchorA = xfA.q * contactPointA;
             mp.anchorB = mp.anchorA + (xfA.p - xfB.p);
-            mp.clipPoint = xfA.p = mp.anchorA;
             mp.separation = Vector2.Dot(cB - cA, normal);
             mp.id = 0;
             manifold.pointCount = 1;
@@ -141,7 +138,6 @@ public static class Collision
             ref ManifoldPoint mp = ref manifold.point0;
             mp.anchorA = xfA.q * contactPointA;
             mp.anchorB = mp.anchorA + (xfA.p - xfB.p);
-            mp.clipPoint = xfA.p + mp.anchorA;
             mp.separation = Vector2.Dot(cB - cA, normal);
             mp.id = 0;
             manifold.pointCount = 1;
@@ -156,7 +152,6 @@ public static class Collision
             ref ManifoldPoint mp = ref manifold.point0;
             mp.anchorA = xfA.q * contactPointA;
             mp.anchorB = mp.anchorA + (xfA.p - xfB.p);
-            mp.clipPoint = xfA.p + mp.anchorA;
             mp.separation = separation - radius;
             mp.id = 0;
             manifold.pointCount = 1;
@@ -164,11 +159,11 @@ public static class Collision
         return manifold;
     }
     ///<summary>Compute the contact manifold between a capsule and circle</summary>
-    public static Manifold CollideCapsules(Capsule capsuleA, Transform xfA, Capsule capsuleB, Transform xfB)
+    public static Manifold CollideCapsules(Capsule capsuleA, WorldTransform xfA, Capsule capsuleB, WorldTransform xfB)
     {
         Vector2 origin = capsuleA.center1;
         Transform sfA = new(xfA.p + xfA.q * origin, xfA.q);
-        Transform xf = Transform.InvMulTransforms(sfA, xfB);
+        Transform xf = WorldTransform.InvMulWorldTransforms(sfA, xfB);
         Vector2 p1 = Vector2.Zero;
         Vector2 q1 = capsuleA.center2 - origin;
         Vector2 p2 = xf.TransformPoint(capsuleB.center1);
@@ -302,25 +297,23 @@ public static class Collision
             ref ManifoldPoint mp = ref manifold.point0;
             mp.anchorA = xfA.q * (mp.anchorA + origin);
             mp.anchorB = mp.anchorA + (xfA.p - xfB.p);
-            mp.clipPoint = xfA.p + mp.anchorA;
         }
         if (manifold.pointCount > 1)
         {
             ref ManifoldPoint mp = ref manifold.point1;
             mp.anchorA = xfA.q * (mp.anchorA + origin);
             mp.anchorB = mp.anchorA + (xfA.p - xfB.p);
-            mp.clipPoint = xfA.p + mp.anchorA;
         }
         return manifold;
     }
     ///<summary>Compute the contact manifold between an segment and a capsule</summary>
-    public static Manifold CollideSegmentAndCapsule(Segment segmentA, Transform xfA, Capsule capsuleB, Transform xfB)
+    public static Manifold CollideSegmentAndCapsule(Segment segmentA, WorldTransform xfA, Capsule capsuleB, WorldTransform xfB)
     {
         Capsule capsuleA = new() { center1 = segmentA.point1, center2 = segmentA.point2, radius = 0 };
         return CollideCapsules(capsuleA, xfA, capsuleB, xfB);
     }
     ///<summary>Compute the contact manifold between a polygon and capsule</summary>
-    public static Manifold CollidePolygonAndCapsule(Polygon polygonA, Transform xfA, Capsule capsuleB, Transform xfB)
+    public static Manifold CollidePolygonAndCapsule(Polygon polygonA, WorldTransform xfA, Capsule capsuleB, WorldTransform xfB)
     {
         Polygon polyB = Geometry.MakeCapsule(capsuleB.center1, capsuleB.center2, capsuleB.radius);
         return CollidePolygons(polygonA, xfA, polyB, xfB);
@@ -407,11 +400,11 @@ public static class Collision
         return maxSeparation;
     }
     ///<summary>Compute the contact manifold between two polygons</summary>
-    public static Manifold CollidePolygons(Polygon polygonA, Transform xfA, Polygon polygonB, Transform xfB)
+    public static Manifold CollidePolygons(Polygon polygonA, WorldTransform xfA, Polygon polygonB, WorldTransform xfB)
     {
         Vector2 origin = polygonA.vertices[0];
         Transform sfA = new(xfA.p + xfA.q * origin, xfA.q);
-        Transform xf = Transform.InvMulTransforms(sfA, xfB);
+        Transform xf = WorldTransform.InvMulWorldTransforms(sfA, xfB);
         Polygon localPolyA = new()
         {
             radius = polygonA.radius,
@@ -549,28 +542,26 @@ public static class Collision
             ref ManifoldPoint mp = ref manifold.point0;
             mp.anchorA = xfA.q * (mp.anchorA + origin);
             mp.anchorB = mp.anchorA + (xfA.p - xfB.p);
-            mp.clipPoint = xfA.p + mp.anchorA;
             if (manifold.pointCount > 1)
             {
                 mp = ref manifold.point1;
                 mp.anchorA = xfA.q * (mp.anchorA + origin);
                 mp.anchorB = mp.anchorA + (xfA.p - xfB.p);
-                mp.clipPoint = xfA.p + mp.anchorA;
             }
         }
         return manifold;
     }
     ///<summary>Compute the contact manifold between an segment and a polygon</summary>
-    public static Manifold CollideSegmentAndPolygon(Segment segmentA, Transform xfA, Polygon polygonB, Transform xfB)
+    public static Manifold CollideSegmentAndPolygon(Segment segmentA, WorldTransform xfA, Polygon polygonB, WorldTransform xfB)
     {
         Polygon polygonA = Geometry.MakeCapsule(segmentA.point1, segmentA.point2, 0);
         return CollidePolygons(polygonA, xfA, polygonB, xfB);
     }
     ///<summary>Compute the contact manifold between a chain segment and a circle</summary>
-    public static Manifold CollideChainSegmentAndCircle(ChainSegment segmentA, Transform xfA, Circle circleB, Transform xfB)
+    public static Manifold CollideChainSegmentAndCircle(ChainSegment segmentA, WorldTransform xfA, Circle circleB, WorldTransform xfB)
     {
         Manifold manifold = new();
-        Transform xf = Transform.InvMulTransforms(xfA, xfB);
+        Transform xf = WorldTransform.InvMulWorldTransforms(xfA, xfB);
         Vector2 pB = xf.TransformPoint(circleB.center);
         Vector2 p1 = segmentA.segment.point1, p2 = segmentA.segment.point2;
         Vector2 e = p2 - p1;
@@ -610,14 +601,13 @@ public static class Collision
         ref ManifoldPoint mp = ref manifold.point0;
         mp.anchorA = xfA.q * contactPointA;
         mp.anchorB = mp.anchorA + (xfA.p - xfB.p);
-        mp.clipPoint = xfA.p + mp.anchorA;
         mp.separation = separation;
         mp.id = 0;
         manifold.pointCount = 1;
         return manifold;
     }
     ///<summary>Compute the contact manifold between a chain segment and a capsule</summary>
-    public static Manifold CollideChainSegmentAndCapsule(ChainSegment segmentA, Transform xfA, Capsule capsuleB, Transform xfB, ref SimplexCache cache)
+    public static Manifold CollideChainSegmentAndCapsule(ChainSegment segmentA, WorldTransform xfA, Capsule capsuleB, WorldTransform xfB, ref SimplexCache cache)
     {
         Polygon polyB = Geometry.MakeCapsule(capsuleB.center1, capsuleB.center2, capsuleB.radius);
         return CollideChainSegmentAndPolygon(segmentA, xfA, polyB, xfB, ref cache);
@@ -678,11 +668,11 @@ public static class Collision
             : params_.convex2 ? Vector2.Cross(params_.normal2, normal) > sinTol ? NormalType.Skip : NormalType.Admit : NormalType.Snap;
     }
     ///<summary>Compute the contact manifold between a chain segment and a rounded polygon</summary>
-    public static Manifold CollideChainSegmentAndPolygon(ChainSegment segmentA, Transform xfA, Polygon polygonB,
-                                                       Transform xfB, ref SimplexCache cache)
+    public static Manifold CollideChainSegmentAndPolygon(ChainSegment segmentA, WorldTransform xfA, Polygon polygonB,
+                                                       WorldTransform xfB, ref SimplexCache cache)
     {
         Manifold manifold = new();
-        Transform xf = Transform.InvMulTransforms(xfA, xfB);
+        Transform xf = WorldTransform.InvMulWorldTransforms(xfA, xfB);
         Vector2 centroidB = xf.TransformPoint(polygonB.centroid);
         float radiusB = polygonB.radius;
         Vector2 p1 = segmentA.segment.point1, p2 = segmentA.segment.point2;
@@ -737,7 +727,6 @@ public static class Collision
                     ref ManifoldPoint cp = ref manifold.point0;
                     cp.anchorA = xfA.q * pA;
                     cp.anchorB = cp.anchorA + (xfA.p - xfB.p);
-                    cp.clipPoint = xfA.p + cp.anchorA;
                     cp.separation = output.distance - radiusB;
                     cp.id = B2_MAKE_ID(cache.indexA[0], cache.indexB[0]);
                     manifold.pointCount = 1;
@@ -782,8 +771,6 @@ public static class Collision
                             Vector2 pAB = xfA.p - xfB.p;
                             manifold.point0.anchorB = manifold.point0.anchorA + pAB;
                             manifold.point1.anchorB = manifold.point1.anchorA + pAB;
-                            manifold.point0.clipPoint = xfA.p + manifold.point0.anchorA;
-                            manifold.point1.clipPoint = xfA.p + manifold.point1.anchorA;
                         }
                         return manifold;
                     }
@@ -860,8 +847,6 @@ public static class Collision
                     Vector2 pAB = xfA.p - xfB.p;
                     manifold.point0.anchorB = manifold.point0.anchorA + pAB;
                     manifold.point1.anchorB = manifold.point1.anchorA + pAB;
-                    manifold.point0.clipPoint = xfA.p + manifold.point0.anchorA;
-                    manifold.point1.clipPoint = xfA.p + manifold.point1.anchorA;
                 }
                 return manifold;
             }
@@ -908,8 +893,6 @@ public static class Collision
             Vector2 pAB = xfA.p - xfB.p;
             manifold.point0.anchorB = manifold.point0.anchorA + pAB;
             manifold.point1.anchorB = manifold.point1.anchorA + pAB;
-            manifold.point0.clipPoint = xfA.p + manifold.point0.anchorA;
-            manifold.point1.clipPoint = xfA.p + manifold.point1.anchorA;
         }
         return manifold;
     }

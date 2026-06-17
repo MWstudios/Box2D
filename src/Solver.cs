@@ -254,6 +254,7 @@ public unsafe partial class World
         public Shape fastShape;
         public Vector2 centroid1, centroid2;
         public Sweep sweep;
+        public Position base_;
         public float fraction;
         public List<SensorHit> sensorHits = new(8);
         public List<float> sensorFractions = new(8);
@@ -290,7 +291,7 @@ public unsafe partial class World
         }
         if (shape.shape is ChainSegment chainSegment)
         {
-            Transform transform = bodySim.transform;
+            Transform transform = bodySim.transform.ToRelativeTransform(continuousContext.base_);
             Vector2 p1 = transform.TransformPoint(chainSegment.segment.point1);
             Vector2 p2 = transform.TransformPoint(chainSegment.segment.point2);
             Vector2 e = p2 - p1;
@@ -308,7 +309,7 @@ public unsafe partial class World
         {
             proxyA = shape.MakeDistanceProxy(),
             proxyB = fastShape.MakeDistanceProxy(),
-            sweepA = bodySim.MakeSweep(),
+            sweepA = bodySim.MakeRelativeSweep(continuousContext.base_),
             sweepB = continuousContext.sweep,
             maxFraction = continuousContext.fraction
         };
@@ -340,7 +341,7 @@ public unsafe partial class World
             if (didHit && (shape.enablePreSolveEvents || fastShape.enablePreSolveEvents) && world.preSolveFcn != null)
                 didHit = world.preSolveFcn(new() { index1 = shape.id + 1, world0 = world, generation = shape.generation },
                     new() { index1 = fastShape.id + 1, world0 = world, generation = fastShape.generation },
-                    output.point, output.normal, world.preSolveContext);
+                    continuousContext.base_ + output.point, output.normal, world.preSolveContext);
             if (didHit)
             {
                 continuousContext.fastBodySim.flags |= BodyFlags.HadTimeOfImpact;
@@ -354,14 +355,15 @@ public unsafe partial class World
         SolverSet awakeSet = solverSets[(int)SetType.Awake];
         BodySim fastBodySim = awakeSet.bodySims[bodySimIndex];
         Debug.Assert(fastBodySim.flags.HasFlag(BodyFlags.IsFast));
-        Sweep sweep = fastBodySim.MakeSweep();
+        Position base_ = fastBodySim.center0;
+        Sweep sweep = fastBodySim.MakeRelativeSweep(base_);
         Transform xf1 = new(sweep.c1 - sweep.q1 * sweep.localCenter, sweep.q1);
         Transform xf2 = new(sweep.c2 - sweep.q2 * sweep.localCenter, sweep.q2);
         DynamicTree staticTree = broadPhase.trees[(int)BodyType.Static];
         DynamicTree kinematicTree = broadPhase.trees[(int)BodyType.Kinematic];
         DynamicTree dynamicTree = broadPhase.trees[(int)BodyType.Dynamic];
         Body fastBody = bodies[fastBodySim.bodyId];
-        ContinuousContext context = new() { world = this, sweep = sweep, fastBodySim = fastBodySim, fraction = 1 };
+        ContinuousContext context = new() { world = this, sweep = sweep, base_ = base_, fastBodySim = fastBodySim, fraction = 1 };
         bool isBullet = fastBodySim.flags.HasFlag(BodyFlags.IsBullet);
         int shapeId = fastBody.headShapeId;
         while (shapeId != -1)
@@ -372,7 +374,7 @@ public unsafe partial class World
             context.centroid1 = xf1.TransformPoint(fastShape.localCentroid);
             context.centroid2 = xf2.TransformPoint(fastShape.localCentroid);
             AABB box1 = fastShape.aabb;
-            AABB box2 = fastShape.ComputeAABB(xf2);
+            AABB box2 = fastShape.ComputeAABB(xf2).Offset(base_);
             fastShape.aabb = box2;
             if (fastShape.sensorIndex != -1) continue;
             staticTree.Query(AABB.Union(box1, box2), Box2D.DEFAULT_MASK_BITS, ContinuousQueryCallback, context);
@@ -388,22 +390,18 @@ public unsafe partial class World
             Vector2 c = Vector2.Lerp(sweep.c1, sweep.c2, context.fraction);
             Vector2 origin = c - q * sweep.localCenter;
             Transform transform = new(origin, q);
-            fastBodySim.transform = transform;
-            fastBodySim.center = c;
+            fastBodySim.transform.q = q;
+            fastBodySim.transform.p = base_ + origin;
+            fastBodySim.center = base_ + c;
             fastBodySim.rotation0 = q;
-            fastBodySim.center0 = c;
+            fastBodySim.center0 = fastBodySim.center;
             ref BodyMoveEvent event_ = ref System.Runtime.InteropServices.CollectionsMarshal.AsSpan(bodyMoveEvents)[bodySimIndex];
-            event_.transform = transform;
+            event_.transform = fastBodySim.transform;
             shapeId = fastBody.headShapeId;
             while (shapeId != -1)
             {
                 Shape shape = shapes[shapeId];
-                AABB aabb = shape.ComputeAABB(transform);
-                aabb.lowerBound.x -= Box2D.SpeculativeDistance;
-                aabb.lowerBound.y -= Box2D.SpeculativeDistance;
-                aabb.upperBound.x += Box2D.SpeculativeDistance;
-                aabb.upperBound.y += Box2D.SpeculativeDistance;
-                shape.aabb = aabb;
+                AABB aabb = shape.ComputeFatAABB(fastBodySim.transform, Box2D.SpeculativeDistance);
                 if (!shape.fatAABB.Contains(aabb))
                 {
                     float margin = shape.aabbMargin;
@@ -511,7 +509,7 @@ public unsafe partial class World
                     taskContext.splitSleepTime = body.sleepTime;
                 }
             }
-            Transform transform = sim.transform;
+            WorldTransform transform = sim.transform;
             bool isFast = sim.flags.HasFlag(BodyFlags.IsFast);
             int shapeId = body.headShapeId;
             while (shapeId != -1)
@@ -520,11 +518,7 @@ public unsafe partial class World
                 if (isFast) enlargedSimBitSet.SetBit(simIndex);
                 else
                 {
-                    AABB aabb = shape.ComputeAABB(transform);
-                    aabb.lowerBound.x -= Box2D.SpeculativeDistance;
-                    aabb.lowerBound.y -= Box2D.SpeculativeDistance;
-                    aabb.upperBound.x += Box2D.SpeculativeDistance;
-                    aabb.upperBound.y += Box2D.SpeculativeDistance;
+                    AABB aabb = shape.ComputeFatAABB(transform, Box2D.SpeculativeDistance);
                     shape.aabb = aabb;
                     Debug.Assert(!shape.enlargedAABB);
                     if (!shape.fatAABB.Contains(aabb))
@@ -1119,14 +1113,14 @@ public unsafe partial class World
                         GraphColor color = constraintGraph.colors[contact.colorIndex];
                         ContactSim contactSim = constraintGraph.colors[contact.colorIndex].contactSims[contact.localIndex];
                         ContactHitEvent event_ = new() { approachSpeed = hitEventThreshold };
-                        bool found = false;
+                        int bestPoint = -1;
                         if (contactSim.manifold.pointCount > 0)
                         {
                             float approachSpeed = -contactSim.manifold.point0.normalVelocity;
                             if (approachSpeed > event_.approachSpeed && contactSim.manifold.point0.totalNormalImpulse > 0)
                             {
-                                event_.point = contactSim.manifold.point0.clipPoint;
-                                found = true;
+                                event_.approachSpeed = approachSpeed;
+                                bestPoint = 0;
                             }
                         }
                         if (contactSim.manifold.pointCount > 1)
@@ -1134,14 +1128,25 @@ public unsafe partial class World
                             float approachSpeed = -contactSim.manifold.point1.normalVelocity;
                             if (approachSpeed > event_.approachSpeed && contactSim.manifold.point1.totalNormalImpulse > 0)
                             {
-                                event_.point = contactSim.manifold.point1.clipPoint;
-                                found = true;
+                                event_.approachSpeed = approachSpeed;
+                                bestPoint = 1;
                             }
                         }
-                        if (found)
+                        if (bestPoint != -1)
                         {
                             event_.normal = contactSim.manifold.normal;
                             Shape shapeA = shapes[contactSim.shapeIdA], shapeB = shapes[contactSim.shapeIdB];
+                            Body bodyA = bodies[shapeA.bodyId], bodyB = bodies[shapeB.bodyId];
+                            if (bodyA.type != BodyType.Static && bodyB.type == BodyType.Static)
+                            {
+                                BodySim bodySimB = GetBodySim(bodyB);
+                                event_.point = bodySimB.center + (bestPoint == 1 ? contactSim.manifold.point1.anchorB : contactSim.manifold.point0.anchorB);
+                            }
+                            else
+                            {
+                                BodySim bodySimA = GetBodySim(bodyA);
+                                event_.point = bodySimA.center + (bestPoint == 1 ? contactSim.manifold.point1.anchorA : contactSim.manifold.point0.anchorA);
+                            }
                             event_.shapeIdA = new() { index1 = shapeA.id + 1, world0 = this, generation = shapeA.generation };
                             event_.shapeIdB = new() { index1 = shapeB.id + 1, world0 = this, generation = shapeB.generation };
                             event_.contactId = new()

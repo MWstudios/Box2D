@@ -79,10 +79,9 @@ public unsafe record class WheelJoint : IJoint
     }
     public Vector2 GetForce(World world, JointSim base_)
     {
-        int idA = base_.bodyIdA;
-        Transform transformA = world.GetBodyTransform(idA);
+        Rotation qA = world.GetBodyTransform(base_.bodyIdA).q;
         Vector2 localAxisA = base_.localFrameA.q * new Vector2(1, 0);
-        Vector2 axisA = transformA.q * localAxisA;
+        Vector2 axisA = qA * localAxisA;
         Vector2 perpA = axisA.LeftPerp();
         float perpForce = world.inv_h * perpImpulse;
         float axialForce = world.inv_h * (springImpulse + lowerImpulse - upperImpulse);

@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Diagnostics;
-using System.Reflection;
 
 namespace Box2D;
 
@@ -152,14 +151,14 @@ public struct BodyState
 public record BodySim
 {
     /// <summary>transform for body origin</summary>
-    public Transform transform;
+    public WorldTransform transform;
 
     /// <summary>center of mass position in world space</summary>
-    public Vector2 center;
+    public Position center;
 
     /// <summary>previous rotation and COM for TOI</summary>
     public Rotation rotation0;
-    public Vector2 center0;
+    public Position center0;
 
     /// <summary>location of center of mass relative to the body origin</summary>
     public Vector2 localCenter;
@@ -182,7 +181,9 @@ public record BodySim
 
     /// <summary>BodyFlags</summary>
     public BodyFlags flags;
-    public Sweep MakeSweep() => new() { c1 = center0, c2 = center, q1 = rotation0, q2 = transform.q, localCenter = localCenter };
+    /// <summary>Build a sweep relative to a base position so continuous collision keeps float precision far
+    /// from the origin. The base cancels out of the relative motion the TOI actually solves.</summary>
+    public Sweep MakeRelativeSweep(Position base_) => new() { c1 = center0 - base_, c2 = center - base_, q1 = rotation0, q2 = transform.q, localCenter = localCenter };
 }
 public unsafe partial class World
 {
@@ -198,11 +199,11 @@ public unsafe partial class World
         Debug.Assert(API.BodyAPI.IsValid(bodyID));
         return bodies[bodyID.index1 - 1];
     }
-    public Transform GetBodyTransformQuick(Body body) => solverSets[body.setIndex].bodySims[body.localIndex].transform;
-    public Transform GetBodyTransform(int bodyId) => GetBodyTransformQuick(bodies[bodyId]);
+    public WorldTransform GetBodyTransformQuick(Body body) => solverSets[body.setIndex].bodySims[body.localIndex].transform;
+    public WorldTransform GetBodyTransform(int bodyId) => GetBodyTransformQuick(bodies[bodyId]);
     public BodyID MakeBodyID(int bodyId) => new() { index1 = bodyId + 1, world0 = this, generation = bodies[bodyId].generation };
     public BodySim GetBodySim(Body body) => solverSets[body.setIndex].bodySims[body.localIndex];
-    public unsafe BodyState* GetBodyState(Body body) => body.setIndex == (int)SetType.Awake ? solverSets[(int)SetType.Awake].bodyStates.Data + body.localIndex : (BodyState*)null;
+    public BodyState* GetBodyState(Body body) => body.setIndex == (int)SetType.Awake ? solverSets[(int)SetType.Awake].bodyStates.Data + body.localIndex : (BodyState*)null;
     public static void RemoveBodySim(System.Collections.Generic.List<BodySim> bodySims, System.Collections.Generic.List<Body> bodies, int localIndex)
     {
         Debug.Assert(0 <= localIndex && localIndex < bodySims.Count);
@@ -352,9 +353,9 @@ public unsafe partial class World
             Debug.Assert(body.inertia >= 0);
             if (body.inertia > 0) bodySim.invInertia = 1 / body.inertia;
             else { body.inertia = 0; bodySim.invInertia = 0; }
-            Vector2 oldCenter = bodySim.center;
+            Position oldCenter = bodySim.center;
             bodySim.localCenter = localCenter;
-            bodySim.center = bodySim.transform.TransformPoint(bodySim.localCenter);
+            bodySim.center = bodySim.transform.TransformWorldPoint(bodySim.localCenter);
             bodySim.center0 = bodySim.center;
             BodyState* state = GetBodyState(body);
             if (state != null)

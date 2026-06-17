@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Diagnostics;
-using System.Collections.Generic;
 
 namespace Box2D.API;
 
@@ -17,7 +16,7 @@ public static class ChainAPI
         World world = World.GetWorldLocked(bodyId.world0);
         if (world == null) return new();
         Body body = world.GetBodyFullID(bodyId);
-        Transform transform = world.GetBodyTransformQuick(body);
+        WorldTransform transform = world.GetBodyTransformQuick(body);
         int chainId = world.chainIdPool.AllocId();
         if (chainId == world.chainShapes.Count) world.chainShapes.Add(new());
         else Debug.Assert(world.chainShapes[chainId].id == -1);

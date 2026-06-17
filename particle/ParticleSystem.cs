@@ -52,14 +52,14 @@ unsafe class ParticleBodyContactRemovePredicate
             if (m_currentContacts++ > k_maxContactsPerPoint) { ++*m_discarded; return true; }
             Vector2 n = contact.normal * m_system.GetParticleDiameter() * (1 - contact.weight);
             Vector2 pos = m_system.PositionBuffer[contact.index] + n;
-            Transform t = m_system.World.GetBodyTransform(contact.fixture.bodyId);
-            if (!contact.fixture.shape.TestPoint(t.InvTransformPoint(pos)))
+            WorldTransform t = m_system.World.GetBodyTransform(contact.fixture.bodyId);
+            if (!contact.fixture.shape.TestPoint(t.InvTransformWorldPoint(pos)))
             {
                 DistanceInput input = new()
                 {
                     proxyA = contact.fixture.MakeDistanceProxy(),
                     proxyB = new Circle { center = pos, radius = 0 }.MakeProxy(),
-                    transformA = t,
+                    transformA = new(t.p, t.q),
                     transformB = Transform.Identity,
                 };
                 SimplexCache cache = new();
@@ -194,7 +194,7 @@ public class ParticleSystem
             }
         };
         AABB aabb = shape.ComputeAABB(xf);
-        WorldAPI.OverlapAABB(new WorldID { generation = World.generation, index1 = World }, aabb, new QueryFilter(), null, null, callback);
+        WorldAPI.OverlapAABB(new WorldID { generation = World.generation, index1 = World }, Position.Zero, aabb, new QueryFilter(), null, null, callback);
         return destroyed;
     }
     public ParticleGroup CreateParticleGroup(ParticleGroupDef groupDef)
@@ -1401,7 +1401,7 @@ public class ParticleSystem
         public bool ReportFixture(World world, Shape f)
         {
             if (f.sensorIndex != -1) return true;
-            Transform transform = world.GetBodyTransform(f.bodyId);
+            WorldTransform transform = world.GetBodyTransform(f.bodyId);
             AABB aabb = f.shape.ComputeAABB(transform);
             InsideBoundsEnumerator enumerator = system.GetInsideBoundsEnumenator(aabb);
             int index;
@@ -1453,7 +1453,7 @@ public class ParticleSystem
                 {
                     proxyA = f.MakeDistanceProxy(),
                     proxyB = new Circle { center = ap }.MakeProxy(),
-                    transformA = sim.transform,
+                    transformA = new(sim.transform.p, sim.transform.q),
                     transformB = Transform.Identity,
                 };
                 SimplexCache cache = new();
@@ -1469,7 +1469,7 @@ public class ParticleSystem
                     !GetFlagsBuffer()[a].HasFlag(ParticleFlag.FixtureContactFilter) || contactFilter.ShouldCollideFP(f, this, a)))
                 {
                     float bI = b.inertia - b.mass * sim.localCenter.LengthSquared();
-                    float rpn = Vector2.Cross(ap - sim.center, output.normal),
+                    float rpn = Vector2.Cross(ap - (Vector2)sim.center, output.normal),
                         invM = (FlagsBuffer[a].HasFlag(ParticleFlag.Wall) ? 0 : m_inverseMass) + sim.invMass + (bI > 0 ? 1 / bI : 0) * rpn * rpn;
                     ParticleBodyContact pbc = new()
                     {
@@ -1485,7 +1485,7 @@ public class ParticleSystem
                 }
             }
         };
-        WorldAPI.OverlapAABB(new() { generation = World.generation, index1 = World }, ComputeAABB(), new(),
+        WorldAPI.OverlapAABB(new() { generation = World.generation, index1 = World }, Position.Zero, ComputeAABB(), new(),
             (shape, _) => callback.ReportFixture(shape.world0, shape.world0.GetShape(shape)), null, callback);
         BodyContactBuffer.RemoveRange(bcb, BodyContactBuffer.Count - bcb);
         StuckParticleBuffer.RemoveRange(spb, StuckParticleBuffer.Count - spb);
@@ -1605,12 +1605,12 @@ public class ParticleSystem
                             p1 = sim.transform.q.InvRotateVector(p1);
                             p1 += sim.localCenter;
                         }
-                        input.origin = sim.transform.TransformPoint(p1);
+                        input.origin = sim.transform.TransformWorldPoint(p1);
                     }
                     else input.origin = PositionBuffer[a];
                     input.translation = PositionBuffer[a] + dt * av - input.origin;
                     input.maxFraction = 1;
-                    if ((output = f.RayCast(ref input, sim.transform)).hit)
+                    if ((output = f.RayCast(ref input, new(sim.transform.p, sim.transform.q))).hit)
                     {
                         Vector2 v = inv_dt * (input.origin + output.fraction * input.translation + output.normal * Box2D.ParticleLinearSlop - PositionBuffer[a]);
                         VelocityBuffer[a] = v;
@@ -1620,7 +1620,7 @@ public class ParticleSystem
                 }
             }
         };
-        WorldAPI.OverlapAABB(new() { generation = World.generation, index1 = World }, aabb, new(), (s, _) => callback.ReportFixture(s.world0, s.world0.GetShape(s)), null, callback);
+        WorldAPI.OverlapAABB(new() { generation = World.generation, index1 = World }, Position.Zero, aabb, new(), (s, _) => callback.ReportFixture(s.world0, s.world0.GetShape(s)), null, callback);
     }
     unsafe void LimitVelocity(float dt, float inv_dt)
     {
@@ -1938,7 +1938,7 @@ public class ParticleSystem
                             tangentDistanceA = Vector2.Cross(p - aGroup.GetCenter, contact.normal),
                             invMassB = sim.invMass,
                             invInertiaB = sim.invInertia,
-                            tangentDistanceB = Vector2.Cross(p - World.GetBodySim(contact.body).center, contact.normal);
+                            tangentDistanceB = Vector2.Cross(p - (Vector2)World.GetBodySim(contact.body).center, contact.normal);
                         float f = damping * Math.Min(contact.weight, 1) * ComputeDampingImpulse(
                             invMassA, invInertiaA, tangentDistanceA, invMassB, invInertiaB, tangentDistanceB, vn);
                         ApplyDamping(invMassA, invInertiaA, tangentDistanceA, true, aGroup, contact.index, f, contact.normal);

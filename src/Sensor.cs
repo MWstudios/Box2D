@@ -33,7 +33,7 @@ public partial class World
         public SensorTaskContext taskContext;
         public Sensor sensor;
         public Shape sensorShape;
-        public Transform transform;
+        public WorldTransform transform;
     }
     public static bool SensorQueryCallback(int proxyId, ulong userData, object context)
     {
@@ -58,13 +58,12 @@ public partial class World
                 if (!shouldCollide) return true;
             }
         }
-        Transform otherTransform = world.GetBodyTransform(otherShape.bodyId);
+        WorldTransform otherTransform = world.GetBodyTransform(otherShape.bodyId);
         DistanceInput input = new()
         {
             proxyA = sensorShape.MakeDistanceProxy(),
             proxyB = otherShape.MakeDistanceProxy(),
-            transformA = queryContext.transform,
-            transformB = otherTransform,
+            transform = WorldTransform.InvMulWorldTransforms(queryContext.transform, otherTransform),
             useRadii = true
         };
         SimplexCache cache = new();
@@ -98,7 +97,7 @@ public partial class World
                     taskContext.eventBits.SetBit(sensorIndex);
                 continue;
             }
-            Transform transform = world.GetBodyTransformQuick(body);
+            WorldTransform transform = world.GetBodyTransformQuick(body);
             SensorQueryContext queryContext = new()
             { world = world, taskContext = taskContext, sensor = sensor, sensorShape = sensorShape, transform = transform };
             Debug.Assert(sensorShape.sensorIndex == sensorIndex);

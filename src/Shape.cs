@@ -6,7 +6,8 @@ namespace Box2D;
 public interface IShape
 {
     public float GetRadius() => 0;
-    public AABB ComputeAABB(Transform xf) => new(xf.p, xf.p);
+    public AABB ComputeAABB(WorldTransform xf) => new(new(), new());
+    public AABB ComputeFatAABB(WorldTransform xf, float extra) => new(xf.p, xf.p);
     public Vector2 GetCentroid() => Vector2.Zero;
     public float GetPerimeter() => 0;
     public float GetProjectedPerimeter(Vector2 line) => 0;
@@ -18,7 +19,7 @@ public interface IShape
     public PlaneResult CollideMover(ref Capsule mover) => new();
     public ShapeProxy MakeProxy() => new();
     public bool TestPoint(Vector2 point) => false;
-    public unsafe void ApplyWindForce(float airDensity, Vector2 wind, float drag, float lift, ref Transform transform,
+    public void ApplyWindForce(float airDensity, Vector2 wind, float drag, float lift, ref WorldTransform transform,
         BodySim sim, Vector2 lever, Vector2 shapeVelocity, out Vector2 force, out float torque)
     { force = Vector2.Zero; torque = 0; }
 }
@@ -62,19 +63,15 @@ public class Shape
     }
     public static bool ShouldQueryCollide(Filter shapeFilter, QueryFilter queryFilter) =>
         (shapeFilter.categoryBits & queryFilter.maskBits) != 0 && (shapeFilter.maskBits & queryFilter.categoryBits) != 0;
-    public void UpdateAABBs(Transform transform, BodyType proxyType)
+    public void UpdateAABBs(WorldTransform transform, BodyType proxyType)
     {
-        AABB aabb = shape.ComputeAABB(transform);
-        aabb.lowerBound.x -= Box2D.SpeculativeDistance;
-        aabb.lowerBound.y -= Box2D.SpeculativeDistance;
-        aabb.upperBound.x += Box2D.SpeculativeDistance;
-        aabb.upperBound.y += Box2D.SpeculativeDistance;
-        this.aabb = aabb;
+        aabb = shape.ComputeFatAABB(transform, Box2D.SpeculativeDistance);
         float margin = proxyType == BodyType.Static ? Box2D.SpeculativeDistance : aabbMargin;
         fatAABB = new(new(aabb.lowerBound.x - margin, aabb.lowerBound.y - margin),
             new(aabb.upperBound.x + margin, aabb.upperBound.y + margin));
     }
-    public AABB ComputeAABB(Transform xf) => shape.ComputeAABB(xf);
+    public AABB ComputeAABB(WorldTransform xf) => shape.ComputeAABB(xf);
+    public AABB ComputeFatAABB(WorldTransform xf, float extra) => shape.ComputeFatAABB(xf, extra);
     public Vector2 GetCentroid() => shape.GetCentroid();
     public float GetPerimeter() => shape.GetPerimeter();
     public float GetProjectedPerimeter(Vector2 line) => shape.GetProjectedPerimeter(line);
@@ -120,7 +117,7 @@ public class Shape
         result.plane.normal = transform.q * result.plane.normal;
         return result;
     }
-    public void CreateProxy(BroadPhase bp, BodyType type, Transform transform, bool forcePairCreation)
+    public void CreateProxy(BroadPhase bp, BodyType type, WorldTransform transform, bool forcePairCreation)
     {
         Debug.Assert(proxyKey == -1);
         UpdateAABBs(transform, type);
@@ -170,7 +167,7 @@ public partial class World
         Debug.Assert(chain.id == id && chain.generation == generation);
         return chain;
     }
-    public Shape CreateShapeInternal(Body body, Transform transform, ref ShapeDef def, IShape geometry, ShapeType shapeType)
+    public Shape CreateShapeInternal(Body body, WorldTransform transform, ref ShapeDef def, IShape geometry, ShapeType shapeType)
     {
         int shapeId = shapeIdPool.AllocId();
         if (shapeId == shapes.Count) shapes.Add(new());
@@ -287,7 +284,7 @@ public partial class World
             if (contact.shapeIdA == shapeId || contact.shapeIdB == shapeId)
                 DestroyContact(contact, wakeBodies);
         }
-        Transform transform = GetBodyTransformQuick(body);
+        WorldTransform transform = GetBodyTransformQuick(body);
         if (shape.proxyKey != -1)
         {
             BodyType proxyType = B2_PROXY_TYPE(shape.proxyKey);

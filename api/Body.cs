@@ -226,7 +226,7 @@ public unsafe static class BodyAPI
             if (bodyA.type == BodyType.Dynamic || bodyB.type == BodyType.Dynamic)
                 world.TransferJoint(awakeSet, staticSet, joint);
         }
-        Transform transform = world.GetBodyTransformQuick(body);
+        WorldTransform transform = world.GetBodyTransformQuick(body);
         int shapeId = body.headShapeId;
         while (shapeId != -1)
         {
@@ -267,18 +267,18 @@ public unsafe static class BodyAPI
     public static object GetUserData(BodyID bodyId) => bodyId.world0.GetBodyFullID(bodyId).userData;
 
     ///<summary> Get the world position of a body. This is the location of the body origin.</summary>
-    public static Vector2 GetPosition(BodyID bodyId) => bodyId.world0.GetBodyTransformQuick(bodyId.world0.GetBodyFullID(bodyId)).p;
+    public static Position GetPosition(BodyID bodyId) => bodyId.world0.GetBodyTransformQuick(bodyId.world0.GetBodyFullID(bodyId)).p;
 
     ///<summary> Get the world rotation of a body as a cosine/sine pair (complex number)</summary>
     public static Rotation GetRotation(BodyID bodyId) => bodyId.world0.GetBodyTransformQuick(bodyId.world0.GetBodyFullID(bodyId)).q;
 
     ///<summary> Get the world transform of a body.</summary>
-    public static Transform GetTransform(BodyID bodyId) => bodyId.world0.GetBodyTransformQuick(bodyId.world0.GetBodyFullID(bodyId));
+    public static WorldTransform GetTransform(BodyID bodyId) => bodyId.world0.GetBodyTransformQuick(bodyId.world0.GetBodyFullID(bodyId));
 
     /// <summary>Set the world transform of a body. This acts as a teleport and is fairly expensive.
     /// @see BodyDef::position and BodyDef::rotation</summary>
     /// <remarks>Generally you should create a body with then intended transform.</remarks>
-    public static void SetTransform(BodyID bodyId, Vector2 position, Rotation rotation)
+    public static void SetTransform(BodyID bodyId, Position position, Rotation rotation)
     {
         Debug.Assert(position.IsValid());
         Debug.Assert(rotation.IsValid());
@@ -287,20 +287,16 @@ public unsafe static class BodyAPI
         Body body = world.GetBodyFullID(bodyId);
         BodySim bodySim = world.GetBodySim(body);
         bodySim.transform = new(position, rotation);
-        bodySim.center = bodySim.transform.TransformPoint(bodySim.localCenter);
+        bodySim.center = bodySim.transform.TransformWorldPoint(bodySim.localCenter);
         bodySim.rotation0 = bodySim.transform.q;
         bodySim.center0 = bodySim.center;
         BroadPhase broadPhase = world.broadPhase;
-        Transform transform = bodySim.transform;
+        WorldTransform transform = bodySim.transform;
         int shapeId = body.headShapeId;
         while (shapeId != -1)
         {
             Shape shape = world.shapes[shapeId];
-            AABB aabb = shape.ComputeAABB(transform);
-            aabb.lowerBound.x -= Box2D.SpeculativeDistance;
-            aabb.lowerBound.y -= Box2D.SpeculativeDistance;
-            aabb.upperBound.x += Box2D.SpeculativeDistance;
-            aabb.upperBound.y += Box2D.SpeculativeDistance;
+            AABB aabb = shape.ComputeFatAABB(transform, Box2D.SpeculativeDistance);
             shape.aabb = aabb;
             if (!shape.fatAABB.Contains(aabb))
             {
@@ -314,12 +310,12 @@ public unsafe static class BodyAPI
     }
 
     ///<summary> Get a local point on a body given a world point</summary>
-    public static Vector2 GetLocalPoint(BodyID bodyId, Vector2 worldPoint) =>
-        bodyId.world0.GetBodyTransformQuick(bodyId.world0.GetBodyFullID(bodyId)).InvTransformPoint(worldPoint);
+    public static Vector2 GetLocalPoint(BodyID bodyId, Position worldPoint) =>
+        bodyId.world0.GetBodyTransformQuick(bodyId.world0.GetBodyFullID(bodyId)).InvTransformWorldPoint(worldPoint);
 
     ///<summary> Get a world point on a body given a local point</summary>
-    public static Vector2 GetWorldPoint(BodyID bodyId, Vector2 localPoint) =>
-        bodyId.world0.GetBodyTransformQuick(bodyId.world0.GetBodyFullID(bodyId)).TransformPoint(localPoint);
+    public static Position GetWorldPoint(BodyID bodyId, Vector2 localPoint) =>
+        bodyId.world0.GetBodyTransformQuick(bodyId.world0.GetBodyFullID(bodyId)).TransformWorldPoint(localPoint);
 
     ///<summary> Get a local vector on a body given a world vector</summary>
     public static Vector2 GetLocalVector(BodyID bodyId, Vector2 worldVector) =>
@@ -371,16 +367,16 @@ public unsafe static class BodyAPI
     /// <param name="target">The target transform for the body</param>
     /// <param name="timeStep">The time step of the next call to b2World_Step</param>
     /// <param name="wake">Option to wake the body or not</param>
-    public static void SetTargetTransform(BodyID bodyId, Transform target, float timeStep, bool wake)
+    public static void SetTargetTransform(BodyID bodyId, WorldTransform target, float timeStep, bool wake)
     {
         World world = bodyId.world0; Body body = world.GetBodyFullID(bodyId);
         if (body.setIndex == (int)_SetType.Disabled) return;
         if (body.type == (int)_SetType.Static || timeStep <= 0) return;
         if (body.setIndex != (int)_SetType.Awake && !wake) return;
         BodySim sim = world.GetBodySim(body);
-        Vector2 center1 = sim.center, center2 = target.TransformPoint(sim.localCenter);
+        Vector2 delta = target.TransformWorldPoint(sim.localCenter) - sim.center;
         float invTimeStep = 1 / timeStep;
-        Vector2 linearVelocity = invTimeStep * (center2 - center1);
+        Vector2 linearVelocity = invTimeStep * delta;
         Rotation q1 = sim.transform.q, q2 = target.q;
         float deltaAngle = Rotation.RelativeAngle(q1, q2);
         float angularVelocity = invTimeStep * deltaAngle;
@@ -411,7 +407,7 @@ public unsafe static class BodyAPI
     }
 
     ///<summary> Get the linear velocity of a world point attached to a body. Usually in meters per second.</summary>
-    public static Vector2 GetWorldPointVelocity(BodyID bodyId, Vector2 worldPoint)
+    public static Vector2 GetWorldPointVelocity(BodyID bodyId, Position worldPoint)
     {
         World world = bodyId.world0; Body body = world.GetBodyFullID(bodyId);
         BodyState* state = world.GetBodyState(body);
@@ -429,7 +425,7 @@ public unsafe static class BodyAPI
     /// <param name="force">The world force vector, usually in newtons (N)</param>
     /// <param name="point">The world position of the point of application</param>
     /// <param name="wake">Option to wake up the body</param>
-    public static void ApplyForce(BodyID bodyId, Vector2 force, Vector2 point, bool wake)
+    public static void ApplyForce(BodyID bodyId, Vector2 force, Position point, bool wake)
     {
         World world = bodyId.world0; Body body = world.GetBodyFullID(bodyId);
         if (body.type != BodyType.Dynamic || body.setIndex == (int)_SetType.Disabled) return;
@@ -497,7 +493,7 @@ public unsafe static class BodyAPI
     /// <param name="wake">also wake up the body</param>
     /// <remarks>This should be used for one-shot impulses. If you need a steady force,
     /// use a force instead, which will work better with the sub-stepping solver.</remarks>
-    public static void ApplyLinearImpulse(BodyID bodyId, Vector2 impulse, Vector2 point, bool wake)
+    public static void ApplyLinearImpulse(BodyID bodyId, Vector2 impulse, Position point, bool wake)
     {
         World world = bodyId.world0; Body body = world.GetBodyFullID(bodyId);
         if (body.type != BodyType.Dynamic || body.setIndex == (int)_SetType.Disabled) return;
@@ -567,10 +563,10 @@ public unsafe static class BodyAPI
     public static float GetRotationalInertia(BodyID bodyId) => bodyId.world0.GetBodyFullID(bodyId).inertia;
 
     ///<summary> Get the center of mass position of the body in local space</summary>
-    public static Vector2 GetLocalCenterOfMass(BodyID bodyId) => bodyId.world0.GetBodySim(bodyId.world0.GetBodyFullID(bodyId)).localCenter;
+    public static Vector2 GetLocalCenter(BodyID bodyId) => bodyId.world0.GetBodySim(bodyId.world0.GetBodyFullID(bodyId)).localCenter;
 
     ///<summary> Get the center of mass position of the body in world space</summary>
-    public static Vector2 GetWorldCenterOfMass(BodyID bodyId) => bodyId.world0.GetBodySim(bodyId.world0.GetBodyFullID(bodyId)).center;
+    public static Position GetWorldCenter(BodyID bodyId) => bodyId.world0.GetBodySim(bodyId.world0.GetBodyFullID(bodyId)).center;
 
     ///<summary>Override the body's mass properties. Normally this is computed automatically using the
     /// shape geometry and density. This information is lost if a shape is added or removed or if the
@@ -586,7 +582,7 @@ public unsafe static class BodyAPI
         body.mass = massData.mass;
         body.inertia = massData.rotationalInertia;
         bodySim.localCenter = massData.center;
-        Vector2 center = bodySim.transform.TransformPoint(massData.center);
+        Vector2 center = bodySim.transform.TransformWorldPoint(massData.center);
         bodySim.center = center;
         bodySim.center0 = center;
         bodySim.invMass = body.mass > 0 ? 1 / body.mass : 0;
@@ -756,7 +752,7 @@ public unsafe static class BodyAPI
         int setId = body.type == BodyType.Static ? (int)_SetType.Static : (int)_SetType.Awake;
         SolverSet targetSet = world.solverSets[setId];
         world.TransferBody(targetSet, disabledSet, body);
-        Transform transform = world.GetBodyTransformQuick(body);
+        WorldTransform transform = world.GetBodyTransformQuick(body);
         int shapeId = body.headShapeId;
         while (shapeId != -1)
         {
@@ -975,8 +971,9 @@ public unsafe static class BodyAPI
         Body body = world.GetBodyFullID(bodyId);
         if (body.headShapeId == -1)
         {
-            Transform transform = world.GetBodyTransform(body.id);
-            return new(transform.p, transform.p);
+            WorldTransform transform = world.GetBodyTransform(body.id);
+            return new(new(AABB.RoundDownFloat(transform.p.x), AABB.RoundDownFloat(transform.p.y)),
+                new(AABB.RoundUpFloat(transform.p.x), AABB.RoundUpFloat(transform.p.y)));
         }
         Shape shape = world.shapes[body.headShapeId];
         AABB aabb = shape.aabb;

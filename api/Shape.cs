@@ -16,7 +16,7 @@ public static class ShapeAPI
         World world = World.GetWorldLocked(bodyId.world0);
         if (world == null) return new();
         Body body = world.GetBodyFullID(bodyId);
-        Transform transform = world.GetBodyTransformQuick(body);
+        WorldTransform transform = world.GetBodyTransformQuick(body);
         Shape shape = world.CreateShapeInternal(body, transform, ref def, geometry, shapeType);
         if (def.updateBodyMass) world.UpdateBodyMassData(body);
         else if (!body.flags.HasFlag(BodyFlags.DirtyMass))
@@ -239,35 +239,32 @@ public static class ShapeAPI
     ///<summary> Returns true if hit events are enabled</summary>
     public static bool AreHitEventsEnabled(ShapeID shapeId) => shapeId.world0.GetShape(shapeId).enableHitEvents;
 
-    ///<summary> Test a point for overlap with a shape</summary>
-    public static bool TestPoint(ShapeID shapeId, Vector2 point)
+    ///<summary> Test a world point for overlap with a shape</summary>
+    public static bool TestPoint(ShapeID shapeId, Position point)
     {
         World world = shapeId.world0;
         Shape shape = world.GetShape(shapeId);
-        Transform transform = world.GetBodyTransform(shape.bodyId);
-        Vector2 localPoint = transform.InvTransformPoint(point);
+        WorldTransform transform = world.GetBodyTransform(shape.bodyId);
+        Vector2 localPoint = transform.InvTransformWorldPoint(point);
         return shape.shape.TestPoint(localPoint);
     }
 
-    ///<summary> Ray cast a shape directly</summary>
-    public static CastOutput RayCast(ShapeID shapeId, ref RayCastInput input)
+    ///<summary> Ray cast a single shape. The ray starts at the origin and extends by the translation. The output point is a world position.</summary>
+    public static WorldCastOutput RayCast(ShapeID shapeId, Position origin, Vector2 translation)
     {
+        Debug.Assert(origin.IsValid());
+        Debug.Assert(translation.IsValid());
         World world = shapeId.world0;
         Shape shape = world.GetShape(shapeId);
-        Transform transform = world.GetBodyTransform(shape.bodyId);
-        RayCastInput localInput = new()
+        Transform transform = world.GetBodyTransform(shape.bodyId).ToRelativeTransform(origin);
+        RayCastInput input = new()
         {
-            origin = transform.InvTransformPoint(input.origin),
-            translation = transform.q.InvRotateVector(input.translation),
-            maxFraction = input.maxFraction
+            origin = Vector2.Zero,
+            translation = translation,
+            maxFraction = 1
         };
-        CastOutput output = shape.shape.RayCast(ref localInput);
-        if (output.hit)
-        {
-            output.point = transform.TransformPoint(output.point);
-            output.normal = transform.q * output.normal;
-        }
-        return output;
+        CastOutput local = shape.RayCast(ref input, transform);
+        return new() { normal = local.normal, point = origin + local.point, fraction = local.fraction, hit = local.hit };
     }
 
     ///<summary> Get a copy of the shape's circle. Asserts the type is correct.</summary>
@@ -487,24 +484,24 @@ public static class ShapeAPI
         return world.GetShape(shapeId).ComputeMass();
     }
 
-    ///<summary>Get the closest point on a shape to a target point. Target and result are in world space.
+    ///<summary>Get the closest point on a shape to a target point. Target and result are world positions.
     /// todo need sample</summary>
-    public static Vector2 GetClosestPoint(ShapeID shapeId, Vector2 target)
+    public static Position GetClosestPoint(ShapeID shapeId, Position target)
     {
         World world = World.GetWorldLocked(shapeId.world0); if (world == null) return new();
         Shape shape = world.GetShape(shapeId);
         Body body = world.bodies[shape.bodyId];
-        Transform transform = world.GetBodyTransformQuick(body);
+        WorldTransform transform = world.GetBodyTransformQuick(body);
+        WorldTransform targetTransform = new(target, Rotation.Identity);
         DistanceInput input = new()
         {
             proxyA = shape.MakeDistanceProxy(),
-            proxyB = Distance.MakeProxy([target], 0),
-            transformA = transform,
-            transformB = Transform.Identity,
+            proxyB = Distance.MakeProxy([Vector2.Zero], 0),
+            transform = WorldTransform.InvMulWorldTransforms(transform, targetTransform),
             useRadii = true
         };
         SimplexCache cache = new();
-        return input.ShapeDistance(ref cache, null).pointA;
+        return transform.TransformWorldPoint(input.ShapeDistance(ref cache, null).pointA);
     }
 
     public static unsafe void ApplyWindForce(ShapeID shapeId, Vector2 wind, float drag, float lift, float airDensity = 1.225f, bool wake = true)
@@ -519,7 +516,7 @@ public static class ShapeAPI
         BodySim sim = world.GetBodySim(body);
         if (body.setIndex != (int)SetType.Awake) world.WakeBody(body);
         BodyState* state = world.GetBodyState(body);
-        Transform transform = sim.transform;
+        WorldTransform transform = sim.transform;
         float volumeUnits = Box2D.LengthUnitsPerMeter * Box2D.LengthUnitsPerMeter * Box2D.LengthUnitsPerMeter;
         airDensity /= volumeUnits;
         Vector2 lever = transform.q * (shape.localCentroid - sim.localCenter);

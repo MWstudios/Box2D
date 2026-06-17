@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Diagnostics;
 using System.Collections.Generic;
+using System.IO;
 
 namespace Box2D.API;
 
@@ -172,7 +173,7 @@ public static class WorldAPI
                 {
                     Vector2 offset = new(0.1f, 0.1f);
                     BodySim bodySim = world.GetBodySim(body);
-                    Transform transform = new(bodySim.center, bodySim.transform.q);
+                    Transform transform = new(bodySim.center - draw.origin, bodySim.transform.q);
                     Vector2 p = transform.TransformPoint(offset);
                     draw.DrawStringFcn(p, body.name, HexColor.BlueViolet, draw.context);
                 }
@@ -180,8 +181,8 @@ public static class WorldAPI
                 {
                     Vector2 offset = new(0.1f, 0.1f);
                     BodySim bodySim = world.GetBodySim(body);
-                    Transform transform = new(bodySim.center, bodySim.transform.q);
-                    draw.DrawSegmentFcn(bodySim.center0, bodySim.center, HexColor.WhiteSmoke, draw.context);
+                    Transform transform = new(bodySim.center - draw.origin, bodySim.transform.q);
+                    draw.DrawSegmentFcn(bodySim.center0 - draw.origin, bodySim.center - draw.origin, HexColor.WhiteSmoke, draw.context);
                     draw.DrawTransformFcn(transform, draw.context);
                     Vector2 p = transform.TransformPoint(offset);
                     draw.DrawStringFcn(p, $"  {body.mass:F2}", HexColor.White, draw.context);
@@ -222,7 +223,7 @@ public static class WorldAPI
                             {
                                 ref ManifoldPoint mp = ref contactSim.manifold.point0;
                                 if (j == 1) mp = ref contactSim.manifold.point1;
-                                Vector2 p = draw.drawAnchorA ? bodySimA.center + mp.anchorA : bodySimB.center + mp.anchorB;
+                                Vector2 p = draw.drawAnchorA ? bodySimA.center + mp.anchorA - draw.origin : bodySimB.center + mp.anchorB - draw.origin;
                                 if (draw.drawGraphColors && contact.colorIndex != -1)
                                 {
                                     float pointSize = contact.colorIndex == Box2D.GraphColorCount - 1 ? 7.5f : 5;
@@ -288,7 +289,9 @@ public static class WorldAPI
                         }
                         if (shapeCount > 0)
                         {
-                            draw.DrawPolygonFcn([aabb.lowerBound, new(aabb.upperBound.x, aabb.lowerBound.y), aabb.upperBound, new(aabb.lowerBound.x, aabb.upperBound.y)], HexColor.OrangeRed, draw.context);
+                            Vector2 lower = (Position)aabb.lowerBound - draw.origin;
+                            Vector2 upper = (Position)aabb.upperBound - draw.origin;
+                            draw.DrawPolygonFcn([lower, new(upper.x, lower.y), upper, new(lower.x, upper.y)], HexColor.OrangeRed, draw.context);
                         }
                         world.debugIslandSet.SetBit(islandId);
                     }
@@ -354,12 +357,16 @@ public static class WorldAPI
         ShapeID id = new() { index1 = shapeId + 1, world0 = world, generation = shape.generation };
         return worldContext.fcn(id, worldContext.userContext);
     }
-    ///<summary> Overlap test for all shapes that ref *potentially overlap the provided AABB</summary>
-    public static TreeStats OverlapAABB(WorldID worldId, AABB aabb, QueryFilter filter, OverlapResultFcn fcn, object context, ParticleQueryCallback callback = null)
+    ///<summary> Overlap test for all shapes that ref *potentially overlap the provided AABB.
+    ///The AABB is relative to the origin, which keeps the test precise far from the world origin
+    ///in large world mode. Near the origin pass b2Pos_zero and a world AABB.</summary>
+    public static TreeStats OverlapAABB(WorldID worldId, Position origin, AABB aabb, QueryFilter filter, OverlapResultFcn fcn, object context, ParticleQueryCallback callback = null)
     {
         TreeStats treeStats = new();
         World world = worldId.index1; //Debug.Assert(!world.locked); if (world.locked) return treeStats;
         Debug.Assert(aabb.IsValid());
+        Debug.Assert(origin.IsValid());
+        AABB worldBox = aabb.Offset(origin);
         WorldQueryContext worldContext = new() { world = world, fcn = fcn, filter = filter, userContext = context };
         for (int i = 0; i < 3; i++)
         {
@@ -369,7 +376,7 @@ public static class WorldAPI
         }
         if (callback != null) for (int i = 0; i < world.particleSystemList.Count; i++)
                 if (callback.ShouldQueryParticleSystem(world.particleSystemList[i]))
-                    world.particleSystemList[i].QueryAABB(callback, aabb);
+                    world.particleSystemList[i].QueryAABB(callback, worldBox);
         return treeStats;
     }
 
@@ -379,6 +386,7 @@ public static class WorldAPI
         public OverlapResultFcn fcn;
         public QueryFilter filter;
         public ShapeProxy proxy;
+        public Position origin;
         public object userContext;
     }
     public static bool TreeOverlapCallback(int proxyId, ulong userData, object context)
@@ -389,7 +397,7 @@ public static class WorldAPI
         Shape shape = world.shapes[shapeId];
         if (!Shape.ShouldQueryCollide(shape.filter, worldContext.filter)) return true;
         Body body = world.bodies[shape.bodyId];
-        Transform transform = world.GetBodyTransformQuick(body);
+        Transform transform = world.GetBodyTransformQuick(body).ToRelativeTransform(worldContext.origin);
         DistanceInput input = new()
         {
             proxyA = worldContext.proxy,
@@ -405,13 +413,14 @@ public static class WorldAPI
         ShapeID id = new() { index1 = shape.id + 1, world0 = world, generation = shape.generation };
         return worldContext.fcn(id, worldContext.userContext);
     }
-    ///<summary> Overlap test for all shapes that overlap the provided shape proxy.</summary>
-    public static TreeStats OverlapShape(WorldID worldId, ShapeProxy proxy, QueryFilter filter, OverlapResultFcn fcn, object context)
+    ///<summary>The proxy points are relative to the origin. Near the origin pass b2Pos_zero and world points.</summary>
+    public static TreeStats OverlapShape(WorldID worldId, Position origin, ShapeProxy proxy, QueryFilter filter, OverlapResultFcn fcn, object context)
     {
         TreeStats treeStats = new();
         World world = worldId.index1; Debug.Assert(!world.locked); if (world.locked) return treeStats;
-        AABB aabb = AABB.MakeAABB(proxy.points, proxy.radius);
-        WorldOverlapContext worldContext = new() { world = world, fcn = fcn, filter = filter, proxy = proxy, userContext = context };
+        Debug.Assert(origin.IsValid());
+        AABB aabb = AABB.MakeAABB(proxy.points, proxy.radius).Offset(origin);
+        WorldOverlapContext worldContext = new() { world = world, fcn = fcn, filter = filter, proxy = proxy, origin = origin, userContext = context };
         for (int i = 0; i < 3; i++)
         {
             TreeStats treeResult = world.broadPhase.trees[i].Query(aabb, filter.maskBits, TreeOverlapCallback, worldContext);
@@ -427,6 +436,7 @@ public static class WorldAPI
         public CastResultFcn fcn;
         public QueryFilter filter;
         public float fraction;
+        public Position origin;
         public object userContext;
     }
     public static float RayCastCallback(ref RayCastInput input, int proxyId, ulong userData, object context)
@@ -437,12 +447,13 @@ public static class WorldAPI
         Shape shape = world.shapes[shapeId];
         if (!Shape.ShouldQueryCollide(shape.filter, worldContext.filter)) return input.maxFraction;
         Body body = world.bodies[shape.bodyId];
-        Transform transform = world.GetBodyTransformQuick(body);
-        CastOutput output = shape.RayCast(ref input, transform);
+        WorldTransform xf = world.GetBodyTransformQuick(body);
+        RayCastInput localInput = input with { origin = worldContext.origin - xf.p };
+        CastOutput output = shape.RayCast(ref localInput, xf.ToRelativeTransform(xf.p));
         if (output.hit)
         {
             ShapeID id = new() { index1 = shapeId + 1, world0 = world, generation = shape.generation };
-            float fraction = worldContext.fcn(id, output.point, output.normal, output.fraction, worldContext.userContext);
+            float fraction = worldContext.fcn(id, xf.p - output.point, output.normal, output.fraction, worldContext.userContext);
             if (0 <= fraction && fraction <= 1) worldContext.fraction = fraction;
             return fraction;
         }
@@ -458,7 +469,7 @@ public static class WorldAPI
     /// <param name="fcn">A user implemented callback function</param>
     /// <param name="context">A user context that is passed along to the callback function</param>
     ///	<returns>traversal performance counters</returns>
-    public static TreeStats CastRay(WorldID worldId, Vector2 origin, Vector2 translation, QueryFilter filter,
+    public static TreeStats CastRay(WorldID worldId, Position origin, Vector2 translation, QueryFilter filter,
                                         ref CastResultFcn fcn, object context, ParticleRayCastCallback callback = null)
     {
         TreeStats treeStats = new();
@@ -466,7 +477,7 @@ public static class WorldAPI
         Debug.Assert(origin.IsValid());
         Debug.Assert(translation.IsValid());
         RayCastInput input = new() { origin = origin, translation = translation, maxFraction = 1 };
-        WorldRayCastContext worldContext = new() { world = world, fcn = fcn, filter = filter, fraction = 1, userContext = context };
+        WorldRayCastContext worldContext = new() { world = world, fcn = fcn, filter = filter, fraction = 1, origin = origin, userContext = context };
         for (int i = 0; i < 3; i++)
         {
             TreeStats treeResult = world.broadPhase.trees[i].RayCast(ref input, filter.maskBits, RayCastCallback, worldContext);
@@ -482,7 +493,7 @@ public static class WorldAPI
     }
 
     /// <summary>This callback finds the closest hit. This is the most common callback used in games.</summary>
-    public static float RayCastClosestFcn(ShapeID shapeId, Vector2 point, Vector2 normal, float fraction, object context)
+    public static float RayCastClosestFcn(ShapeID shapeId, Position point, Vector2 normal, float fraction, object context)
     {
         if (fraction == 0) return -1;
         RayResult rayResult = (RayResult)context;
@@ -495,14 +506,14 @@ public static class WorldAPI
     }
     ///<summary>Cast a ray into the world to collect the closest hit. This is a convenience function. Ignores initial overlap.
     /// This is less general than CastRay() and does not allow for custom filtering.</summary>
-    public static RayResult CastRayClosest(WorldID worldId, Vector2 origin, Vector2 translation, QueryFilter filter)
+    public static RayResult CastRayClosest(WorldID worldId, Position origin, Vector2 translation, QueryFilter filter)
     {
         RayResult result = new();
         World world = worldId.index1; Debug.Assert(!world.locked); if (world.locked) return result;
         Debug.Assert(origin.IsValid());
         Debug.Assert(translation.IsValid());
         RayCastInput input = new() { origin = origin, translation = translation, maxFraction = 1 };
-        WorldRayCastContext worldContext = new() { world = world, fcn = RayCastClosestFcn, filter = filter, fraction = 1, userContext = result };
+        WorldRayCastContext worldContext = new() { world = world, fcn = RayCastClosestFcn, filter = filter, fraction = 1, origin = origin, userContext = result };
         for (int i = 0; i < 3; i++)
         {
             TreeStats treeResult = world.broadPhase.trees[i].RayCast(ref input, filter.maskBits, RayCastCallback, worldContext);
@@ -513,95 +524,113 @@ public static class WorldAPI
         }
         return result;
     }
-
-    public static float ShapeCastCallback(ref ShapeCastInput input, int proxyId, ulong userData, object context)
+    public struct WorldShapeCastContext
+    {
+        public World world;
+        public CastResultFcn fcn;
+        public QueryFilter filter;
+        public float fraction;
+        public Position origin;
+        public ShapeCastInput input;
+        public object userContext;
+    }
+    public static float ShapeCastCallback(ref BoxCastInput input, int proxyId, ulong userData, object context)
     {
         int shapeId = (int)userData;
-        WorldRayCastContext worldContext = (WorldRayCastContext)context;
+        WorldShapeCastContext worldContext = (WorldShapeCastContext)context;
         World world = worldContext.world;
         Shape shape = world.shapes[shapeId];
         if (!Shape.ShouldQueryCollide(shape.filter, worldContext.filter)) return input.maxFraction;
+        ShapeCastInput localInput = worldContext.input;
+        localInput.maxFraction = input.maxFraction;
         Body body = world.bodies[shape.bodyId];
-        Transform transform = world.GetBodyTransformQuick(body);
-        CastOutput output = shape.ShapeCast(ref input, transform);
+        WorldTransform transform = world.GetBodyTransformQuick(body);
+        Transform localTransform = transform.ToRelativeTransform(worldContext.origin);
+        CastOutput output = shape.ShapeCast(ref localInput, localTransform);
         if (output.hit)
         {
             ShapeID id = new() { index1 = shapeId + 1, world0 = world, generation = shape.generation };
-            float fraction = worldContext.fcn(id, output.point, output.normal, output.fraction, worldContext.userContext);
+            float fraction = worldContext.fcn(id, worldContext.origin + output.point, output.normal, output.fraction, worldContext.userContext);
             if (0 <= fraction && fraction <= 1) worldContext.fraction = fraction;
             return fraction;
         }
         return input.maxFraction;
     }
     ///<summary>Cast a shape through the world. Similar to a cast ray except that a shape is cast instead of a point.
+    ///The proxy points are relative to the origin. Callback points are world positions.
     ///	@see CastRay</summary>
-    public static TreeStats CastShape(WorldID worldId, ref ShapeProxy proxy, Vector2 translation, QueryFilter filter,
-                                          ref CastResultFcn fcn, object context)
+    public static TreeStats CastShape(WorldID worldId, Position origin, ref ShapeProxy proxy, Vector2 translation,
+                                      QueryFilter filter, ref CastResultFcn fcn, object context)
     {
         TreeStats treeStats = new();
         World world = worldId.index1; Debug.Assert(!world.locked); if (world.locked) return treeStats;
         Debug.Assert(translation.IsValid());
-        ShapeCastInput input = new() { proxy = proxy, translation = translation, maxFraction = 1 };
-        WorldRayCastContext worldContext = new() { world = world, fcn = fcn, filter = filter, fraction = 1, userContext = context };
+        WorldShapeCastContext worldContext = new()
+        {
+            world = world, fcn = fcn, filter = filter, fraction = 1, origin = origin, userContext = context,
+            input = new() { proxy = proxy, translation = translation, maxFraction = 1 }
+        };
+        AABB localBox = AABB.MakeAABB(proxy.points, proxy.radius), box = localBox.Offset(origin);
+        BoxCastInput treeInput = new() { box = box, translation = translation, maxFraction = 1 };
         for (int i = 0; i < 3; i++)
         {
-            TreeStats treeResult = world.broadPhase.trees[i].ShapeCast(ref input, filter.maskBits, ShapeCastCallback, worldContext);
+            TreeStats treeResult = world.broadPhase.trees[i].BoxCast(ref treeInput, filter.maskBits, ShapeCastCallback, worldContext);
             treeStats.nodeVisits += treeResult.nodeVisits;
             treeStats.leafVisits += treeResult.leafVisits;
             if (worldContext.fraction == 0) return treeStats;
-            input.maxFraction = worldContext.fraction;
+            treeInput.maxFraction = worldContext.fraction;
         }
         return treeStats;
-    }
-
-    public class MoverContext
-    {
-        public World world;
-        public QueryFilter filter;
-        public ShapeProxy proxy;
-        public Transform transform;
-        public object userContext;
     }
     public class WorldMoverCastContext
     {
         public World world;
         public QueryFilter filter;
         public float fraction;
+        public Position origin;
+        public ShapeCastInput input;
     }
-    public static float MoverCastCallback(ref ShapeCastInput input, int proxyId, ulong userData, object context)
+    public static float MoverCastCallback(ref BoxCastInput input, int proxyId, ulong userData, object context)
     {
         int shapeId = (int)userData;
         WorldMoverCastContext worldContext = (WorldMoverCastContext)context;
         World world = worldContext.world;
         Shape shape = world.shapes[shapeId];
         if (!Shape.ShouldQueryCollide(shape.filter, worldContext.filter)) return worldContext.fraction;
+        ShapeCastInput localInput = worldContext.input;
+        localInput.maxFraction = input.maxFraction;
         Body body = world.bodies[shape.bodyId];
-        Transform transform = world.GetBodyTransformQuick(body);
-        CastOutput output = shape.ShapeCast(ref input, transform);
+        Transform transform = world.GetBodyTransformQuick(body).ToRelativeTransform(worldContext.origin);
+        CastOutput output = shape.ShapeCast(ref localInput, transform);
         if (output.fraction == 0) return worldContext.fraction;
         worldContext.fraction = output.fraction;
         return output.fraction;
     }
     ///<summary>Cast a capsule mover through the world. This is a special shape cast that handles sliding along other shapes while reducing
-    /// clipping.</summary>
-    public static float CastMover(WorldID worldId, ref Capsule mover, Vector2 translation, QueryFilter filter)
+    /// clipping. The mover capsule is relative to the origin. Near the origin pass b2Pos_zero and a world capsule.</summary>
+    public static float CastMover(WorldID worldId, Position origin, ref Capsule mover, Vector2 translation, QueryFilter filter)
     {
         Debug.Assert(translation.IsValid());
         Debug.Assert(mover.radius > 2 * Box2D.LinearSlop);
         World world = worldId.index1; Debug.Assert(!world.locked); if (world.locked) return 1;
-        ShapeCastInput input = new()
+        WorldMoverCastContext worldContext = new()
         {
-            proxy = new() { points = [mover.center1, mover.center2], radius = mover.radius },
-            translation = translation,
-            maxFraction = 1,
-            canEncroach = true
+            world = world, filter = filter, fraction = 1, origin = origin,
+            input = new()
+            {
+                proxy = new() { points = [mover.center1, mover.center2], radius = mover.radius },
+                translation = translation,
+                maxFraction = 1,
+                canEncroach = true
+            }
         };
-        WorldMoverCastContext worldContext = new() { world = world, filter = filter, fraction = 1 };
+        AABB box = AABB.MakeAABB([mover.center1, mover.center2], mover.radius).Offset(origin);
+        BoxCastInput treeInput = new() { box = box, translation = translation, maxFraction = 1 };
         for (int i = 0; i < 3; i++)
         {
-            world.broadPhase.trees[i].ShapeCast(ref input, filter.maskBits, MoverCastCallback, worldContext);
+            world.broadPhase.trees[i].BoxCast(ref treeInput, filter.maskBits, MoverCastCallback, worldContext);
             if (worldContext.fraction == 0) return 0;
-            input.maxFraction = worldContext.fraction;
+            treeInput.maxFraction = worldContext.fraction;
         }
         return worldContext.fraction;
     }
@@ -612,6 +641,7 @@ public static class WorldAPI
         public PlaneResultFcn fcn;
         public QueryFilter filter;
         public Capsule mover;
+        public Position origin;
         public object userContext;
     }
     public static bool TreeCollideCallback(int proxyId, ulong userData, object context)
@@ -622,7 +652,7 @@ public static class WorldAPI
         Shape shape = world.shapes[shapeId];
         if (!Shape.ShouldQueryCollide(shape.filter, worldContext.filter)) return true;
         Body body = world.bodies[shape.bodyId];
-        Transform transform = world.GetBodyTransformQuick(body);
+        Transform transform = world.GetBodyTransformQuick(body).ToRelativeTransform(worldContext.origin);
         PlaneResult result = shape.CollideMover(ref worldContext.mover, transform);
         if (result.hit && result.plane.normal.IsNormalized())
         {
@@ -632,14 +662,15 @@ public static class WorldAPI
         return true;
     }
     ///<summary>Collide a capsule mover with the world, gathering collision planes that can be fed to SolvePlanes. Useful for
-    /// kinematic character movement.</summary>
-    public static void CollideMover(WorldID worldId, ref Capsule mover, QueryFilter filter, PlaneResultFcn fcn,
+    /// kinematic character movement. The mover capsule and the resulting planes are relative to the origin.</summary>
+    public static void CollideMover(WorldID worldId, Position origin, ref Capsule mover, QueryFilter filter, PlaneResultFcn fcn,
                                   object context)
     {
         World world = worldId.index1; Debug.Assert(!world.locked); if (world.locked) return;
         Vector2 r = new(mover.radius, mover.radius);
-        AABB aabb = new(Vector2.Min(mover.center1, mover.center2) - r, Vector2.Max(mover.center1, mover.center2) + r);
-        WorldMoverContext worldContext = new() { world = world, fcn = fcn, filter = filter, mover = mover, userContext = context };
+        AABB relBox = new(Vector2.Min(mover.center1, mover.center2) - r, Vector2.Max(mover.center1, mover.center2) + r);
+        AABB aabb = relBox.Offset(origin);
+        WorldMoverContext worldContext = new() { world = world, fcn = fcn, filter = filter, mover = mover, origin = origin, userContext = context };
         for (int i = 0; i < 3; i++)
             world.broadPhase.trees[i].Query(aabb, filter.maskBits, TreeCollideCallback, worldContext);
     }
@@ -722,7 +753,7 @@ public static class WorldAPI
     public class ExplosionContext
     {
         public World world;
-        public Vector2 position;
+        public Position position;
         public float radius, falloff, impulsePerLength;
     }
     public static unsafe bool ExplosionCallback(int proxyId, ulong userData, object context)
@@ -733,13 +764,13 @@ public static class WorldAPI
         Shape shape = world.shapes[shapeId];
         Body body = world.bodies[shape.bodyId];
         Debug.Assert(body.type == BodyType.Dynamic);
-        Transform transform = world.GetBodyTransformQuick(body);
+        WorldTransform xf = world.GetBodyTransformQuick(body);
+        Vector2 localPosition = xf.InvTransformWorldPoint(explosionContext.position);
         DistanceInput input = new()
         {
             proxyA = shape.MakeDistanceProxy(),
-            proxyB = Distance.MakeProxy([explosionContext.position], 1),
-            transformA = transform,
-            transformB = Transform.Identity,
+            proxyB = Distance.MakeProxy([localPosition], 1),
+            transform = Transform.Identity,
             useRadii = true
         };
         SimplexCache cache = new();
@@ -751,24 +782,24 @@ public static class WorldAPI
         Vector2 closestPoint = output.pointA;
         if (output.distance == 0)
         {
-            Vector2 localCentroid = shape.GetCentroid();
-            closestPoint = transform.TransformPoint(localCentroid);
+            closestPoint = shape.GetCentroid();
         }
-        Vector2 direction = closestPoint - explosionContext.position;
+        Vector2 direction = closestPoint - localPosition;
         direction = direction.LengthSquared() > 100 * Box2D.FLT_EPSILON * Box2D.FLT_EPSILON ? direction.Normalize() : new(1, 0);
-        Vector2 localLine = transform.q.InvRotateVector(direction.LeftPerp());
+        Vector2 localLine = direction.LeftPerp();
         float perimeter = shape.GetProjectedPerimeter(localLine);
         float scale = 1;
         if (output.distance > radius && falloff > 0)
             scale = Math.Clamp((radius + falloff - output.distance) / falloff, 0, 1);
         float magnitude = explosionContext.impulsePerLength * perimeter * scale;
-        Vector2 impulse = magnitude * direction;
+        Vector2 impulse = magnitude * (xf.q * direction);
         int localIndex = body.localIndex;
         SolverSet set = world.solverSets[(int)SetType.Awake];
         BodyState* state = set.bodyStates.Data + localIndex;
         BodySim bodySim = set.bodySims[localIndex];
         state->linearVelocity = Vector2.MulAdd(state->linearVelocity, bodySim.invMass, impulse);
-        state->angularVelocity += bodySim.invInertia * Vector2.Cross(closestPoint - bodySim.center, impulse);
+        Vector2 r = xf.q * (closestPoint - bodySim.localCenter);
+        state->angularVelocity += bodySim.invInertia * Vector2.Cross(r, impulse);
         return true;
     }
     /// <summary>Apply a radial explosion</summary>
@@ -783,10 +814,9 @@ public static class WorldAPI
         World world = worldId.index1; Debug.Assert(!world.locked); if (world.locked) return;
         ExplosionContext explosionContext = new() { world = world, position = explosionDef.position,
             radius = explosionDef.radius, falloff = explosionDef.falloff, impulsePerLength = explosionDef.impulsePerLength };
-        AABB aabb = new(new(explosionDef.position.x - (explosionDef.radius + explosionDef.falloff),
-            explosionDef.position.y - (explosionDef.radius + explosionDef.falloff)),
-            new(explosionDef.position.x + (explosionDef.radius + explosionDef.falloff),
-            explosionDef.position.y + (explosionDef.radius + explosionDef.falloff)));
+        float extent = explosionDef.radius + explosionDef.falloff;
+        AABB localBox = new(new(-extent, -extent), new(extent, extent)),
+            aabb = localBox.Offset(explosionDef.position);
         world.broadPhase.trees[(int)BodyType.Dynamic].Query(aabb, explosionDef.maskBits, ExplosionCallback, explosionContext);
     }
 

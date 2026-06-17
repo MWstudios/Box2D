@@ -7,6 +7,14 @@ using System.Runtime.InteropServices;
 namespace Box2D;
 
 [Flags] public enum TreeNodeFlags : ushort { Allocated = 1, Enlarged = 2, Leaf = 4 }
+/// <summary>Tree node child indices. Internal usage.</summary>
+public struct TreeNodeChildren
+{
+    /// <summary>child node index 1</summary>
+    public int child1;
+    /// <summary>child node index 2</summary>
+    public int child2;
+}
 /// <summary>A node in the dynamic tree.</summary>
 [StructLayout(LayoutKind.Explicit)] public struct TreeNode
 {
@@ -15,9 +23,7 @@ namespace Box2D;
     /// <summary>Category bits for collision filtering</summary>
     [FieldOffset(16)] public ulong categoryBits = Box2D.DEFAULT_CATEGORY_BITS;
     /// <summary>Children (internal node)</summary>
-    [FieldOffset(24)] public int child1 = -1;
-    /// <summary>Children (internal node)</summary>
-    [FieldOffset(28)] public int child2 = -1;
+    [FieldOffset(24)] public TreeNodeChildren children;
     /// <summary>User data (leaf node)</summary>
     [FieldOffset(24)] public ulong userData = ulong.MaxValue;
     /// <summary>The node parent index (allocated node)</summary>
@@ -109,7 +115,7 @@ public partial class DynamicTree
         int index = rootIndex;
         while (nodes[index].height > 0)
         {
-            int child1 = nodes[index].child1, child2 = nodes[index].child2;
+            int child1 = nodes[index].children.child1, child2 = nodes[index].children.child2;
             float cost = directCost + inheritedCost;
             if (cost < bestCost)
             {
@@ -189,14 +195,14 @@ public partial class DynamicTree
         Debug.Assert(iA != -1);
         ref TreeNode A = ref nodes[iA];
         if (A.height < 2) return;
-        int iB = A.child1, iC = A.child2;
+        int iB = A.children.child1, iC = A.children.child2;
         Debug.Assert(0 <= iB && iB < nodes.Length);
         Debug.Assert(0 <= iC && iC < nodes.Length);
         ref TreeNode B = ref nodes[iB], C = ref nodes[iC];
         if (B.height == 0)
         {
             Debug.Assert(C.height > 0);
-            int iF = C.child1, iG = C.child2;
+            int iF = C.children.child1, iG = C.children.child2;
             ref TreeNode F = ref nodes[iF], G = ref nodes[iG];
             Debug.Assert(0 <= iF && iF < nodes.Length);
             Debug.Assert(0 <= iG && iG < nodes.Length);
@@ -208,7 +214,7 @@ public partial class DynamicTree
             if (costBase < costBF && costBase < costBG) return;
             if (costBF < costBG)
             {
-                A.child1 = iF; C.child1 = iB;
+                A.children.child1 = iF; C.children.child1 = iB;
                 B.parent = iC; F.parent = iA;
                 C.aabb = aabbBG;
                 C.height = (ushort)(1 + Math.Max(B.height, G.height));
@@ -220,7 +226,7 @@ public partial class DynamicTree
             }
             else
             {
-                A.child1 = iG; C.child2 = iB;
+                A.children.child1 = iG; C.children.child2 = iB;
                 B.parent = iC; G.parent = iA;
                 C.aabb = aabbBF;
                 C.height = (ushort)(1 + Math.Max(B.height, F.height));
@@ -234,7 +240,7 @@ public partial class DynamicTree
         else if (C.height == 0)
         {
             Debug.Assert(B.height > 0);
-            int iD = B.child1, iE = B.child2;
+            int iD = B.children.child1, iE = B.children.child2;
             ref TreeNode D = ref nodes[iD], E = ref nodes[iE];
             Debug.Assert(0 <= iD && iD < nodes.Length);
             Debug.Assert(0 <= iE && iE < nodes.Length);
@@ -246,7 +252,7 @@ public partial class DynamicTree
             if (costBase < costCD && costBase < costCE) return;
             if (costCD < costCE)
             {
-                A.child2 = iD; B.child1 = iC;
+                A.children.child2 = iD; B.children.child1 = iC;
                 C.parent = iB; D.parent = iA;
                 B.aabb = aabbCE;
                 B.height = (ushort)(1 + Math.Max(C.height, E.height));
@@ -258,7 +264,7 @@ public partial class DynamicTree
             }
             else
             {
-                A.child2 = iE; B.child2 = iC;
+                A.children.child2 = iE; B.children.child2 = iC;
                 C.parent = iB; E.parent = iA;
                 B.aabb = aabbCD;
                 B.height = (ushort)(1 + Math.Max(C.height, D.height));
@@ -271,7 +277,7 @@ public partial class DynamicTree
         }
         else
         {
-            int iD = B.child1, iE = B.child2, iF = C.child1, iG = C.child2;
+            int iD = B.children.child1, iE = B.children.child2, iF = C.children.child1, iG = C.children.child2;
             Debug.Assert(0 <= iD && iD < nodes.Length);
             Debug.Assert(0 <= iE && iE < nodes.Length);
             Debug.Assert(0 <= iF && iF < nodes.Length);
@@ -314,7 +320,7 @@ public partial class DynamicTree
                 case RotateType.None:
                     break;
                 case RotateType.BF:
-                    A.child1 = iF; C.child1 = iB;
+                    A.children.child1 = iF; C.children.child1 = iB;
                     B.parent = iC; F.parent = iA;
                     C.aabb = aabbBG;
                     C.height = (ushort)(1 + Math.Max(B.height, G.height));
@@ -325,7 +331,7 @@ public partial class DynamicTree
                     A.flags |= (ushort)((C.flags | F.flags) & (ushort)TreeNodeFlags.Enlarged);
                     break;
                 case RotateType.BG:
-                    A.child1 = iG; C.child2 = iB;
+                    A.children.child1 = iG; C.children.child2 = iB;
                     B.parent = iC; G.parent = iA;
                     C.aabb = aabbBF;
                     C.height = (ushort)(1 + Math.Max(B.height, F.height));
@@ -336,7 +342,7 @@ public partial class DynamicTree
                     A.flags |= (ushort)((C.flags | G.flags) & (ushort)TreeNodeFlags.Enlarged);
                     break;
                 case RotateType.CD:
-                    A.child2 = iD; B.child1 = iC;
+                    A.children.child2 = iD; B.children.child1 = iC;
                     C.parent = iB; D.parent = iA;
                     B.aabb = aabbCE;
                     B.height = (ushort)(1 + Math.Max(C.height, E.height));
@@ -347,7 +353,7 @@ public partial class DynamicTree
                     A.flags |= (ushort)((B.flags | D.flags) & (ushort)TreeNodeFlags.Enlarged);
                     break;
                 case RotateType.CE:
-                    A.child2 = iE; B.child2 = iC;
+                    A.children.child2 = iE; B.children.child2 = iC;
                     C.parent = iB; E.parent = iA;
                     B.aabb = aabbCD;
                     B.height = (ushort)(1 + Math.Max(C.height, D.height));
@@ -379,20 +385,20 @@ public partial class DynamicTree
         nodes[newParent].aabb = AABB.Union(leafAABB, nodes[sibling].aabb);
         nodes[newParent].categoryBits = nodes[leaf].categoryBits | nodes[sibling].categoryBits;
         nodes[newParent].height = (ushort)(nodes[sibling].height + 1);
-        nodes[newParent].child1 = sibling;
-        nodes[newParent].child2 = leaf;
+        nodes[newParent].children.child1 = sibling;
+        nodes[newParent].children.child2 = leaf;
         nodes[sibling].parent = newParent;
         nodes[leaf].parent = newParent;
         if (oldParent != -1)
         {
-            if (nodes[oldParent].child1 == sibling) nodes[oldParent].child1 = newParent;
-            else nodes[oldParent].child2 = newParent;
+            if (nodes[oldParent].children.child1 == sibling) nodes[oldParent].children.child1 = newParent;
+            else nodes[oldParent].children.child2 = newParent;
         }
         else root = newParent;
         int index = nodes[leaf].parent;
         while (index != -1)
         {
-            int child1 = nodes[index].child1, child2 = nodes[index].child2;
+            int child1 = nodes[index].children.child1, child2 = nodes[index].children.child2;
             Debug.Assert(child1 != -1);
             Debug.Assert(child2 != -1);
             nodes[index].aabb = AABB.Union(nodes[child1].aabb, nodes[child2].aabb);
@@ -408,17 +414,17 @@ public partial class DynamicTree
         if (leaf == root) { root = -1; return; }
         int parent = nodes[leaf].parent;
         int grandParent = nodes[parent].parent;
-        int sibling = nodes[parent].child1 == leaf ? nodes[parent].child2 : nodes[parent].child1;
+        int sibling = nodes[parent].children.child1 == leaf ? nodes[parent].children.child2 : nodes[parent].children.child1;
         if (grandParent != -1)
         {
-            if (nodes[grandParent].child1 == parent) nodes[grandParent].child1 = sibling;
-            else nodes[grandParent].child2 = sibling;
+            if (nodes[grandParent].children.child1 == parent) nodes[grandParent].children.child1 = sibling;
+            else nodes[grandParent].children.child2 = sibling;
             nodes[sibling].parent = grandParent;
             FreeNode(parent);
             int index = grandParent;
             while (index != -1)
             {
-                ref TreeNode node = ref nodes[index], child1 = ref nodes[node.child1], child2 = ref nodes[node.child2];
+                ref TreeNode node = ref nodes[index], child1 = ref nodes[node.children.child1], child2 = ref nodes[node.children.child2];
                 node.aabb = AABB.Union(child1.aabb, child2.aabb);
                 node.categoryBits = child1.categoryBits | child2.categoryBits;
                 node.height = (ushort)(1 + Math.Max(child1.height, child2.height));
@@ -499,16 +505,16 @@ public partial class DynamicTree
     /// <summary>Modify the category bits on a proxy. This is an expensive operation.</summary>
     public void SetCategoryBits(int proxyId, ulong categoryBits)
     {
-        Debug.Assert(nodes[proxyId].child1 == -1);
-        Debug.Assert(nodes[proxyId].child2 == -1);
+        Debug.Assert(nodes[proxyId].children.child1 == -1);
+        Debug.Assert(nodes[proxyId].children.child2 == -1);
         Debug.Assert(((TreeNodeFlags)nodes[proxyId].flags).HasFlag(TreeNodeFlags.Leaf));
         nodes[proxyId].categoryBits = categoryBits;
         int nodeIndex = nodes[proxyId].parent;
         while (nodeIndex != -1)
         {
             ref TreeNode node = ref nodes[nodeIndex];
-            int child1 = node.child1; Debug.Assert(child1 != -1);
-            int child2 = node.child2; Debug.Assert(child2 != -1);
+            int child1 = node.children.child1; Debug.Assert(child1 != -1);
+            int child2 = node.children.child2; Debug.Assert(child2 != -1);
             node.categoryBits = nodes[child1].categoryBits | nodes[child2].categoryBits;
             nodeIndex = node.parent;
         }
@@ -542,7 +548,7 @@ public partial class DynamicTree
                 }
                 else
                 {
-                    stack.Push(node.child1); stack.Push(node.child2);
+                    stack.Push(node.children.child1); stack.Push(node.children.child2);
                 }
             }
         }
@@ -572,7 +578,7 @@ public partial class DynamicTree
                 }
                 else
                 {
-                    stack.Push(node.child1); stack.Push(node.child2);
+                    stack.Push(node.children.child1); stack.Push(node.children.child2);
                 }
             }
         }
@@ -630,43 +636,32 @@ public partial class DynamicTree
             }
             else
             {
-                Vector2 c1 = nodes[node.child1].aabb.Center();
-                Vector2 c2 = nodes[node.child2].aabb.Center();
+                Vector2 c1 = nodes[node.children.child1].aabb.Center();
+                Vector2 c2 = nodes[node.children.child2].aabb.Center();
                 if (Vector2.DistanceSquared(c1, p1) < Vector2.DistanceSquared(c2, p1))
                 {
-                    stack.Push(node.child2); stack.Push(node.child1);
+                    stack.Push(node.children.child2); stack.Push(node.children.child1);
                 }
                 else
                 {
-                    stack.Push(node.child1); stack.Push(node.child2);
+                    stack.Push(node.children.child1); stack.Push(node.children.child2);
                 }
             }
         }
         return result;
     }
-    /// <summary>Ray cast against the proxies in the tree. This relies on the callback
-    /// to perform a exact ray cast in the case were the proxy contains a shape.
-    /// The callback also performs the any collision filtering. This has performance
-    /// roughly equal to k * log(n), where k is the number of collisions and n is the
-    /// number of proxies in the tree.</summary>
-    /// <param name="input">the ray cast input data. The ray extends from p1 to p1 + maxFraction * (p2 - p1).</param>
+    /// <summary>Cast a swept AABB through the tree. This has performance roughly equal to k * log(n),
+    /// where k is the number of collisions and n is the number of proxies in the tree.</summary>
+    /// <param name="input">the AABB cast input. The box sweeps from its origin to origin + maxFraction * translation</param>
     /// <param name="maskBits">filter bits: `bool accept = (maskBits &amp; node->categoryBits) != 0;</param>
-    /// <param name="callback">a callback class that is called for each proxy that is hit by the shape</param>
+    /// <param name="callback">a callback that is called for each proxy the swept box may hit</param>
     /// <param name="context">user context that is passed to the callback</param>
     /// <returns>performance data</returns>
-    public TreeStats ShapeCast(ref ShapeCastInput input, ulong maskBits, TreeShapeCastCallbackFcn callback, object context)
+    public TreeStats BoxCast(ref BoxCastInput input, ulong maskBits, TreeBoxCastCallbackFcn callback, object context)
     {
         TreeStats stats = new();
-        if (nodeCount == 0 || input.proxy.points.Length == 0) return stats;
-        AABB originAABB = new(input.proxy.points[0], input.proxy.points[0]);
-        for (int i = 1; i < input.proxy.points.Length; i++)
-        {
-            originAABB.lowerBound = Vector2.Min(originAABB.lowerBound, input.proxy.points[1]);
-            originAABB.upperBound = Vector2.Max(originAABB.upperBound, input.proxy.points[1]);
-        }
-        Vector2 radius = new(input.proxy.radius, input.proxy.radius);
-        originAABB.lowerBound -= radius;
-        originAABB.upperBound += radius;
+        if (nodeCount == 0) return stats;
+        AABB originAABB = input.box;
         Vector2 p1 = originAABB.Center(), extension = originAABB.Extents();
         Vector2 r = input.translation;
         Vector2 v = Vector2.CrossSV(1, r);
@@ -675,7 +670,7 @@ public partial class DynamicTree
         Vector2 t = maxFraction * input.translation;
         AABB totalAABB = new(Vector2.Min(originAABB.lowerBound, originAABB.lowerBound + t),
             Vector2.Max(originAABB.upperBound, originAABB.upperBound + t));
-        ShapeCastInput subInput = input;
+        BoxCastInput subInput = input;
         Stack<int> stack = new(1024);
         stack.Push(root);
         while (stack.Count > 0)
@@ -705,15 +700,15 @@ public partial class DynamicTree
             }
             else
             {
-                Vector2 c1 = nodes[node.child1].aabb.Center();
-                Vector2 c2 = nodes[node.child2].aabb.Center();
+                Vector2 c1 = nodes[node.children.child1].aabb.Center();
+                Vector2 c2 = nodes[node.children.child2].aabb.Center();
                 if (Vector2.DistanceSquared(c1, p1) < Vector2.DistanceSquared(c2, p1))
                 {
-                    stack.Push(node.child2); stack.Push(node.child1);
+                    stack.Push(node.children.child2); stack.Push(node.children.child1);
                 }
                 else
                 {
-                    stack.Push(node.child1); stack.Push(node.child2);
+                    stack.Push(node.children.child1); stack.Push(node.children.child2);
                 }
             }
         }
@@ -743,7 +738,7 @@ public partial class DynamicTree
         Debug.Assert(0 <= nodeId && nodeId < nodes.Length);
         ref TreeNode node = ref nodes[nodeId];
         if (node.IsLeaf()) return 0;
-        int height1 = ComputeHeight(node.child1), height2 = ComputeHeight(node.child2);
+        int height1 = ComputeHeight(node.children.child1), height2 = ComputeHeight(node.children.child2);
         return 1 + Math.Max(height1, height2);
     }
     void ValidateStructure(int index)
@@ -757,7 +752,7 @@ public partial class DynamicTree
             Debug.Assert(node.height == 0);
             return;
         }
-        int child1 = node.child1, child2 = node.child2;
+        int child1 = node.children.child1, child2 = node.children.child2;
         Debug.Assert(0 <= child1 && child1 < nodes.Length);
         Debug.Assert(0 <= child2 && child2 < nodes.Length);
         Debug.Assert(nodes[child1].parent == index);
@@ -776,7 +771,7 @@ public partial class DynamicTree
             Debug.Assert(node.height == 0);
             return;
         }
-        int child1 = node.child1, child2 = node.child2;
+        int child1 = node.children.child1, child2 = node.children.child2;
         Debug.Assert(0 <= child1 && child1 < nodes.Length);
         Debug.Assert(0 <= child2 && child2 < nodes.Length);
         int height1 = nodes[child1].height, height2 = nodes[child2].height;
@@ -871,21 +866,21 @@ public partial class DynamicTree
                 ref TreeNode parentNode = ref nodes[parentItem.nodeIndex];
                 if (parentItem.childCount == 0)
                 {
-                    Debug.Assert(parentNode.child1 == -1);
-                    parentNode.child1 = item.nodeIndex;
+                    Debug.Assert(parentNode.children.child1 == -1);
+                    parentNode.children.child1 = item.nodeIndex;
                 }
                 else
                 {
                     Debug.Assert(parentItem.childCount == 1);
-                    Debug.Assert(parentNode.child2 == -1);
-                    parentNode.child2 = item.nodeIndex;
+                    Debug.Assert(parentNode.children.child2 == -1);
+                    parentNode.children.child2 = item.nodeIndex;
                 }
                 ref TreeNode node = ref nodes[item.nodeIndex];
                 Debug.Assert(node.parent == -1);
                 node.parent = parentItem.nodeIndex;
-                Debug.Assert(node.child1 != -1);
-                Debug.Assert(node.child2 != -1);
-                ref TreeNode child1 = ref nodes[node.child1], child2 = ref nodes[node.child2];
+                Debug.Assert(node.children.child1 != -1);
+                Debug.Assert(node.children.child2 != -1);
+                ref TreeNode child1 = ref nodes[node.children.child1], child2 = ref nodes[node.children.child2];
                 node.aabb = AABB.Union(child1.aabb, child2.aabb);
                 node.height = (ushort)(1 + Math.Max(child1.height, child2.height));
                 node.categoryBits = child1.categoryBits | child2.categoryBits;
@@ -911,14 +906,14 @@ public partial class DynamicTree
                     ref TreeNode node = ref nodes[item.nodeIndex];
                     if (item.childCount == 0)
                     {
-                        Debug.Assert(node.child1 == -1);
-                        node.child1 = childIndex;
+                        Debug.Assert(node.children.child1 == -1);
+                        node.children.child1 = childIndex;
                     }
                     else
                     {
                         Debug.Assert(item.childCount == 1);
-                        Debug.Assert(node.child2 == -1);
-                        node.child2 = childIndex;
+                        Debug.Assert(node.children.child2 == -1);
+                        node.children.child2 = childIndex;
                     }
                     ref TreeNode childNode = ref nodes[childIndex];
                     Debug.Assert(childNode.parent == -1);
@@ -940,10 +935,10 @@ public partial class DynamicTree
         }
         ref TreeNode rootNode = ref nodes[stack.First().nodeIndex];
         Debug.Assert(rootNode.parent == -1);
-        Debug.Assert(rootNode.child1 != -1);
-        Debug.Assert(rootNode.child2 != -1);
+        Debug.Assert(rootNode.children.child1 != -1);
+        Debug.Assert(rootNode.children.child2 != -1);
         {
-            ref TreeNode child1 = ref nodes[rootNode.child1], child2 = ref nodes[rootNode.child2];
+            ref TreeNode child1 = ref nodes[rootNode.children.child1], child2 = ref nodes[rootNode.children.child2];
             rootNode.aabb = AABB.Union(child1.aabb, child2.aabb);
             rootNode.height = (ushort)(1 + Math.Max(child1.height, child2.height));
             rootNode.categoryBits = child1.categoryBits | child2.categoryBits;
@@ -976,8 +971,8 @@ public partial class DynamicTree
             else
             {
                 int doomedNodeIndex = nodeIndex;
-                nodeIndex = node.child1;
-                stack.Push(node.child2);
+                nodeIndex = node.children.child1;
+                stack.Push(node.children.child2);
                 node = ref nodes[nodeIndex];
                 FreeNode(doomedNodeIndex);
                 continue;

@@ -44,7 +44,7 @@ public static partial class Box2D
     /// <summary>Prevents directional bias when solving elastic triads</summary>
     public static bool ElasticPreserveVelocity = false;
 
-    public static unsafe void ApplyLinearImpulse(this Body body, World world, Vector2 impulse, Vector2 point)
+    public static unsafe void ApplyLinearImpulse(this Body body, World world, Vector2 impulse, Position point)
     {
         if (body.type != BodyType.Dynamic || body.setIndex == (int)SetType.Disabled) return;
         if (body.setIndex >= (int)SetType.FirstSleeping) world.WakeBody(body);
@@ -92,7 +92,7 @@ public partial class World
     public Action<ParticleSystem, int> ParticleRemoved = (_, _) => { };
     public ParticleContactFilter ParticleContactFilter = new();
     public ParticleContactListener ParticleContactListener = new();
-    public unsafe Vector2 GetLinearVelocityFromWorldPoint(Body body, Vector2 worldPoint) =>
+    public unsafe Vector2 GetLinearVelocityFromWorldPoint(Body body, Position worldPoint) =>
         body.type == BodyType.Static ? Vector2.Zero :
         GetBodyState(body)->linearVelocity + Vector2.CrossSV(GetBodyState(body)->angularVelocity, worldPoint - GetBodySim(body).center);
 }

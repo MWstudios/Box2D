@@ -446,8 +446,8 @@ public partial class DebugDraw
         Body bodyA = world.bodies[joint.edge0.bodyId], bodyB = world.bodies[joint.edge1.bodyId];
         if (bodyA.setIndex == (int)SetType.Disabled || bodyB.setIndex == (int)SetType.Disabled) return;
         JointSim jointSim = world.GetJointSim(joint);
-        Transform transformA = world.GetBodyTransformQuick(bodyA);
-        Transform transformB = world.GetBodyTransformQuick(bodyB);
+        Transform transformA = world.GetBodyTransformQuick(bodyA).ToRelativeTransform(origin);
+        Transform transformB = world.GetBodyTransformQuick(bodyB).ToRelativeTransform(origin);
         Vector2 pA = transformA.TransformPoint(jointSim.localFrameA.p);
         Vector2 pB = transformB.TransformPoint(jointSim.localFrameB.p);
         jointSim.joint.Draw(this, jointSim, transformA, transformB, pA, pB, Math.Max(0.0001f, jointScale * joint.drawScale), HexColor.DarkSeaGreen);

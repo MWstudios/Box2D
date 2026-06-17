@@ -106,7 +106,8 @@ public static class JointAPI
         World world = jointId.world0;
         Joint joint = world.GetJointFullID(jointId);
         JointSim base_ = world.GetJointSim(joint);
-        Transform xfA = world.GetBodyTransform(joint.edge0.bodyId), xfB = world.GetBodyTransform(joint.edge1.bodyId);
+        WorldTransform wxfA = world.GetBodyTransform(joint.edge0.bodyId);
+        Transform xfA = wxfA.ToRelativeTransform(wxfA.p), xfB = world.GetBodyTransform(joint.edge1.bodyId).ToRelativeTransform(wxfA.p);
         Vector2 pA = xfA.TransformPoint(base_.localFrameA.p), pB = xfB.TransformPoint(base_.localFrameB.p);
         Vector2 dp = pB - pA;
         return base_.joint.GetLinearSeparation(xfA, xfB, dp);
@@ -118,8 +119,8 @@ public static class JointAPI
         World world = jointId.world0;
         Joint joint = world.GetJointFullID(jointId);
         JointSim base_ = world.GetJointSim(joint);
-        Transform xfA = world.GetBodyTransform(joint.edge0.bodyId), xfB = world.GetBodyTransform(joint.edge1.bodyId);
-        float relativeAngle = Rotation.RelativeAngle(xfA.q, xfB.q);
+        Rotation qA = world.GetBodyTransform(joint.edge0.bodyId).q, qB = world.GetBodyTransform(joint.edge1.bodyId).q;
+        float relativeAngle = Rotation.RelativeAngle(qA, qB);
         return base_.joint.GetAngularSeparation(relativeAngle);
     }
 
@@ -276,8 +277,9 @@ public static class JointAPI
         World world = jointId.world0;
         Debug.Assert(!world.locked);
         if (world.locked) return 0;
-        Transform transformA = world.GetBodyTransform(base_.bodyIdA);
-        Transform transformB = world.GetBodyTransform(base_.bodyIdB);
+        WorldTransform wxfA = world.GetBodyTransform(base_.bodyIdA);
+        Transform transformA = wxfA.ToRelativeTransform(wxfA.p);
+        Transform transformB = world.GetBodyTransform(base_.bodyIdB).ToRelativeTransform(wxfA.p);
         Vector2 pA = transformA.TransformPoint(base_.localFrameA.p);
         Vector2 pB = transformB.TransformPoint(base_.localFrameB.p);
         return (pB - pA).Length();
@@ -516,8 +518,9 @@ public static class JointAPI
     {
         World world = jointId.world0;
         JointSim jointSim = GetJointSimCheckType(jointId, JointType.Prismatic);
-        Transform transformA = world.GetBodyTransform(jointSim.bodyIdA);
-        Transform transformB = world.GetBodyTransform(jointSim.bodyIdB);
+        WorldTransform wfxA = world.GetBodyTransform(jointSim.bodyIdA);
+        Transform transformA = wfxA.ToRelativeTransform(wfxA.p);
+        Transform transformB = world.GetBodyTransform(jointSim.bodyIdB).ToRelativeTransform(wfxA.p);
         Vector2 localAxisA = jointSim.localFrameA.q * new Vector2(1, 0);
         Vector2 axisA = transformA.q * localAxisA;
         Vector2 pA = transformA.TransformPoint(jointSim.localFrameA.p);
@@ -535,13 +538,12 @@ public static class JointAPI
         Body bodyA = world.bodies[base_.bodyIdA], bodyB = world.bodies[base_.bodyIdB];
         BodySim bodySimA = world.GetBodySim(bodyA), bodySimB = world.GetBodySim(bodyB);
         BodyState* bodyStateA = world.GetBodyState(bodyA), bodyStateB = world.GetBodyState(bodyB);
-        Transform transformA = bodySimA.transform, transformB = bodySimB.transform;
+        Rotation qA = bodySimA.transform.q, qB = bodySimB.transform.q;
         Vector2 localAxisA = base_.localFrameA.q * new Vector2(1, 0);
-        Vector2 axisA = transformA.q * localAxisA;
-        Vector2 cA = bodySimA.center, cB = bodySimB.center;
-        Vector2 rA = transformA.q * (base_.localFrameA.p - bodySimA.localCenter);
-        Vector2 rB = transformB.q * (base_.localFrameB.p - bodySimB.localCenter);
-        Vector2 d = cB - cA + (rB - rA);
+        Vector2 axisA = qA * localAxisA;
+        Vector2 rA = qA * (base_.localFrameA.p - bodySimA.localCenter);
+        Vector2 rB = qB * (base_.localFrameB.p - bodySimB.localCenter);
+        Vector2 d = bodySimB.center - bodySimA.center + (rB - rA);
         Vector2 vA = bodyStateA != null ? bodyStateA->linearVelocity : Vector2.Zero;
         Vector2 vB = bodyStateB != null ? bodyStateB->linearVelocity : Vector2.Zero;
         float wA = bodyStateA != null ? bodyStateA->angularVelocity : 0;
@@ -595,10 +597,8 @@ public static class JointAPI
     {
         World world = jointId.world0;
         JointSim jointSim = GetJointSimCheckType(jointId, JointType.Revolute);
-        Transform transformA = world.GetBodyTransform(jointSim.bodyIdA);
-        Transform transformB = world.GetBodyTransform(jointSim.bodyIdB);
-        Rotation qA = transformA.q * jointSim.localFrameA.q;
-        Rotation qB = transformB.q * jointSim.localFrameB.q;
+        Rotation qA = world.GetBodyTransform(jointSim.bodyIdA).q * jointSim.localFrameA.q;
+        Rotation qB = world.GetBodyTransform(jointSim.bodyIdB).q * jointSim.localFrameB.q;
         return Rotation.RelativeAngle(qA, qB);
     }
 

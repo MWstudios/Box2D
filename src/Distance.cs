@@ -225,10 +225,9 @@ public static class Distance
         ShapeProxy proxyA = input.proxyA;
         ShapeProxy localProxyB = new();
         {
-            Transform transform = Transform.InvMulTransforms(input.transformA, input.transformB);
             localProxyB.points = new Vector2[input.proxyB.points.Length];
             for (int i = 0; i < localProxyB.points.Length; i++)
-                localProxyB.points[i] = transform.TransformPoint(input.proxyB.points[i]);
+                localProxyB.points[i] = input.transform.TransformPoint(input.proxyB.points[i]);
         }
         Simplex simplex = cache.MakeSimplexFromCache(proxyA, localProxyB);
         int simplexIndex = 0;
@@ -257,16 +256,16 @@ public static class Distance
             if (simplex.count == 3)
             {
                 ComputeWitnessPoints(ref simplex, out Vector2 localPointA, out Vector2 localPointB);
-                output.pointA = input.transformA.TransformPoint(localPointA);
-                output.pointB = input.transformB.TransformPoint(localPointB);
+                output.pointA = localPointA;
+                output.pointB = localPointB;
                 return output;
             }
 
             if (Vector2.Dot(d, d) < Box2D.FLT_EPSILON * Box2D.FLT_EPSILON)
             {
                 ComputeWitnessPoints(ref simplex, out Vector2 localPointA, out Vector2 localPointB);
-                output.pointA = input.transformA.TransformPoint(localPointA);
-                output.pointB = input.transformB.TransformPoint(localPointB);
+                output.pointA = localPointA;
+                output.pointB = localPointB;
                 return output;
             }
             nonUnitNormal = d;
@@ -297,13 +296,12 @@ public static class Distance
         }
         Vector2 normal = nonUnitNormal.Normalize();
         Debug.Assert(normal.IsNormalized());
-        normal = input.transformA.q * normal;
         {
             ComputeWitnessPoints(ref simplex, out Vector2 localPointA, out Vector2 localPointB);
             output.normal = normal;
             output.distance = Vector2.Distance(localPointA, localPointB);
-            output.pointA = input.transformA.TransformPoint(localPointA);
-            output.pointB = input.transformB.TransformPoint(localPointB);
+            output.pointA = localPointA;
+            output.pointB = localPointB;
         }
         output.iterations = iteration;
         output.simplexCount = simplexIndex;
@@ -318,7 +316,7 @@ public static class Distance
         return output;
     }
     /// <summary>Perform a linear shape cast of shape B moving and shape A fixed. Determines the hit point, normal, and translation fraction.
-    /// Initially touching shapes are treated as a miss.</summary>
+    /// The query runs in frame A, so the hit point and normal are returned in frame A. Initially touching shapes are a miss.</summary>
     public static CastOutput ShapeCast(this ref ShapeCastPairInput input)
     {
         float linearSlop = Box2D.LinearSlop;
@@ -332,8 +330,7 @@ public static class Distance
         {
             proxyA = input.proxyA,
             proxyB = input.proxyB,
-            transformA = input.transformA,
-            transformB = input.transformB,
+            transform = input.transform,
             useRadii = false
         };
         Vector2 delta2 = input.translationB;
@@ -375,7 +372,7 @@ public static class Distance
             if (denominator >= 0) return output;
             fraction += (target - distanceOutput.distance) / denominator;
             if (fraction >= input.maxFraction) return output;
-            distanceInput.transformB.p = Vector2.MulAdd(input.transformB.p, fraction, delta2);
+            distanceInput.transform.p = Vector2.MulAdd(input.transform.p, fraction, delta2);
         }
         return output;
     }
@@ -556,9 +553,12 @@ public static class Distance
         };
         while (true)
         {
-            distanceInput.transformA = sweepA.GetSweepTransform(t1);
-            distanceInput.transformB = sweepB.GetSweepTransform(t1);
+            Transform xfA = sweepA.GetSweepTransform(t1), xfB = sweepB.GetSweepTransform(t1);
+            distanceInput.transform = Transform.InvMulTransforms(xfA, xfB);
             DistanceOutput distanceOutput = distanceInput.ShapeDistance(ref cache, null);
+            Vector2 worldNormal = xfA.q * distanceOutput.normal,
+                worldPointA = xfA.TransformPoint(distanceOutput.pointA),
+                worldPointB = xfA.TransformPoint(distanceOutput.pointB);
             distanceIterations++;
             if (distanceOutput.distance <= 0)
             {
@@ -569,10 +569,10 @@ public static class Distance
             if (distanceOutput.distance <= target + tolerance)
             {
                 output.state = TOIState.Hit;
-                Vector2 pA = Vector2.MulAdd(distanceOutput.pointA, proxyA.radius, distanceOutput.normal);
-                Vector2 pB = Vector2.MulAdd(distanceOutput.pointB, -proxyB.radius, distanceOutput.normal);
+                Vector2 pA = Vector2.MulAdd(worldPointA, proxyA.radius, worldNormal);
+                Vector2 pB = Vector2.MulAdd(worldPointB, -proxyB.radius, worldNormal);
                 output.point = Vector2.Lerp(pA, pB, 0.5f);
-                output.normal = distanceOutput.normal;
+                output.normal = worldNormal;
                 output.fraction = t1;
                 break;
             }
@@ -603,8 +603,8 @@ public static class Distance
                 if (s1 <= target + tolerance)
                 {
                     output.state = TOIState.Hit;
-                    Vector2 pA = Vector2.MulAdd(distanceOutput.pointA, proxyA.radius, distanceOutput.normal);
-                    Vector2 pB = Vector2.MulAdd(distanceOutput.pointB, -proxyB.radius, distanceOutput.normal);
+                    Vector2 pA = Vector2.MulAdd(worldPointA, proxyA.radius, worldNormal);
+                    Vector2 pB = Vector2.MulAdd(worldPointB, -proxyB.radius, worldNormal);
                     output.point = Vector2.Lerp(pA, pB, 0.5f);
                     output.fraction = t1;
                     done = true;
@@ -631,10 +631,10 @@ public static class Distance
             if (distanceIterations == k_maxIterations)
             {
                 output.state = TOIState.Failed;
-                Vector2 pA = Vector2.MulAdd(distanceOutput.pointA, proxyA.radius, distanceOutput.normal);
-                Vector2 pB = Vector2.MulAdd(distanceOutput.pointB, -proxyB.radius, distanceOutput.normal);
+                Vector2 pA = Vector2.MulAdd(worldPointA, proxyA.radius, worldNormal);
+                Vector2 pB = Vector2.MulAdd(worldPointB, -proxyB.radius, worldNormal);
                 output.point = Vector2.Lerp(pA, pB, 0.5f);
-                output.normal = distanceOutput.normal;
+                output.normal = worldNormal;
                 output.fraction = t1;
                 break;
             }

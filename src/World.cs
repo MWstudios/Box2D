@@ -322,7 +322,7 @@ public partial class World
                 bool wasTouching = contactSim.simFlags.HasFlag(ContactFlags.SimTouching);
                 Body bodyA = bodies[shapeA.bodyId], bodyB = bodies[shapeB.bodyId];
                 BodySim bodySimA = world.GetBodySim(bodyA), bodySimB = world.GetBodySim(bodyB);
-                Transform transformA = bodySimA.transform, transformB = bodySimB.transform;
+                WorldTransform transformA = bodySimA.transform, transformB = bodySimB.transform;
                 contactSim.bodySimIndexA = bodyA.setIndex == (int)SetType.Awake ? bodyA.localIndex : -1;
                 contactSim.invMassA = bodySimA.invMass;
                 contactSim.invIA = bodySimA.invInertia;
@@ -331,10 +331,10 @@ public partial class World
                 contactSim.invIB = bodySimB.invInertia;
                 if (world.contactRecycleDistance > 0 && contactSim.simFlags.HasFlag(ContactFlags.SimRelativeTransformValid) && contactSim.simFlags.HasFlag(ContactFlags.Recycle))
                 {
-                    Transform xf = Transform.InvMulTransforms(transformA, transformB);
-                    Transform xfc = Transform.InvMulTransforms(contactSim.cachedTransformA, contactSim.cachedTransformB);
-                    float cosA = Rotation.RelativeCos(transformA.q, contactSim.cachedTransformA.q);
-                    float cosB = Rotation.RelativeCos(transformB.q, contactSim.cachedTransformB.q);
+                    Rotation cachedQA = contactSim.cachedRotationA, cachedQB = contactSim.cachedRotationB;
+                    Transform xfc = contactSim.cachedRelativePose, xf = WorldTransform.InvMulWorldTransforms(transformA, transformB);
+                    float cosA = Rotation.RelativeCos(transformA.q, cachedQA);
+                    float cosB = Rotation.RelativeCos(transformB.q, cachedQB);
                     float minCos = Math.Min(cosA, cosB);
                     float maxExtentA = bodyA.type == BodyType.Static ? 0 : bodySimA.maxExtent;
                     float maxExtentB = bodyB.type == BodyType.Static ? 0 : bodySimB.maxExtent;
@@ -344,8 +344,8 @@ public partial class World
                     float tolerance = wasTouching ? world.contactRecycleDistance : recycleDistanceNonTouching;
                     if (minCos > Box2D.ContactRecycleCosAngle && distance + maxExtent * Math.Abs(qr.s) < tolerance)
                     {
-                        Rotation dqA = transformA.q * contactSim.cachedTransformA.q.Invert();
-                        Rotation dqB = transformB.q * contactSim.cachedTransformB.q.Invert();
+                        Rotation dqA = transformA.q * cachedQA.Invert();
+                        Rotation dqB = transformB.q * cachedQB.Invert();
                         Vector2 normal = contactSim.manifold.normal;
                         Vector2 dc = bodySimB.center - bodySimA.center;
                         if (contactSim.manifold.pointCount > 0)
@@ -370,8 +370,9 @@ public partial class World
                         continue;
                     }
                 }
-                contactSim.cachedTransformA = transformA;
-                contactSim.cachedTransformB = transformB;
+                contactSim.cachedRotationA = transformA.q;
+                contactSim.cachedRotationB = transformB.q;
+                contactSim.cachedRelativePose = WorldTransform.InvMulWorldTransforms(transformA, transformB);
                 contactSim.simFlags |= ContactFlags.SimRelativeTransformValid;
                 Vector2 centerOffsetA = transformA.q * bodySimA.localCenter;
                 Vector2 centerOffsetB = transformB.q * bodySimB.localCenter;
@@ -914,15 +915,14 @@ public partial class DebugDraw
             else if (body.type == BodyType.Kinematic) color = HexColor.RoyalBlue;
             else if (body.setIndex == (int)SetType.Awake) color = HexColor.Pink;
             else color = HexColor.Gray;
-            draw.DrawShape(shape, bodySim.transform, color, draw.drawChainNormals);
+            draw.DrawShape(shape, bodySim.transform.ToRelativeTransform(draw.origin), color, draw.drawChainNormals);
         }
         if (draw.drawBounds)
         {
             AABB aabb = shape.fatAABB;
-            draw.DrawPolygonFcn([ new(aabb.lowerBound.x, aabb.lowerBound.y),
-                new(aabb.upperBound.x, aabb.lowerBound.y),
-                new(aabb.upperBound.x, aabb.upperBound.y),
-                new(aabb.lowerBound.x, aabb.upperBound.y) ], HexColor.Gold, draw.context);
+            Vector2 lower = (Position)aabb.lowerBound - draw.origin;
+            Vector2 upper = (Position)aabb.upperBound - draw.origin;
+            draw.DrawPolygonFcn([ lower, new(upper.x, lower.y), upper, new(lower.x, upper.y) ], HexColor.Gold, draw.context);
         }
         return true;
     }

@@ -1,6 +1,6 @@
 # Box2D 3 + LiquidFun in C#
 
-This is a near complete port of [Box2D 3](https://github.com/erincatto/box2d) (as of commit [241aa82](https://github.com/erincatto/box2d/tree/241aa82e4c76577a4621402b0fb95f2478a0318f))
+This is a near complete port of [Box2D 3](https://github.com/erincatto/box2d) (as of commit [95aaff8](https://github.com/erincatto/box2d/commit/95aaff814767a2782e82118f6b48868e0ad265c7?w=1))
 and [LiquidFun](https://github.com/google/liquidfun) into C#. Testing macros such as B2_VALIDATE, samples and other benchmarks are not included.
 
 **Note: Due to a missing SIMD assembly instruction in C#, the ARM64 version is incomplete and will throw exeptions.** Let me know if you have a C# replacement for `vtrnq_f32()`.
@@ -18,6 +18,7 @@ A few changes have also been made:
 - Shape casting did not exist back in Box2D 2 and thus won't work on particles.
 - There is no `ParticleSystemDef`. Instead call `ParticleAPI.CreateParticleSystem()` access the properties of `ParticleSystem`.
 - `ParticleSystem.Draw()` has not been implemented. Use `ParticleSystem.PositionBuffer` to render particles.
+- Recording and snapshots are not included in the port.
 
 There is also a bug where particles can get stuck in bodies and not move. I'm not sure if this was happening in the original.
 
