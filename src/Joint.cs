@@ -61,12 +61,12 @@ public interface IJoint
     public void Prepare(JointSim joint, StepContext context) { }
     public void WarmStart(JointSim joint, StepContext context) { }
     public void Solve(JointSim joint, StepContext context, bool useBias) { }
-    public void Draw(DebugDraw draw, JointSim jointSim, Transform transformA, Transform transformB,
-        Vector2 pA, Vector2 pB, float drawSize, HexColor color)
+    public void Draw(DebugDraw draw, JointSim jointSim, WorldTransform transformA, WorldTransform transformB,
+        Position pA, Position pB, float drawSize, HexColor color)
     {
-        draw.DrawSegmentFcn(transformA.p, pA, color, draw.context);
-        draw.DrawSegmentFcn(pA, pB, color, draw.context);
-        draw.DrawSegmentFcn(transformB.p, pB, color, draw.context);
+        draw.DrawLineFcn(transformA.p, pA, color, draw.context);
+        draw.DrawLineFcn(pA, pB, color, draw.context);
+        draw.DrawLineFcn(transformB.p, pB, color, draw.context);
     }
     public IJoint Copy();
 }
@@ -446,11 +446,11 @@ public partial class DebugDraw
         Body bodyA = world.bodies[joint.edge0.bodyId], bodyB = world.bodies[joint.edge1.bodyId];
         if (bodyA.setIndex == (int)SetType.Disabled || bodyB.setIndex == (int)SetType.Disabled) return;
         JointSim jointSim = world.GetJointSim(joint);
-        Transform transformA = world.GetBodyTransformQuick(bodyA).ToRelativeTransform(origin);
-        Transform transformB = world.GetBodyTransformQuick(bodyB).ToRelativeTransform(origin);
-        Vector2 pA = transformA.TransformPoint(jointSim.localFrameA.p);
-        Vector2 pB = transformB.TransformPoint(jointSim.localFrameB.p);
-        jointSim.joint.Draw(this, jointSim, transformA, transformB, pA, pB, Math.Max(0.0001f, jointScale * joint.drawScale), HexColor.DarkSeaGreen);
+        WorldTransform xfA = world.GetBodyTransformQuick(bodyA);
+        WorldTransform xfB = world.GetBodyTransformQuick(bodyB);
+        Position pA = xfA.TransformWorldPoint(jointSim.localFrameA.p);
+        Position pB = xfB.TransformWorldPoint(jointSim.localFrameB.p);
+        jointSim.joint.Draw(this, jointSim, xfA, xfB, pA, pB, Math.Max(0.0001f, jointScale * joint.drawScale), HexColor.DarkSeaGreen);
         if (drawGraphColors)
         {
             HexColor[] graphColors =
@@ -462,14 +462,14 @@ public partial class DebugDraw
             ];
             int colorIndex = joint.colorIndex;
             if (colorIndex != -1)
-                DrawPointFcn(Vector2.Lerp(pA, pB, 0.5f), 5, graphColors[colorIndex], context);
+                DrawPointFcn(Position.Lerp(pA, pB, 0.5f), 5, graphColors[colorIndex], context);
         }
         if (drawJointExtras)
         {
             Vector2 force = world.GetJointConstraintForce(joint);
             float torque = world.GetJointConstraintTorque(joint);
-            Vector2 p = Vector2.Lerp(pA, pB, 0.5f);
-            DrawSegmentFcn(p, Vector2.MulAdd(p, 0.001f, force), HexColor.Azure, context);
+            Position p = Position.Lerp(pA, pB, 0.5f);
+            DrawLineFcn(p, p + 0.001f * force, HexColor.Azure, context);
             DrawStringFcn(p, $"f = [{force.x}, {force.y}], t = {torque}", HexColor.Azure, context);
         }
     }

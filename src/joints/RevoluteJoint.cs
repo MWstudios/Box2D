@@ -233,17 +233,17 @@ public unsafe record class RevoluteJoint : IJoint
             stateB->angularVelocity = wB;
         }
     }
-    public void Draw(DebugDraw draw, JointSim jointSim, Transform transformA, Transform transformB,
-        Vector2 pA, Vector2 pB, float drawSize, HexColor color)
+    public void Draw(DebugDraw draw, JointSim jointSim, WorldTransform transformA, WorldTransform transformB,
+        Position pA, Position pB, float drawSize, HexColor color)
     {
         Debug.Assert(jointSim.type == JointType.Revolute);
-        Transform frameA = transformA * jointSim.localFrameA, frameB = transformB * jointSim.localFrameB;
+        WorldTransform frameA = transformA.Offset(jointSim.localFrameA), frameB = transformB.Offset(jointSim.localFrameB);
         float radius = 0.25f * drawSize;
         draw.DrawCircleFcn(frameB.p, radius, HexColor.Gray, draw.context);
         Vector2 rx = new(radius, 0), r = frameA.q * rx;
-        draw.DrawSegmentFcn(frameA.p, frameA.p + r, HexColor.Gray, draw.context);
+        draw.DrawLineFcn(frameA.p, frameA.p + r, HexColor.Gray, draw.context);
         r = frameB.q * rx;
-        draw.DrawSegmentFcn(frameB.p, frameB.p + r, HexColor.Gray, draw.context);
+        draw.DrawLineFcn(frameB.p, frameB.p + r, HexColor.Gray, draw.context);
         if (draw.drawJointExtras)
         {
             float jointAngle = Rotation.RelativeAngle(frameA.q, frameB.q);
@@ -255,17 +255,17 @@ public unsafe record class RevoluteJoint : IJoint
             Vector2 rlo = rotLo * rx;
             Rotation rotHi = frameA.q * new Rotation(upperAngle);
             Vector2 rhi = rotHi * rx;
-            draw.DrawSegmentFcn(frameB.p, frameB.p + rlo, HexColor.Green, draw.context);
-            draw.DrawSegmentFcn(frameB.p, frameB.p + rhi, HexColor.Red, draw.context);
+            draw.DrawLineFcn(frameB.p, frameB.p + rlo, HexColor.Green, draw.context);
+            draw.DrawLineFcn(frameB.p, frameB.p + rhi, HexColor.Red, draw.context);
         }
         if (enableSpring)
         {
             Rotation q = frameA.q * new Rotation(targetAngle);
-            draw.DrawSegmentFcn(frameB.p, frameB.p + q * rx, HexColor.Violet, draw.context);
+            draw.DrawLineFcn(frameB.p, frameB.p + q * rx, HexColor.Violet, draw.context);
         }
-        draw.DrawSegmentFcn(transformA.p, frameA.p, HexColor.Gold, draw.context);
-        draw.DrawSegmentFcn(frameA.p, frameB.p, HexColor.Gold, draw.context);
-        draw.DrawSegmentFcn(transformB.p, frameB.p, HexColor.Gold, draw.context);
+        draw.DrawLineFcn(transformA.p, frameA.p, HexColor.Gold, draw.context);
+        draw.DrawLineFcn(frameA.p, frameB.p, HexColor.Gold, draw.context);
+        draw.DrawLineFcn(transformB.p, frameB.p, HexColor.Gold, draw.context);
     }
     public IJoint Copy() => new RevoluteJoint(this);
 }

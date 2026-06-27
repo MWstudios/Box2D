@@ -1011,27 +1011,32 @@ public enum HexColor
     Box2DYellow = 0xFFEE8C
 }
 /// <summary>This struct holds callbacks you can implement to draw a Box2D world.
-/// This structure should be zero initialized.</summary>
+/// Callbacks receive world coordinates. In large world mode the translation is double precision so
+/// it stays accurate far from the origin. Shift into your own camera frame inside the callbacks.
+/// Initialize with b2DefaultDebugDraw.</summary>
 public partial class DebugDraw
 {
     /// <summary>Draw a closed polygon provided in CCW order.</summary>
-    public Action<Vector2[], HexColor, object> DrawPolygonFcn;
+    public Action<WorldTransform, Vector2[], HexColor, object> DrawPolygonFcn;
     /// <summary>Draw a solid closed polygon provided in CCW order.</summary>
-    public Action<Transform, Vector2[], float, HexColor, object> DrawSolidPolygonFcn;
+    public Action<WorldTransform, Vector2[], float, HexColor, object> DrawSolidPolygonFcn;
     /// <summary>Draw a circle.</summary>
-    public Action<Vector2, float, HexColor, object> DrawCircleFcn;
+    public Action<Position, float, HexColor, object> DrawCircleFcn;
     /// <summary>Draw a solid circle.</summary>
-    public Action<Transform, float, HexColor, object> DrawSolidCircleFcn;
+    public Action<WorldTransform, Vector2, float, HexColor, object> DrawSolidCircleFcn;
     /// <summary>Draw a solid capsule.</summary>
-    public Action<Vector2, Vector2, float, HexColor, object> DrawSolidCapsuleFcn;
+    public Action<Position, Position, float, HexColor, object> DrawSolidCapsuleFcn;
     /// <summary>Draw a line segment.</summary>
-    public Action<Vector2, Vector2, HexColor, object> DrawSegmentFcn;
+    public Action<Vector2, Vector2, HexColor, object> DrawLineFcn;
     /// <summary>Draw a transform. Choose your own length scale.</summary>
-    public Action<Transform, object> DrawTransformFcn;
+    public Action<WorldTransform, object> DrawTransformFcn;
     /// <summary>Draw a point.</summary>
-    public Action<Vector2, float, HexColor, object> DrawPointFcn;
+    public Action<Position, float, HexColor, object> DrawPointFcn;
     /// <summary>Draw a string in world space</summary>
-    public Action<Vector2, string, HexColor, object> DrawStringFcn;
+    public Action<Position, string, HexColor, object> DrawStringFcn;
+    /// <summary>Draw a bounding box. With double precision enabled, the single precision bounding box
+    /// gets increasing padding when moving far from the origin.</summary>
+    public Action<AABB, HexColor, object> DrawBoundsFcn;
     /// <summary>Bounds to use if restricting drawing to a rectangular region</summary>
     public AABB drawingBounds = new(new(-float.MaxValue, -float.MaxValue), new(float.MaxValue, float.MaxValue));
     /// <summary>Scale to use when drawing forces</summary>
@@ -1068,10 +1073,6 @@ public partial class DebugDraw
     public bool drawFrictionForces;
     /// <summary>Option to draw islands as bounding boxes</summary>
     public bool drawIslands;
-    /// <summary> World point that drawn coordinates are relative to. In large world mode set this to the
-    /// camera position each frame so callbacks receive float coordinates near the origin. Defaults
-    /// to zero, which is bit identical to passing world coordinates directly.</summary>
-    public Position origin;
     /// <summary>User context that is passed as an argument to drawing callback functions</summary>
     public object context;
 }

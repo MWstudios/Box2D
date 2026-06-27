@@ -282,24 +282,23 @@ public unsafe record class WheelJoint : IJoint
             stateB->angularVelocity = wB;
         }
     }
-    public void Draw(DebugDraw draw, JointSim jointSim, Transform transformA, Transform transformB,
-        Vector2 pA, Vector2 pB, float drawSize, HexColor color)
+    public void Draw(DebugDraw draw, JointSim jointSim, WorldTransform transformA, WorldTransform transformB,
+        Position pA, Position pB, float drawSize, HexColor color)
     {
         Debug.Assert(jointSim.type == JointType.Wheel);
-        Transform frameA = transformA * jointSim.localFrameA;
-        Transform frameB = transformB * jointSim.localFrameB;
+        WorldTransform frameA = transformA.Offset(jointSim.localFrameA), frameB = transformB.Offset(jointSim.localFrameB);
         Vector2 axisA = frameA.q * new Vector2(1, 0);
-        draw.DrawSegmentFcn(frameA.p, frameB.p, HexColor.Blue, draw.context);
+        draw.DrawLineFcn(frameA.p, frameB.p, HexColor.Blue, draw.context);
         if (enableLimit)
         {
-            Vector2 lower = Vector2.MulAdd(frameA.p, lowerTranslation, axisA);
-            Vector2 upper = Vector2.MulAdd(frameA.p, upperTranslation, axisA);
+            Position lower = frameA.p + lowerTranslation * axisA;
+            Position upper = frameA.p + upperTranslation * axisA;
             Vector2 perp = axisA.LeftPerp();
-            draw.DrawSegmentFcn(lower, upper, HexColor.Gray, draw.context);
-            draw.DrawSegmentFcn(Vector2.MulSub(lower, 0.1f * drawSize, perp), Vector2.MulAdd(lower, 0.1f * drawSize, perp), HexColor.Green, draw.context);
-            draw.DrawSegmentFcn(Vector2.MulSub(upper, 0.1f * drawSize, perp), Vector2.MulAdd(upper, 0.1f * drawSize, perp), HexColor.Red, draw.context);
+            draw.DrawLineFcn(lower, upper, HexColor.Gray, draw.context);
+            draw.DrawLineFcn(lower - 0.1f * drawSize * perp, lower + 0.1f * drawSize * perp, HexColor.Green, draw.context);
+            draw.DrawLineFcn(upper - 0.1f * drawSize * perp, upper + 0.1f * drawSize * perp, HexColor.Red, draw.context);
         }
-        else draw.DrawSegmentFcn(Vector2.MulSub(frameA.p, 1, axisA), Vector2.MulAdd(frameA.p, 1, axisA), HexColor.Gray, draw.context);
+        else draw.DrawLineFcn(frameA.p - axisA, frameA.p + axisA, HexColor.Gray, draw.context);
         draw.DrawPointFcn(frameA.p, 5, HexColor.Gray, draw.context);
         draw.DrawPointFcn(frameB.p, 5, HexColor.DimGray, draw.context);
     }

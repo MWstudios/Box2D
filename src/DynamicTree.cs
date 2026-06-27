@@ -441,10 +441,7 @@ public partial class DynamicTree
     /// <summary>Create a proxy. Provide an AABB and a userData value.</summary>
     public int CreateProxy(AABB aabb, ulong categoryBits, ulong userData)
     {
-        Debug.Assert(-Box2D.Huge < aabb.lowerBound.x && aabb.lowerBound.x < Box2D.Huge);
-        Debug.Assert(-Box2D.Huge < aabb.lowerBound.y && aabb.lowerBound.y < Box2D.Huge);
-        Debug.Assert(-Box2D.Huge < aabb.upperBound.x && aabb.upperBound.x < Box2D.Huge);
-        Debug.Assert(-Box2D.Huge < aabb.upperBound.y && aabb.upperBound.y < Box2D.Huge);
+        Debug.Assert(aabb.IsValid());
         int proxyId = AllocateNode();
         nodes[proxyId].aabb = aabb;
         nodes[proxyId].userData = userData;

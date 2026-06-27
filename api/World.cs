@@ -173,18 +173,18 @@ public static class WorldAPI
                 {
                     Vector2 offset = new(0.1f, 0.1f);
                     BodySim bodySim = world.GetBodySim(body);
-                    Transform transform = new(bodySim.center - draw.origin, bodySim.transform.q);
-                    Vector2 p = transform.TransformPoint(offset);
+                    WorldTransform transform = new(bodySim.center, bodySim.transform.q);
+                    Position p = transform.TransformWorldPoint(offset);
                     draw.DrawStringFcn(p, body.name, HexColor.BlueViolet, draw.context);
                 }
                 if (draw.drawMass && body.type == BodyType.Dynamic)
                 {
                     Vector2 offset = new(0.1f, 0.1f);
                     BodySim bodySim = world.GetBodySim(body);
-                    Transform transform = new(bodySim.center - draw.origin, bodySim.transform.q);
-                    draw.DrawSegmentFcn(bodySim.center0 - draw.origin, bodySim.center - draw.origin, HexColor.WhiteSmoke, draw.context);
+                    WorldTransform transform = new(bodySim.center, bodySim.transform.q);
+                    draw.DrawLineFcn(bodySim.center0, bodySim.center, HexColor.WhiteSmoke, draw.context);
                     draw.DrawTransformFcn(transform, draw.context);
-                    Vector2 p = transform.TransformPoint(offset);
+                    Position p = transform.TransformWorldPoint(offset);
                     draw.DrawStringFcn(p, $"  {body.mass:F2}", HexColor.White, draw.context);
                 }
                 if (draw.drawJoints)
@@ -223,7 +223,7 @@ public static class WorldAPI
                             {
                                 ref ManifoldPoint mp = ref contactSim.manifold.point0;
                                 if (j == 1) mp = ref contactSim.manifold.point1;
-                                Vector2 p = draw.drawAnchorA ? bodySimA.center + mp.anchorA - draw.origin : bodySimB.center + mp.anchorB - draw.origin;
+                                Position p = draw.drawAnchorA ? bodySimA.center + mp.anchorA : bodySimB.center + mp.anchorB;
                                 if (draw.drawGraphColors && contact.colorIndex != -1)
                                 {
                                     float pointSize = contact.colorIndex == Box2D.GraphColorCount - 1 ? 7.5f : 5;
@@ -235,16 +235,16 @@ public static class WorldAPI
                                 else if (mp.persisted) draw.DrawPointFcn(p, 5, persistColor, draw.context);
                                 if (draw.drawContactNormals)
                                 {
-                                    Vector2 p1 = p;
-                                    Vector2 p2 = Vector2.MulAdd(p1, k_axisScale, normal);
-                                    draw.DrawSegmentFcn(p1, p2, normalColor, draw.context);
+                                    Position p1 = p;
+                                    Position p2 = Vector2.MulAdd(p1, k_axisScale, normal);
+                                    draw.DrawLineFcn(p1, p2, normalColor, draw.context);
                                 }
                                 else if (draw.drawContactForces)
                                 {
                                     float force = 0.5f * mp.totalNormalImpulse * world.inv_dt;
-                                    Vector2 p1 = p;
-                                    Vector2 p2 = Vector2.MulAdd(p1, draw.forceScale * force, normal);
-                                    draw.DrawSegmentFcn(p1, p2, impulseColor, draw.context);
+                                    Position p1 = p;
+                                    Position p2 = Vector2.MulAdd(p1, draw.forceScale * force, normal);
+                                    draw.DrawLineFcn(p1, p2, impulseColor, draw.context);
                                     draw.DrawStringFcn(p1, $"{force:F1}", HexColor.White, draw.context);
                                 }
                                 if (draw.drawContactFeatures)
@@ -255,9 +255,9 @@ public static class WorldAPI
                                 {
                                     float force = 0.5f * mp.tangentImpulse * world.inv_h;
                                     Vector2 tangent = normal.RightPerp();
-                                    Vector2 p1 = p;
-                                    Vector2 p2 = Vector2.MulAdd(p1, draw.forceScale * force, tangent);
-                                    draw.DrawSegmentFcn(p1, p2, frictionColor, draw.context);
+                                    Position p1 = p;
+                                    Position p2 = Vector2.MulAdd(p1, draw.forceScale * force, tangent);
+                                    draw.DrawLineFcn(p1, p2, frictionColor, draw.context);
                                     draw.DrawStringFcn(p1, $"{force:F1}", HexColor.White, draw.context);
                                 }
                             }
@@ -289,9 +289,7 @@ public static class WorldAPI
                         }
                         if (shapeCount > 0)
                         {
-                            Vector2 lower = (Position)aabb.lowerBound - draw.origin;
-                            Vector2 upper = (Position)aabb.upperBound - draw.origin;
-                            draw.DrawPolygonFcn([lower, new(upper.x, lower.y), upper, new(lower.x, upper.y)], HexColor.OrangeRed, draw.context);
+                            draw.DrawBoundsFcn(aabb, HexColor.OrangeRed, draw.context);
                         }
                         world.debugIslandSet.SetBit(islandId);
                     }

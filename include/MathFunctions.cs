@@ -236,10 +236,12 @@ public struct WorldTransform
         float vx = (float)(p.x - this.p.x), vy = (float)(p.y - this.p.y);
         return new(q.c * vx + q.s + vy, -q.s * vx + q.c * vy);
     }
-    /// <summary>Relative transform of frame B in frame A. The narrow phase boundary.</summary>
+    /// <summary>Relative transform of frame B in frame A.</summary>
     public static Transform InvMulWorldTransforms(WorldTransform A, WorldTransform B) => new(A.q.InvRotateVector(B.p - A.p), Rotation.InvMulRot(A.q, B.q));
     /// <summary>Shift a world transform into the frame of a base position.</summary>
     public Transform ToRelativeTransform(Position base_) => new(p - base_, q);
+    /// <summary>Convert a local transform B into world space using world transform A.</summary>
+    public WorldTransform Offset(Transform B) => new(p + q * B.p, q * B.q);
 }
 /// <summary>A 2-by-2 Matrix</summary>
 public struct Mat22
@@ -302,7 +304,7 @@ public struct AABB
     public CastOutput RayCast(Vector2 p1, Vector2 p2)
     {
         CastOutput output = new();
-        float tmin = -float.MaxValue, tmax = float.MaxValue;
+        float tMin = -float.MaxValue, tMax = float.MaxValue;
         Vector2 d = p2 - p1, absD = d.Abs(), normal = Vector2.Zero;
         if (absD.x < Box2D.FLT_EPSILON)
         {
@@ -312,23 +314,23 @@ public struct AABB
         {
             float inv_d = 1 / d.x, t1 = (lowerBound.x - p1.x) * inv_d, t2 = (upperBound.x - p1.x) * inv_d, s = -1;
             if (t1 > t2) { (t1, t2) = (t2, t1); s = 1; }
-            if (t1 > tmin) { normal = new(s, 0); tmin = t1; }
-            tmax = Math.Min(tmax, t2);
-            if (tmin > tmax) return output;
+            if (t1 > tMin) { normal = new(s, 0); tMin = t1; }
+            tMax = Math.Min(tMax, t2);
+            if (tMin > tMax) return output;
         }
         if (absD.y < Box2D.FLT_EPSILON)
         {
             if (p1.y < lowerBound.y || upperBound.y < p1.y) return output;
             float inv_d = 1 / d.y, t1 = (lowerBound.y - p1.y) * inv_d, t2 = (upperBound.y - p1.y) * inv_d, s = -1;
             if (t1 > t2) { (t1, t2) = (t2, t1); s = 1; }
-            if (t1 > tmin) { normal = new(0, s); tmin = t1; }
-            tmax = Math.Min(tmax, t2);
-            if (tmin > tmax) return output;
+            if (t1 > tMin) { normal = new(0, s); tMin = t1; }
+            tMax = Math.Min(tMax, t2);
+            if (tMin > tMax) return output;
         }
-        if (tmin < 0 || 1 < tmin) return output;
-        output.fraction = tmin;
+        if (tMin < 0 || 1 < tMin) return output;
+        output.fraction = tMin;
         output.normal = normal;
-        output.point = Vector2.Lerp(p1, p2, tmin);
+        output.point = Vector2.Lerp(p1, p2, tMin);
         output.hit = true;
         return output;
     }

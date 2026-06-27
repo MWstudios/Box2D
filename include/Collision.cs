@@ -990,6 +990,26 @@ public struct Manifold
     public int pointCount;
     public override string ToString() => $"n={normal} rollingImpulse={rollingImpulse}{(pointCount > 0 ? $" {{{point0}}}" + (pointCount > 1 ? $" {{{point1}}}" : "") : "")}";
 }
+/// <summary>Contact manifold point in local coordinates (frame A).</summary>
+public struct LocalManifoldPoint
+{
+    /// <summary>Contact point in frame A</summary>
+    public Vector2 point;
+    /// <summary>The separation of the contact point, negative if penetrating. May be positive or negative.</summary>
+    public float separation;
+    /// <summary>Uniquely identifies a contact point between two shapes</summary>
+    public ushort id;
+}
+/// <summary>Contact manifold in local coordinates (frame A).</summary>
+public struct LocalManifold
+{
+    /// <summary>The unit normal vector in frame A, points from shape A to shape B</summary>
+    public Vector2 normal;
+    /// <summary>The manifold points, up to two are possible in 2D</summary>
+    public LocalManifoldPoint point0, point1;
+    /// <summary>The number of contacts points, will be 0, 1, or 2</summary>
+    public int pointCount;
+}
 /// <summary>The dynamic tree structure. This should be considered private data.
 /// It is placed here for performance reasons.</summary>
 public partial class DynamicTree

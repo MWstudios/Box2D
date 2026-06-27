@@ -258,26 +258,25 @@ public unsafe record class DistanceJoint : IJoint
         if (stateB->flags.HasFlag(BodyFlags.Dynamic))
         { stateB->linearVelocity = vB; stateB->angularVelocity = wB; }
     }
-    public void Draw(DebugDraw draw, JointSim jointSim, Transform transformA, Transform transformB,
-        Vector2 pA, Vector2 pB, float drawSize, HexColor color)
+    public void Draw(DebugDraw draw, JointSim jointSim, WorldTransform transformA, WorldTransform transformB,
+        Position pA, Position pB, float drawSize, HexColor color)
     {
         Debug.Assert(jointSim.type == JointType.Distance);
         Vector2 axis = (pB - pA).Normalize();
         if (minLength < maxLength && enableLimit)
         {
-            Vector2 pMin = Vector2.MulAdd(pA, minLength, axis);
-            Vector2 pMax = Vector2.MulAdd(pA, maxLength, axis);
+            Position pMin = pA + minLength * axis, pMax = pA + maxLength * axis;
             Vector2 offset = 0.05f * Box2D.LengthUnitsPerMeter * axis.RightPerp();
-            if (minLength > Box2D.LinearSlop) draw.DrawSegmentFcn(pMin - offset, pMin + offset, HexColor.LightGreen, draw.context);
-            if (maxLength < Box2D.Huge) draw.DrawSegmentFcn(pMax - offset, pMax + offset, HexColor.Red, draw.context);
-            if (minLength > Box2D.LinearSlop && maxLength < Box2D.Huge) draw.DrawSegmentFcn(pMin, pMax, HexColor.Gray, draw.context);
+            if (minLength > Box2D.LinearSlop) draw.DrawLineFcn(pMin - offset, pMin + offset, HexColor.LightGreen, draw.context);
+            if (maxLength < Box2D.Huge) draw.DrawLineFcn(pMax - offset, pMax + offset, HexColor.Red, draw.context);
+            if (minLength > Box2D.LinearSlop && maxLength < Box2D.Huge) draw.DrawLineFcn(pMin, pMax, HexColor.Gray, draw.context);
         }
-        draw.DrawSegmentFcn(pA, pB, HexColor.White, draw.context);
+        draw.DrawLineFcn(pA, pB, HexColor.White, draw.context);
         draw.DrawPointFcn(pA, 4, HexColor.White, draw.context);
         draw.DrawPointFcn(pB, 4, HexColor.White, draw.context);
         if (hertz > 0 && enableSpring)
         {
-            Vector2 pRest = Vector2.MulAdd(pA, length, axis);
+            Vector2 pRest = pA + length * axis;
             draw.DrawPointFcn(pRest, 4, HexColor.Blue, draw.context);
         }
     }

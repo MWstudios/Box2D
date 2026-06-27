@@ -331,8 +331,35 @@ public partial class World
         Shape shapeB, WorldTransform transformB, Vector2 centerOffsetB)
     {
         Manifold oldManifold = contactSim.manifold;
+        Transform relativeTransform = WorldTransform.InvMulWorldTransforms(transformA, transformB);
         ManifoldFcn fcn = ContactRegister.s_registers[(int)shapeA.type][(int)shapeB.type].fcn;
-        contactSim.manifold = fcn(shapeA, transformA, shapeB, transformB, ref contactSim.cache);
+        LocalManifold local = fcn(shapeA, shapeB, relativeTransform, ref contactSim.cache);
+        contactSim.manifold = new()
+        {
+            normal = transformA.q * local.normal,
+            pointCount = local.pointCount
+        };
+        Vector2 originDelta = transformA.p - transformB.p;
+        if (local.pointCount > 0)
+        {
+            contactSim.manifold.point0 = new()
+            {
+                anchorA = transformA.q * local.point0.point,
+                separation = local.point0.separation,
+                id = local.point0.id,
+            };
+            contactSim.manifold.point0.anchorB = contactSim.manifold.point0.anchorA + originDelta;
+        }
+        if (local.pointCount > 1)
+        {
+            contactSim.manifold.point1 = new()
+            {
+                anchorA = transformA.q * local.point1.point,
+                separation = local.point1.separation,
+                id = local.point1.id,
+            };
+            contactSim.manifold.point1.anchorB = contactSim.manifold.point1.anchorA + originDelta;
+        }
         contactSim.friction = frictionCallback(shapeA.material.friction, shapeA.material.userMaterialId, shapeB.material.friction, shapeB.material.userMaterialId);
         contactSim.restitution = restitutionCallback(shapeA.material.restitution, shapeA.material.userMaterialId, shapeB.material.restitution, shapeB.material.userMaterialId);
         if (shapeA.material.rollingResistance > 0 || shapeB.material.rollingResistance > 0)
@@ -422,24 +449,24 @@ public partial class World
         return touching;
     }
 }
-public delegate Manifold ManifoldFcn(Shape shapeA, WorldTransform xfA, Shape shapeB, WorldTransform xfB, ref SimplexCache cache);
+public delegate LocalManifold ManifoldFcn(Shape shapeA, Shape shapeB, Transform xf, ref SimplexCache cache);
 public struct ContactRegister
 {
     public ManifoldFcn fcn;
     public bool primary;
     public static ContactRegister[][] s_registers;
-    static Manifold CircleManifold(Shape shapeA, WorldTransform xfA, Shape shapeB, WorldTransform xfB, ref SimplexCache cache) => Collision.CollideCircles((Circle)shapeA.shape, xfA, (Circle)shapeB.shape, xfB);
-    static Manifold CapsuleAndCircleManifold(Shape shapeA, WorldTransform xfA, Shape shapeB, WorldTransform xfB, ref SimplexCache cache) => Collision.CollideCapsuleAndCircle((Capsule)shapeA.shape, xfA, (Circle)shapeB.shape, xfB);
-    static Manifold CapsuleManifold(Shape shapeA, WorldTransform xfA, Shape shapeB, WorldTransform xfB, ref SimplexCache cache) => Collision.CollideCapsules((Capsule)shapeA.shape, xfA, (Capsule)shapeB.shape, xfB);
-    static Manifold PolygonAndCircleManifold(Shape shapeA, WorldTransform xfA, Shape shapeB, WorldTransform xfB, ref SimplexCache cache) => Collision.CollidePolygonAndCircle((Polygon)shapeA.shape, xfA, (Circle)shapeB.shape, xfB);
-    static Manifold PolygonAndCapsuleManifold(Shape shapeA, WorldTransform xfA, Shape shapeB, WorldTransform xfB, ref SimplexCache cache) => Collision.CollidePolygonAndCapsule((Polygon)shapeA.shape, xfA, (Capsule)shapeB.shape, xfB);
-    static Manifold PolygonManifold(Shape shapeA, WorldTransform xfA, Shape shapeB, WorldTransform xfB, ref SimplexCache cache) => Collision.CollidePolygons((Polygon)shapeA.shape, xfA, (Polygon)shapeB.shape, xfB);
-    static Manifold SegmentAndCircleManifold(Shape shapeA, WorldTransform xfA, Shape shapeB, WorldTransform xfB, ref SimplexCache cache) => Collision.CollideSegmentAndCircle((Segment)shapeA.shape, xfA, (Circle)shapeB.shape, xfB);
-    static Manifold SegmentAndCapsuleManifold(Shape shapeA, WorldTransform xfA, Shape shapeB, WorldTransform xfB, ref SimplexCache cache) => Collision.CollideSegmentAndCapsule((Segment)shapeA.shape, xfA, (Capsule)shapeB.shape, xfB);
-    static Manifold SegmentAndPolygonManifold(Shape shapeA, WorldTransform xfA, Shape shapeB, WorldTransform xfB, ref SimplexCache cache) => Collision.CollideSegmentAndPolygon((Segment)shapeA.shape, xfA, (Polygon)shapeB.shape, xfB);
-    static Manifold ChainSegmentAndCircleManifold(Shape shapeA, WorldTransform xfA, Shape shapeB, WorldTransform xfB, ref SimplexCache cache) => Collision.CollideChainSegmentAndCircle((ChainSegment)shapeA.shape, xfA, (Circle)shapeB.shape, xfB);
-    static Manifold ChainSegmentAndCapsuleManifold(Shape shapeA, WorldTransform xfA, Shape shapeB, WorldTransform xfB, ref SimplexCache cache) => Collision.CollideChainSegmentAndCapsule((ChainSegment)shapeA.shape, xfA, (Capsule)shapeB.shape, xfB, ref cache);
-    static Manifold ChainSegmentAndPolygonManifold(Shape shapeA, WorldTransform xfA, Shape shapeB, WorldTransform xfB, ref SimplexCache cache) => Collision.CollideChainSegmentAndPolygon((ChainSegment)shapeA.shape, xfA, (Polygon)shapeB.shape, xfB, ref cache);
+    static LocalManifold CircleManifold(Shape shapeA, Shape shapeB, Transform xf, ref SimplexCache cache) => Collision.CollideCircles((Circle)shapeA.shape, (Circle)shapeB.shape, xf);
+    static LocalManifold CapsuleAndCircleManifold(Shape shapeA, Shape shapeB, Transform xf, ref SimplexCache cache) => Collision.CollideCapsuleAndCircle((Capsule)shapeA.shape, (Circle)shapeB.shape, xf);
+    static LocalManifold CapsuleManifold(Shape shapeA, Shape shapeB, Transform xf, ref SimplexCache cache) => Collision.CollideCapsules((Capsule)shapeA.shape, (Capsule)shapeB.shape, xf);
+    static LocalManifold PolygonAndCircleManifold(Shape shapeA, Shape shapeB, Transform xf, ref SimplexCache cache) => Collision.CollidePolygonAndCircle((Polygon)shapeA.shape, (Circle)shapeB.shape, xf);
+    static LocalManifold PolygonAndCapsuleManifold(Shape shapeA, Shape shapeB, Transform xf, ref SimplexCache cache) => Collision.CollidePolygonAndCapsule((Polygon)shapeA.shape, (Capsule)shapeB.shape, xf);
+    static LocalManifold PolygonManifold(Shape shapeA, Shape shapeB, Transform xf, ref SimplexCache cache) => Collision.CollidePolygons((Polygon)shapeA.shape, (Polygon)shapeB.shape, xf);
+    static LocalManifold SegmentAndCircleManifold(Shape shapeA, Shape shapeB, Transform xf, ref SimplexCache cache) => Collision.CollideSegmentAndCircle((Segment)shapeA.shape, (Circle)shapeB.shape, xf);
+    static LocalManifold SegmentAndCapsuleManifold(Shape shapeA, Shape shapeB, Transform xf, ref SimplexCache cache) => Collision.CollideSegmentAndCapsule((Segment)shapeA.shape, (Capsule)shapeB.shape, xf);
+    static LocalManifold SegmentAndPolygonManifold(Shape shapeA, Shape shapeB, Transform xf, ref SimplexCache cache) => Collision.CollideSegmentAndPolygon((Segment)shapeA.shape, (Polygon)shapeB.shape, xf);
+    static LocalManifold ChainSegmentAndCircleManifold(Shape shapeA, Shape shapeB, Transform xf, ref SimplexCache cache) => Collision.CollideChainSegmentAndCircle((ChainSegment)shapeA.shape, (Circle)shapeB.shape, xf);
+    static LocalManifold ChainSegmentAndCapsuleManifold(Shape shapeA, Shape shapeB, Transform xf, ref SimplexCache cache) => Collision.CollideChainSegmentAndCapsule((ChainSegment)shapeA.shape, (Capsule)shapeB.shape, xf, ref cache);
+    static LocalManifold ChainSegmentAndPolygonManifold(Shape shapeA, Shape shapeB, Transform xf, ref SimplexCache cache) => Collision.CollideChainSegmentAndPolygon((ChainSegment)shapeA.shape, (Polygon)shapeB.shape, xf, ref cache);
     public static void AddType(ManifoldFcn fcn, ShapeType type1, ShapeType type2)
     {
         Debug.Assert(0 <= type1 && (int)type1 <= s_registers.Length);
@@ -470,12 +497,12 @@ public struct ContactRegister
         AddType(ChainSegmentAndCapsuleManifold, ShapeType.ChainSegment, ShapeType.Capsule);
         AddType(ChainSegmentAndPolygonManifold, ShapeType.ChainSegment, ShapeType.Polygon);
     }
-    public static Manifold ComputeManifold(Shape shapeA, Transform transformA, Shape shapeB, Transform transformB)
+    public static LocalManifold ComputeManifold(Shape shapeA, Shape shapeB, Transform xf)
     {
         ManifoldFcn fcn = s_registers[(int)shapeA.type][(int)shapeB.type].fcn;
         SimplexCache cache = new();
         if (s_registers[(int)shapeA.type][(int)shapeB.type].primary) //???
-            return fcn(shapeA, transformA, shapeB, transformB, ref cache);
-        else return fcn(shapeB, transformB, shapeA, transformA, ref cache);
+            return fcn(shapeA, shapeB, xf, ref cache);
+        else return fcn(shapeB, shapeA, xf, ref cache);
     }
 }

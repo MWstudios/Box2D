@@ -21,10 +21,9 @@ public static class Collision
 {
     static ushort B2_MAKE_ID(int A, int B) => (ushort)((A << 8) | (byte)B);
     ///<summary>Compute the contact manifold between two circles</summary>
-    public static Manifold CollideCircles(Circle circleA, WorldTransform xfA, Circle circleB, WorldTransform xfB)
+    public static LocalManifold CollideCircles(Circle circleA, Circle circleB, Transform xf)
     {
-        Manifold manifold = new();
-        Transform xf = WorldTransform.InvMulWorldTransforms(xfA, xfB);
+        LocalManifold manifold = new();
         Vector2 pointA = circleA.center;
         Vector2 pointB = xf.TransformPoint(circleB.center);
         Vector2 normal = (pointB - pointA).GetLengthAndNormalize(out float distance);
@@ -33,24 +32,17 @@ public static class Collision
         if (separation > Box2D.SpeculativeDistance) return manifold;
         Vector2 cA = Vector2.MulAdd(pointA, radiusA, normal);
         Vector2 cB = Vector2.MulAdd(pointB, -radiusB, normal);
-        Vector2 contactPointA = Vector2.Lerp(cA, cB, 0.5f);
-        manifold.normal = xfA.q * normal;
-        ref ManifoldPoint mp = ref manifold.point0;
-        mp.anchorA = xfA.q * contactPointA;
-        mp.anchorB = mp.anchorA + (xfA.p - xfB.p);
-        mp.separation = separation;
-        mp.id = 0;
+        manifold.point0 = new() { point = Vector2.Lerp(cA, cB, 0.5f), separation = separation, id = 0 };
         manifold.pointCount = 1;
         return manifold;
     }
 
     ///<summary>Compute the contact manifold between a capsule and circle</summary>
-    public static Manifold CollideCapsuleAndCircle(Capsule capsuleA, WorldTransform xfA, Circle circleB, WorldTransform xfB)
+    public static LocalManifold CollideCapsuleAndCircle(Capsule capsuleA, Circle circleB, Transform xf)
     {
-        Manifold manifold = new();
-        Transform xf = WorldTransform.InvMulWorldTransforms(xfA, xfB);
+        LocalManifold manifold = new();
         Vector2 pB = xf.TransformPoint(circleB.center);
-        Vector2 p1 = capsuleA.center1, p2 =capsuleA.center2;
+        Vector2 p1 = capsuleA.center1, p2 = capsuleA.center2;
         Vector2 e = p2 - p1;
         Vector2 pA;
         float s1 = Vector2.Dot(pB - p1, e);
@@ -69,27 +61,21 @@ public static class Collision
         if (separation > Box2D.SpeculativeDistance) return manifold;
         Vector2 cA = Vector2.MulAdd(pA, radiusA, normal);
         Vector2 cB = Vector2.MulAdd(pB, -radiusB, normal);
-        Vector2 contactPointA = Vector2.Lerp(cA, cB, 0.5f);
-        manifold.normal = xfA.q * normal;
-        ref ManifoldPoint mp = ref manifold.point0;
-        mp.anchorA = xfA.q * contactPointA;
-        mp.anchorB = mp.anchorA + (xfA.p - xfB.p);
-        mp.separation = separation;
-        mp.id = 0;
+        manifold.normal = normal;
+        manifold.point0 = new() { point = Vector2.Lerp(cA, cB, 0.5f), separation = separation, id = 0 };
         manifold.pointCount = 1;
         return manifold;
     }
     ///<summary>Compute the contact manifold between an segment and a circle</summary>
-    public static Manifold CollideSegmentAndCircle(Segment segmentA, WorldTransform xfA, Circle circleB, WorldTransform xfB)
+    public static LocalManifold CollideSegmentAndCircle(Segment segmentA, Circle circleB, Transform xf)
     {
         Capsule capsuleA = new() { center1 = segmentA.point1, center2 = segmentA.point2, radius = 0 };
-        return CollideCapsuleAndCircle(capsuleA, xfA, circleB, xfB);
+        return CollideCapsuleAndCircle(capsuleA, circleB, xf);
     }
     ///<summary>Compute the contact manifold between a polygon and a circle</summary>
-    public static Manifold CollidePolygonAndCircle(Polygon polygonA, WorldTransform xfA, Circle circleB, WorldTransform xfB)
+    public static LocalManifold CollidePolygonAndCircle(Polygon polygonA, Circle circleB, Transform xf)
     {
-        Manifold manifold = new();
-        Transform xf = WorldTransform.InvMulWorldTransforms(xfA, xfB);
+        LocalManifold manifold = new();
         Vector2 center = xf.TransformPoint(circleB.center);
         float radiusA = polygonA.radius;
         float radiusB = circleB.radius;
@@ -117,13 +103,8 @@ public static class Collision
             if (separation > radius + Box2D.SpeculativeDistance) return manifold;
             Vector2 cA = Vector2.MulAdd(v1, radiusA, normal);
             Vector2 cB = Vector2.MulSub(center, radiusB, normal);
-            Vector2 contactPointA = Vector2.Lerp(cA, cB, 0.5f);
-            manifold.normal = xfA.q * normal;
-            ref ManifoldPoint mp = ref manifold.point0;
-            mp.anchorA = xfA.q * contactPointA;
-            mp.anchorB = mp.anchorA + (xfA.p - xfB.p);
-            mp.separation = Vector2.Dot(cB - cA, normal);
-            mp.id = 0;
+            manifold.normal = normal;
+            manifold.point0 = new() { point = Vector2.Lerp(cA, cB, 0.5f), separation = Vector2.Dot(cB - cA, normal), id = 0 };
             manifold.pointCount = 1;
         }
         else if (u2 < 0 && separation > Box2D.FLT_EPSILON)
@@ -133,41 +114,30 @@ public static class Collision
             if (separation > radius + Box2D.SpeculativeDistance) return manifold;
             Vector2 cA = Vector2.MulAdd(v2, radiusA, normal);
             Vector2 cB = Vector2.MulSub(center, radiusB, normal);
-            Vector2 contactPointA = Vector2.Lerp(cA, cB, 0.5f);
-            manifold.normal = xfA.q * normal;
-            ref ManifoldPoint mp = ref manifold.point0;
-            mp.anchorA = xfA.q * contactPointA;
-            mp.anchorB = mp.anchorA + (xfA.p - xfB.p);
-            mp.separation = Vector2.Dot(cB - cA, normal);
-            mp.id = 0;
+            manifold.normal = normal;
+            manifold.point0 = new() { point = Vector2.Lerp(cA, cB, 0.5f), separation = Vector2.Dot(cB - cA, normal), id = 0 };
             manifold.pointCount = 1;
         }
         else
         {
             Vector2 normal = normals[normalIndex];
-            manifold.normal = xfA.q * normal;
+            manifold.normal = normal;
             Vector2 cA = Vector2.MulAdd(center, radiusA - Vector2.Dot(center - v1, normal), normal);
             Vector2 cB = Vector2.MulSub(center, radiusB, normal);
-            Vector2 contactPointA = Vector2.Lerp(cA, cB, 0.5f);
-            ref ManifoldPoint mp = ref manifold.point0;
-            mp.anchorA = xfA.q * contactPointA;
-            mp.anchorB = mp.anchorA + (xfA.p - xfB.p);
-            mp.separation = separation - radius;
-            mp.id = 0;
+            manifold.point0 = new() { point = Vector2.Lerp(cA, cB, 0.5f), separation = separation - radius, id = 0 };
             manifold.pointCount = 1;
         }
         return manifold;
     }
     ///<summary>Compute the contact manifold between a capsule and circle</summary>
-    public static Manifold CollideCapsules(Capsule capsuleA, WorldTransform xfA, Capsule capsuleB, WorldTransform xfB)
+    public static LocalManifold CollideCapsules(Capsule capsuleA, Capsule capsuleB, Transform xf)
     {
         Vector2 origin = capsuleA.center1;
-        Transform sfA = new(xfA.p + xfA.q * origin, xfA.q);
-        Transform xf = WorldTransform.InvMulWorldTransforms(sfA, xfB);
+        Transform xfs = new(xf.p - origin, xf.q);
         Vector2 p1 = Vector2.Zero;
         Vector2 q1 = capsuleA.center2 - origin;
-        Vector2 p2 = xf.TransformPoint(capsuleB.center1);
-        Vector2 q2 = xf.TransformPoint(capsuleB.center2);
+        Vector2 p2 = xfs.TransformPoint(capsuleB.center1);
+        Vector2 q2 = xfs.TransformPoint(capsuleB.center2);
         Vector2 d1 = q1 - p1;
         Vector2 d2 = q2 - p2;
         float dd1 = Vector2.Dot(d1, d1);
@@ -187,7 +157,7 @@ public static class Collision
         Vector2 closest1 = Vector2.MulAdd(p1, f1, d1);
         Vector2 closest2 = Vector2.MulAdd(p2, f2, d2);
         float distanceSquared = Vector2.DistanceSquared(closest1, closest2);
-        Manifold manifold = new();
+        LocalManifold manifold = new();
         float radiusA = capsuleA.radius, radiusB = capsuleB.radius;
         float radius = radiusA + radiusB;
         float maxDistance = radius + Box2D.SpeculativeDistance;
@@ -244,10 +214,10 @@ public static class Collision
                 float sq = Vector2.Dot(cq - p1, normalA);
                 if (sp <= distance + Box2D.LinearSlop || sq <= distance + Box2D.LinearSlop)
                 {
-                    manifold.point0.anchorA = Vector2.MulAdd(cp, 0.5f * (radiusA - radiusB - sp), normalA);
+                    manifold.point0.point = Vector2.MulAdd(cp, 0.5f * (radiusA - radiusB - sp), normalA);
                     manifold.point0.separation = sp - radius;
                     manifold.point0.id = B2_MAKE_ID(0, 0);
-                    manifold.point1.anchorA = Vector2.MulAdd(cq, 0.5f * (radiusA - radiusB - sq), normalA);
+                    manifold.point1.point = Vector2.MulAdd(cq, 0.5f * (radiusA - radiusB - sq), normalA);
                     manifold.point1.separation = sq - radius;
                     manifold.point1.id = B2_MAKE_ID(0, 1);
                     manifold.pointCount = 2;
@@ -266,10 +236,10 @@ public static class Collision
                 float sq = Vector2.Dot(cq - p2, normalB);
                 if (sp <= distance + Box2D.LinearSlop || sq <= distance + Box2D.LinearSlop)
                 {
-                    manifold.point0.anchorA = Vector2.MulAdd(cp, 0.5f * (radiusB - radiusA - sp), normalB);
+                    manifold.point0.point = Vector2.MulAdd(cp, 0.5f * (radiusB - radiusA - sp), normalB);
                     manifold.point0.separation = sp - radius;
                     manifold.point0.id = B2_MAKE_ID(0, 0);
-                    manifold.point1.anchorA = Vector2.MulAdd(cq, 0.5f * (radiusB - radiusA - sq), normalB);
+                    manifold.point1.point = Vector2.MulAdd(cq, 0.5f * (radiusB - radiusA - sq), normalB);
                     manifold.point1.separation = sq - radius;
                     manifold.point1.id = B2_MAKE_ID(1, 0);
                     manifold.pointCount = 2;
@@ -286,42 +256,31 @@ public static class Collision
             int i1 = f1 == 0 ? 0 : 1;
             int i2 = f2 == 0 ? 0 : 1;
             manifold.normal = normal;
-            manifold.point0.anchorA = Vector2.Lerp(c1, c2, 0.5f);
+            manifold.point0.point = Vector2.Lerp(c1, c2, 0.5f);
             manifold.point0.separation = MathF.Sqrt(distanceSquared) - radius;
             manifold.point0.id = B2_MAKE_ID(i1, i2);
             manifold.pointCount = 1;
         }
-        manifold.normal = xfA.q * manifold.normal;
-        if (manifold.pointCount > 0)
-        {
-            ref ManifoldPoint mp = ref manifold.point0;
-            mp.anchorA = xfA.q * (mp.anchorA + origin);
-            mp.anchorB = mp.anchorA + (xfA.p - xfB.p);
-        }
-        if (manifold.pointCount > 1)
-        {
-            ref ManifoldPoint mp = ref manifold.point1;
-            mp.anchorA = xfA.q * (mp.anchorA + origin);
-            mp.anchorB = mp.anchorA + (xfA.p - xfB.p);
-        }
+        if (manifold.pointCount > 0) manifold.point0.point += origin;
+        if (manifold.pointCount > 1) manifold.point1.point += origin;
         return manifold;
     }
     ///<summary>Compute the contact manifold between an segment and a capsule</summary>
-    public static Manifold CollideSegmentAndCapsule(Segment segmentA, WorldTransform xfA, Capsule capsuleB, WorldTransform xfB)
+    public static LocalManifold CollideSegmentAndCapsule(Segment segmentA, Capsule capsuleB, Transform xf)
     {
         Capsule capsuleA = new() { center1 = segmentA.point1, center2 = segmentA.point2, radius = 0 };
-        return CollideCapsules(capsuleA, xfA, capsuleB, xfB);
+        return CollideCapsules(capsuleA, capsuleB, xf);
     }
     ///<summary>Compute the contact manifold between a polygon and capsule</summary>
-    public static Manifold CollidePolygonAndCapsule(Polygon polygonA, WorldTransform xfA, Capsule capsuleB, WorldTransform xfB)
+    public static LocalManifold CollidePolygonAndCapsule(Polygon polygonA, Capsule capsuleB, Transform xf)
     {
         Polygon polyB = Geometry.MakeCapsule(capsuleB.center1, capsuleB.center2, capsuleB.radius);
-        return CollidePolygons(polygonA, xfA, polyB, xfB);
+        return CollidePolygons(polygonA, polyB, xf);
     }
     /// <summary>Polygon clipper used to compute contact points when there are potentially two contact points. </summary>
-    static Manifold ClipPolygons(Polygon polyA, Polygon polyB, int edgeA, int edgeB, bool flip)
+    static LocalManifold ClipPolygons(Polygon polyA, Polygon polyB, int edgeA, int edgeB, bool flip)
     {
-        Manifold manifold = new();
+        LocalManifold manifold = new();
         Polygon poly1 = polyA, poly2 = polyB;
         int i11 = edgeA, i12 = edgeA + 1 < polyA.vertices.Length ? edgeA + 1 : 0;
         int i21 = edgeB, i22 = edgeB + 1 < polyB.vertices.Length ? edgeB + 1 : 0;
@@ -349,13 +308,13 @@ public static class Collision
         {
             manifold.normal = normal;
             {
-                manifold.point0.anchorA = vLower;
+                manifold.point0.point = vLower;
                 manifold.point0.separation = separationLower - radius;
                 manifold.point0.id = B2_MAKE_ID(i11, i22);
                 manifold.pointCount++;
             }
             {
-                manifold.point1.anchorA = vUpper;
+                manifold.point1.point = vUpper;
                 manifold.point1.separation = separationUpper - radius;
                 manifold.point1.id = B2_MAKE_ID(i12, i21);
                 manifold.pointCount++;
@@ -365,13 +324,13 @@ public static class Collision
         {
             manifold.normal = -normal;
             {
-                manifold.point0.anchorA = vUpper;
+                manifold.point0.point = vUpper;
                 manifold.point0.separation = separationUpper - radius;
                 manifold.point0.id = B2_MAKE_ID(i21, i12);
                 manifold.pointCount++;
             }
             {
-                manifold.point1.anchorA = vLower;
+                manifold.point1.point = vLower;
                 manifold.point1.separation = separationLower - radius;
                 manifold.point1.id = B2_MAKE_ID(i22, i11);
                 manifold.pointCount++;
@@ -400,11 +359,10 @@ public static class Collision
         return maxSeparation;
     }
     ///<summary>Compute the contact manifold between two polygons</summary>
-    public static Manifold CollidePolygons(Polygon polygonA, WorldTransform xfA, Polygon polygonB, WorldTransform xfB)
+    public static LocalManifold CollidePolygons(Polygon polygonA, Polygon polygonB, Transform xf)
     {
         Vector2 origin = polygonA.vertices[0];
-        Transform sfA = new(xfA.p + xfA.q * origin, xfA.q);
-        Transform xf = WorldTransform.InvMulWorldTransforms(sfA, xfB);
+        Transform xfs = new(xf.p - origin, xf.q);
         Polygon localPolyA = new()
         {
             radius = polygonA.radius,
@@ -426,8 +384,8 @@ public static class Collision
         };
         for (int i = 0; i < localPolyB.vertices.Length; i++)
         {
-            localPolyB.vertices[i] = xf.TransformPoint(polygonB.vertices[i]);
-            localPolyB.normals[i] = xf.q * polygonB.normals[i];
+            localPolyB.vertices[i] = xfs.TransformPoint(polygonB.vertices[i]);
+            localPolyB.normals[i] = xfs.q * polygonB.normals[i];
         }
         float separationA = FindMaxSeparation(out int edgeA, localPolyA, localPolyB);
         float separationB = FindMaxSeparation(out int edgeB, localPolyB, localPolyA);
@@ -463,7 +421,7 @@ public static class Collision
                 if (dot < minDot) { minDot = dot; edgeA = i; }
             }
         }
-        Manifold manifold = new();
+        LocalManifold manifold = new();
         if (separationA > 0.1f * Box2D.LinearSlop || separationB > 0.1f * Box2D.LinearSlop)
         {
             int i11 = edgeA, i12 = edgeA + 1 < localPolyA.vertices.Length ? edgeA + 1 : 0;
@@ -489,7 +447,7 @@ public static class Collision
                     Vector2 c1 = Vector2.MulAdd(v11, localPolyA.radius, normal);
                     Vector2 c2 = Vector2.MulAdd(v21, -localPolyB.radius, normal);
                     manifold.normal = normal;
-                    manifold.point0.anchorA = Vector2.Lerp(c1, c2, 0.5f);
+                    manifold.point0.point = Vector2.Lerp(c1, c2, 0.5f);
                     manifold.point0.separation = distance - radius;
                     manifold.point0.id = B2_MAKE_ID(i11, i21);
                     manifold.pointCount = 1;
@@ -502,7 +460,7 @@ public static class Collision
                     Vector2 c1 = Vector2.MulAdd(v11, localPolyA.radius, normal);
                     Vector2 c2 = Vector2.MulAdd(v22, -localPolyB.radius, normal);
                     manifold.normal = normal;
-                    manifold.point0.anchorA = Vector2.Lerp(c1, c2, 0.5f);
+                    manifold.point0.point = Vector2.Lerp(c1, c2, 0.5f);
                     manifold.point0.separation = distance - radius;
                     manifold.point0.id = B2_MAKE_ID(i11, i22);
                     manifold.pointCount = 1;
@@ -515,7 +473,7 @@ public static class Collision
                     Vector2 c1 = Vector2.MulAdd(v12, localPolyA.radius, normal);
                     Vector2 c2 = Vector2.MulAdd(v21, -localPolyB.radius, normal);
                     manifold.normal = normal;
-                    manifold.point0.anchorA = Vector2.Lerp(c1, c2, 0.5f);
+                    manifold.point0.point = Vector2.Lerp(c1, c2, 0.5f);
                     manifold.point0.separation = distance - radius;
                     manifold.point0.id = B2_MAKE_ID(i12, i21);
                     manifold.pointCount = 1;
@@ -528,7 +486,7 @@ public static class Collision
                     Vector2 c1 = Vector2.MulAdd(v12, localPolyA.radius, normal);
                     Vector2 c2 = Vector2.MulAdd(v22, -localPolyB.radius, normal);
                     manifold.normal = normal;
-                    manifold.point0.anchorA = Vector2.Lerp(c1, c2, 0.5f);
+                    manifold.point0.point = Vector2.Lerp(c1, c2, 0.5f);
                     manifold.point0.separation = distance - radius;
                     manifold.point0.id = B2_MAKE_ID(i12, i22);
                     manifold.pointCount = 1;
@@ -536,32 +494,20 @@ public static class Collision
             }
         }
         else manifold = ClipPolygons(localPolyA, localPolyB, edgeA, edgeB, flip);
-        if (manifold.pointCount > 0)
-        {
-            manifold.normal = xfA.q * manifold.normal;
-            ref ManifoldPoint mp = ref manifold.point0;
-            mp.anchorA = xfA.q * (mp.anchorA + origin);
-            mp.anchorB = mp.anchorA + (xfA.p - xfB.p);
-            if (manifold.pointCount > 1)
-            {
-                mp = ref manifold.point1;
-                mp.anchorA = xfA.q * (mp.anchorA + origin);
-                mp.anchorB = mp.anchorA + (xfA.p - xfB.p);
-            }
-        }
+        if (manifold.pointCount > 0) manifold.point0.point += origin;
+        if (manifold.pointCount > 1) manifold.point1.point += origin;
         return manifold;
     }
     ///<summary>Compute the contact manifold between an segment and a polygon</summary>
-    public static Manifold CollideSegmentAndPolygon(Segment segmentA, WorldTransform xfA, Polygon polygonB, WorldTransform xfB)
+    public static LocalManifold CollideSegmentAndPolygon(Segment segmentA, Polygon polygonB, Transform xf)
     {
         Polygon polygonA = Geometry.MakeCapsule(segmentA.point1, segmentA.point2, 0);
-        return CollidePolygons(polygonA, xfA, polygonB, xfB);
+        return CollidePolygons(polygonA, polygonB, xf);
     }
     ///<summary>Compute the contact manifold between a chain segment and a circle</summary>
-    public static Manifold CollideChainSegmentAndCircle(ChainSegment segmentA, WorldTransform xfA, Circle circleB, WorldTransform xfB)
+    public static LocalManifold CollideChainSegmentAndCircle(ChainSegment segmentA, Circle circleB, Transform xf)
     {
-        Manifold manifold = new();
-        Transform xf = WorldTransform.InvMulWorldTransforms(xfA, xfB);
+        LocalManifold manifold = new();
         Vector2 pB = xf.TransformPoint(circleB.center);
         Vector2 p1 = segmentA.segment.point1, p2 = segmentA.segment.point2;
         Vector2 e = p2 - p1;
@@ -596,25 +542,20 @@ public static class Collision
         if (separation > Box2D.SpeculativeDistance) return manifold;
         Vector2 cA = pA;
         Vector2 cB = Vector2.MulAdd(pB, -radius, normal);
-        Vector2 contactPointA = Vector2.Lerp(cA, cB, 0.5f);
-        manifold.normal = xfA.q * normal;
-        ref ManifoldPoint mp = ref manifold.point0;
-        mp.anchorA = xfA.q * contactPointA;
-        mp.anchorB = mp.anchorA + (xfA.p - xfB.p);
-        mp.separation = separation;
-        mp.id = 0;
+        manifold.normal = normal;
+        manifold.point0 = new() { point = Vector2.Lerp(cA, cB, 0.5f), separation = separation, id = 0 };
         manifold.pointCount = 1;
         return manifold;
     }
     ///<summary>Compute the contact manifold between a chain segment and a capsule</summary>
-    public static Manifold CollideChainSegmentAndCapsule(ChainSegment segmentA, WorldTransform xfA, Capsule capsuleB, WorldTransform xfB, ref SimplexCache cache)
+    public static LocalManifold CollideChainSegmentAndCapsule(ChainSegment segmentA, Capsule capsuleB, Transform xf, ref SimplexCache cache)
     {
         Polygon polyB = Geometry.MakeCapsule(capsuleB.center1, capsuleB.center2, capsuleB.radius);
-        return CollideChainSegmentAndPolygon(segmentA, xfA, polyB, xfB, ref cache);
+        return CollideChainSegmentAndPolygon(segmentA, polyB, xf, ref cache);
     }
-    static Manifold ClipSegments(Vector2 a1, Vector2 a2, Vector2 b1, Vector2 b2, Vector2 normal, float ra, float rb, ushort id1, ushort id2)
+    static LocalManifold ClipSegments(Vector2 a1, Vector2 a2, Vector2 b1, Vector2 b2, Vector2 normal, float ra, float rb, ushort id1, ushort id2)
     {
-        Manifold manifold = new();
+        LocalManifold manifold = new();
         Vector2 tangent = normal.LeftPerp();
         float lower1 = 0;
         float upper1 = Vector2.Dot(a2 - a1, tangent);
@@ -631,18 +572,8 @@ public static class Collision
         vUpper = Vector2.MulAdd(vUpper, 0.5f * (ra - rb - separationUpper), normal);
         float radius = ra + rb;
         manifold.normal = normal;
-        {
-            ref ManifoldPoint cp = ref manifold.point0;
-            cp.anchorA = vLower;
-            cp.separation = separationLower - radius;
-            cp.id = id1;
-        }
-        {
-            ref ManifoldPoint cp = ref manifold.point1;
-            cp.anchorA = vUpper;
-            cp.separation = separationUpper - radius;
-            cp.id = id2;
-        }
+        manifold.point0 = new() { point = vLower, separation = separationLower - radius, id = id1 };
+        manifold.point1 = new() { point = vUpper, separation = separationUpper - radius, id = id2 };
         manifold.pointCount = 2;
         return manifold;
     }
@@ -668,11 +599,9 @@ public static class Collision
             : params_.convex2 ? Vector2.Cross(params_.normal2, normal) > sinTol ? NormalType.Skip : NormalType.Admit : NormalType.Snap;
     }
     ///<summary>Compute the contact manifold between a chain segment and a rounded polygon</summary>
-    public static Manifold CollideChainSegmentAndPolygon(ChainSegment segmentA, WorldTransform xfA, Polygon polygonB,
-                                                       WorldTransform xfB, ref SimplexCache cache)
+    public static LocalManifold CollideChainSegmentAndPolygon(ChainSegment segmentA, Polygon polygonB, Transform xf, ref SimplexCache cache)
     {
-        Manifold manifold = new();
-        Transform xf = WorldTransform.InvMulWorldTransforms(xfA, xfB);
+        LocalManifold manifold = new();
         Vector2 centroidB = xf.TransformPoint(polygonB.centroid);
         float radiusB = polygonB.radius;
         Vector2 p1 = segmentA.segment.point1, p2 = segmentA.segment.point2;
@@ -723,12 +652,8 @@ public static class Collision
                 if (type == NormalType.Skip) return manifold;
                 if (type == NormalType.Admit)
                 {
-                    manifold.normal = xfA.q * normal;
-                    ref ManifoldPoint cp = ref manifold.point0;
-                    cp.anchorA = xfA.q * pA;
-                    cp.anchorB = cp.anchorA + (xfA.p - xfB.p);
-                    cp.separation = output.distance - radiusB;
-                    cp.id = B2_MAKE_ID(cache.indexA[0], cache.indexB[0]);
+                    manifold.normal = normal;
+                    manifold.point0 = new() { point = pA, separation = output.distance - radiusB, id = B2_MAKE_ID(cache.indexA[0], cache.indexB[0]) };
                     manifold.pointCount = 1;
                     return manifold;
                 }
@@ -765,12 +690,7 @@ public static class Collision
                         Debug.Assert(manifold.pointCount == 0 || manifold.pointCount == 2);
                         if (manifold.pointCount == 2)
                         {
-                            manifold.normal = xfA.q * -normalB;
-                            manifold.point0.anchorA = xfA.q * manifold.point0.anchorA;
-                            manifold.point1.anchorA = xfA.q * manifold.point1.anchorA;
-                            Vector2 pAB = xfA.p - xfB.p;
-                            manifold.point0.anchorB = manifold.point0.anchorA + pAB;
-                            manifold.point1.anchorB = manifold.point1.anchorA + pAB;
+                            manifold.normal = -normalB;
                         }
                         return manifold;
                     }
@@ -841,12 +761,7 @@ public static class Collision
                 Debug.Assert(manifold.pointCount == 0 || manifold.pointCount == 2);
                 if (manifold.pointCount == 2)
                 {
-                    manifold.normal = xfA.q * -normals[ia1];
-                    manifold.point0.anchorA = xfA.q * manifold.point0.anchorA;
-                    manifold.point1.anchorA = xfA.q * manifold.point1.anchorA;
-                    Vector2 pAB = xfA.p - xfB.p;
-                    manifold.point0.anchorB = manifold.point0.anchorA + pAB;
-                    manifold.point1.anchorB = manifold.point1.anchorA + pAB;
+                    manifold.normal = -normals[ia1];
                 }
                 return manifold;
             }
@@ -885,15 +800,6 @@ public static class Collision
             manifold = ClipSegments(p1, p2, b1, b2, normal1, 0, radiusB, B2_MAKE_ID(0, ib2), B2_MAKE_ID(1, ib1));
         }
         Debug.Assert(manifold.pointCount == 0 || manifold.pointCount == 2);
-        if (manifold.pointCount == 2)
-        {
-            manifold.normal = xfA.q * -manifold.normal;
-            manifold.point0.anchorA = xfA.q * manifold.point0.anchorA;
-            manifold.point1.anchorA = xfA.q * manifold.point1.anchorA;
-            Vector2 pAB = xfA.p - xfB.p;
-            manifold.point0.anchorB = manifold.point0.anchorA + pAB;
-            manifold.point1.anchorB = manifold.point1.anchorA + pAB;
-        }
         return manifold;
     }
 }

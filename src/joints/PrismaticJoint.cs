@@ -287,26 +287,25 @@ public unsafe record class PrismaticJoint : IJoint
             stateB->angularVelocity = wB;
         }
     }
-    public void Draw(DebugDraw draw, JointSim jointSim, Transform transformA, Transform transformB,
-        Vector2 pA, Vector2 pB, float drawScale, HexColor color)
+    public void Draw(DebugDraw draw, JointSim jointSim, WorldTransform transformA, WorldTransform transformB,
+        Position pA, Position pB, float drawScale, HexColor color)
     {
         Debug.Assert(jointSim.type == JointType.Prismatic);
-        Transform frameA = transformA * jointSim.localFrameA;
-        Transform frameB = transformB * jointSim.localFrameB;
+        WorldTransform frameA = transformA.Offset(jointSim.localFrameA), frameB = transformB.Offset(jointSim.localFrameB);
         Vector2 axisA = frameA.q * new Vector2(1, 0);
-        draw.DrawSegmentFcn(frameA.p, frameB.p, HexColor.DimGray, draw.context);
+        draw.DrawLineFcn(frameA.p, frameB.p, HexColor.DimGray, draw.context);
         if (enableLimit)
         {
             float b = 0.25f * drawScale;
-            Vector2 lower = Vector2.MulAdd(frameA.p, lowerTranslation, axisA);
-            Vector2 upper = Vector2.MulAdd(frameA.p, upperTranslation, axisA);
+            Position lower = frameA.p + lowerTranslation * axisA;
+            Position upper = frameA.p + upperTranslation * axisA;
             Vector2 perp = axisA.LeftPerp();
-            draw.DrawSegmentFcn(lower, upper, HexColor.Gray, draw.context);
-            draw.DrawSegmentFcn(Vector2.MulSub(lower, b, perp), Vector2.MulAdd(lower, b, perp), HexColor.Green, draw.context);
-            draw.DrawSegmentFcn(Vector2.MulSub(upper, b, perp), Vector2.MulAdd(upper, b, perp), HexColor.Red, draw.context);
+            draw.DrawLineFcn(lower, upper, HexColor.Gray, draw.context);
+            draw.DrawLineFcn(lower - b * perp, lower + b * perp, HexColor.Green, draw.context);
+            draw.DrawLineFcn(upper - b * perp, upper + b * perp, HexColor.Red, draw.context);
         }
-        else draw.DrawSegmentFcn(frameA.p - axisA, frameA.p + axisA, HexColor.Gray, draw.context);
-        if (enableSpring) draw.DrawPointFcn(Vector2.MulAdd(frameA.p, targetTranslation, axisA), 8, HexColor.Violet, draw.context);
+        else draw.DrawLineFcn(frameA.p - axisA, frameA.p + axisA, HexColor.Gray, draw.context);
+        if (enableSpring) draw.DrawPointFcn(frameA.p + targetTranslation * axisA, 8, HexColor.Violet, draw.context);
         draw.DrawPointFcn(frameA.p, 5, HexColor.Gray, draw.context);
         draw.DrawPointFcn(frameB.p, 5, HexColor.Blue, draw.context);
     }

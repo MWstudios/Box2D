@@ -840,43 +840,42 @@ public partial class World
 }
 public partial class DebugDraw
 {
-    public void DrawShape(Shape shape, Transform xf, HexColor color, bool drawChainNormals)
+    public void DrawShape(Shape shape, WorldTransform transform, HexColor color, bool drawChainNormals)
     {
         switch (shape.type)
         {
             case ShapeType.Capsule:
                 {
                     Capsule capsule = (Capsule)shape.shape;
-                    Vector2 p1 = xf.TransformPoint(capsule.center1), p2 = xf.TransformPoint(capsule.center2);
+                    Position p1 = transform.TransformWorldPoint(capsule.center1), p2 = transform.TransformWorldPoint(capsule.center2);
                     DrawSolidCapsuleFcn(p1, p2, capsule.radius, color, context);
                     break;
                 }
             case ShapeType.Circle:
                 Circle circle = (Circle)shape.shape;
-                xf.p = xf.TransformPoint(circle.center);
-                DrawSolidCircleFcn(xf, circle.radius, color, context);
+                DrawSolidCircleFcn(transform, circle.center, circle.radius, color, context);
                 break;
             case ShapeType.Polygon:
                 Polygon poly = (Polygon)shape.shape;
-                DrawSolidPolygonFcn(xf, poly.vertices, poly.radius, color, context);
+                DrawSolidPolygonFcn(transform, poly.vertices, poly.radius, color, context);
                 break;
             case ShapeType.Segment:
                 {
                     Segment segment = (Segment)shape.shape;
-                    Vector2 p1 = xf.TransformPoint(segment.point1), p2 = xf.TransformPoint(segment.point2);
-                    DrawSegmentFcn(p1, p2, color, context);
+                    Position p1 = transform.TransformWorldPoint(segment.point1), p2 = transform.TransformWorldPoint(segment.point2);
+                    DrawLineFcn(p1, p2, color, context);
                     break;
                 }
             case ShapeType.ChainSegment:
                 {
                     Segment segment = ((ChainSegment)shape.shape).segment;
-                    Vector2 p1 = xf.TransformPoint(segment.point1), p2 = xf.TransformPoint(segment.point2);
-                    DrawSegmentFcn(p1, p2, color, context);
+                    Position p1 = transform.TransformWorldPoint(segment.point1), p2 = transform.TransformWorldPoint(segment.point2);
+                    DrawLineFcn(p1, p2, color, context);
                     DrawPointFcn(p2, 4, color, context);
                     if (drawChainNormals)
                     {
                         Vector2 c = Vector2.Lerp(p1, p2, 0.5f);
-                        DrawSegmentFcn(c, Vector2.MulAdd(c, 0.2f * Box2D.LengthUnitsPerMeter, (p2 - p1).Normalize().RightPerp()), HexColor.PaleGreen, context);
+                        DrawLineFcn(c, c + 0.2f * Box2D.LengthUnitsPerMeter * (p2 - p1).Normalize().RightPerp(), HexColor.PaleGreen, context);
                     }
                     break;
                 }
@@ -898,10 +897,10 @@ public partial class DebugDraw
         Shape shape = world.shapes[shapeId];
         Debug.Assert(shape.id == shapeId);
         world.debugBodySet.SetBit(shape.bodyId);
+        Body body = world.bodies[shape.bodyId];
+        BodySim bodySim = world.GetBodySim(body);
         if (draw.drawShapes)
         {
-            Body body = world.bodies[shape.bodyId];
-            BodySim bodySim = world.GetBodySim(body);
             HexColor color;
             if (shape.material.customColor != 0) color = (HexColor)shape.material.customColor;
             else if (body.type == BodyType.Dynamic && body.mass == 0) color = HexColor.Red;
@@ -915,14 +914,11 @@ public partial class DebugDraw
             else if (body.type == BodyType.Kinematic) color = HexColor.RoyalBlue;
             else if (body.setIndex == (int)SetType.Awake) color = HexColor.Pink;
             else color = HexColor.Gray;
-            draw.DrawShape(shape, bodySim.transform.ToRelativeTransform(draw.origin), color, draw.drawChainNormals);
+            draw.DrawShape(shape, bodySim.transform, color, draw.drawChainNormals);
         }
         if (draw.drawBounds)
         {
-            AABB aabb = shape.fatAABB;
-            Vector2 lower = (Position)aabb.lowerBound - draw.origin;
-            Vector2 upper = (Position)aabb.upperBound - draw.origin;
-            draw.DrawPolygonFcn([ lower, new(upper.x, lower.y), upper, new(lower.x, upper.y) ], HexColor.Gold, draw.context);
+            draw.DrawBoundsFcn(shape.fatAABB, HexColor.Gold, draw.context);
         }
         return true;
     }

@@ -159,18 +159,14 @@ public unsafe record class WeldJoint : IJoint
             stateB->angularVelocity = wB;
         }
     }
-    public void Draw(DebugDraw draw, JointSim jointSim, Transform transformA, Transform transformB,
-        Vector2 pA, Vector2 pB, float drawSize, HexColor color)
+    public void Draw(DebugDraw draw, JointSim jointSim, WorldTransform transformA, WorldTransform transformB,
+        Position pA, Position pB, float drawSize, HexColor color)
     {
         Debug.Assert(jointSim.type == JointType.Weld);
-        Transform frameA = transformA * jointSim.localFrameA;
-        Transform frameB = transformB * jointSim.localFrameB;
+        WorldTransform frameA = transformA.Offset(jointSim.localFrameA), frameB = transformB.Offset(jointSim.localFrameB);
         Polygon box = Geometry.MakeBox(0.25f * drawSize, 0.25f * drawSize);
-        Vector2[] points = new Vector2[4];
-        for (int i = 0; i < 4; i++) points[i] = frameA.TransformPoint(box.vertices[i]);
-        draw.DrawPolygonFcn(points, HexColor.DarkOrange, draw.context);
-        for (int i = 0; i < 4; i++) points[i] = frameB.TransformPoint(box.vertices[i]);
-        draw.DrawPolygonFcn(points, HexColor.DarkCyan, draw.context);
+        draw.DrawPolygonFcn(frameA, box.vertices, HexColor.DarkOrange, draw.context);
+        draw.DrawPolygonFcn(frameB, box.vertices, HexColor.DarkCyan, draw.context);
     }
     public IJoint Copy() => new WeldJoint(this);
 }

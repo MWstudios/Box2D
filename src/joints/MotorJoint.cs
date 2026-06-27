@@ -215,8 +215,8 @@ public unsafe record class MotorJoint : IJoint
             stateB->angularVelocity = wB;
         }
     }
-    public void Draw(DebugDraw draw, JointSim jointSim, Transform transformA, Transform transformB,
-        Vector2 pA, Vector2 pB, float drawScale, HexColor color)
+    public void Draw(DebugDraw draw, JointSim jointSim, WorldTransform transformA, WorldTransform transformB,
+        Position pA, Position pB, float drawScale, HexColor color)
     {
         draw.DrawPointFcn(pA, 8, HexColor.YellowGreen, draw.context);
         draw.DrawPointFcn(pB, 8, HexColor.Plum, draw.context);
