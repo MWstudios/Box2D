@@ -354,7 +354,6 @@ public unsafe partial class World
     {
         SolverSet awakeSet = solverSets[(int)SetType.Awake];
         BodySim fastBodySim = awakeSet.bodySims[bodySimIndex];
-        Debug.Assert(fastBodySim.flags.HasFlag(BodyFlags.IsFast));
         Position base_ = fastBodySim.center0;
         Sweep sweep = fastBodySim.MakeRelativeSweep(base_);
         Transform xf1 = new(sweep.c1 - sweep.q1 * sweep.localCenter, sweep.q1);
@@ -480,9 +479,9 @@ public unsafe partial class World
             if (!world.enableSleep || !body.flags.HasFlag(BodyFlags.EnableSleep) || sleepVelocity > body.sleepThreshold)
             {
                 body.sleepTime = 0;
-                if (body.type == BodyType.Dynamic && world.enableContinuous && Math.Max(maxDeltaPosition, maxVelocity * stepContext.dt) > 0.5f * sim.minExtent)
+                if (body.type == BodyType.Dynamic && world.enableContinuous && Math.Max(maxDeltaPosition, maxVelocity * stepContext.dt) > body.safetyFactor * sim.minExtent)
                 {
-                    sim.flags |= BodyFlags.IsFast;
+                    body.flags |= BodyFlags.IsFast;
                     if (sim.flags.HasFlag(BodyFlags.IsBullet))
                         stepContext.bulletBodies[Interlocked.Increment(ref stepContext.bulletBodyCount) - 1] = simIndex;
                     else world.SolveContinuous(simIndex, taskContext);
@@ -510,7 +509,7 @@ public unsafe partial class World
                 }
             }
             WorldTransform transform = sim.transform;
-            bool isFast = sim.flags.HasFlag(BodyFlags.IsFast);
+            bool isFast = body.flags.HasFlag(BodyFlags.IsFast);
             int shapeId = body.headShapeId;
             while (shapeId != -1)
             {
@@ -1175,7 +1174,7 @@ public unsafe partial class World
                     BodySim bodySim = awakeSet.bodySims[bodySimIndex];
                     Body body = bodies[bodySim.bodyId];
                     int shapeId = body.headShapeId;
-                    if ((bodySim.flags & (BodyFlags.IsBullet | BodyFlags.IsFast)) == (BodyFlags.IsBullet | BodyFlags.IsFast))
+                    if ((body.flags & (BodyFlags.IsBullet | BodyFlags.IsFast)) == (BodyFlags.IsBullet | BodyFlags.IsFast))
                     {
                         while (shapeId != -1)
                         {

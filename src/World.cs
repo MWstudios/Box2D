@@ -330,7 +330,8 @@ public partial class World
                 contactSim.bodySimIndexB = bodyB.setIndex == (int)SetType.Awake ? bodyB.localIndex : -1;
                 contactSim.invMassB = bodySimB.invMass;
                 contactSim.invIB = bodySimB.invInertia;
-                if (world.contactRecycleDistance > 0 && contactSim.simFlags.HasFlag(ContactFlags.SimRelativeTransformValid) && contactSim.simFlags.HasFlag(ContactFlags.Recycle))
+                bool isFast = bodyA.flags.HasFlag(BodyFlags.IsFast) || bodyB.flags.HasFlag(BodyFlags.IsFast);
+                if (!isFast && world.contactRecycleDistance > 0 && contactSim.simFlags.HasFlag(ContactFlags.SimRelativeTransformValid) && contactSim.simFlags.HasFlag(ContactFlags.Recycle))
                 {
                     Rotation cachedQA = contactSim.cachedRotationA, cachedQB = contactSim.cachedRotationB;
                     Transform xfc = contactSim.cachedRelativePose, xf = WorldTransform.InvMulWorldTransforms(transformA, transformB);
@@ -1006,7 +1007,7 @@ public partial class DebugDraw
             else if (body.flags.HasFlag(BodyFlags.HadTimeOfImpact)) color = HexColor.Lime;
             else if (bodySim.flags.HasFlag(BodyFlags.IsBullet) && body.setIndex == (int)SetType.Awake) color = HexColor.Turquoise;
             else if (body.flags.HasFlag(BodyFlags.IsSpeedCapped)) color = HexColor.Yellow;
-            else if (bodySim.flags.HasFlag(BodyFlags.IsFast)) color = HexColor.Salmon;
+            else if (body.flags.HasFlag(BodyFlags.IsFast)) color = HexColor.Salmon;
             else if (body.type == BodyType.Static) color = HexColor.PaleGreen;
             else if (body.type == BodyType.Kinematic) color = HexColor.RoyalBlue;
             else if (body.setIndex == (int)SetType.Awake) color = HexColor.Pink;

@@ -80,6 +80,7 @@ public class Body
 
     public float sleepThreshold;
     public float sleepTime;
+    public float safetyFactor;
 
     ///<summary>this is used to adjust the fellAsleep flag in the body move array</summary>
     public int bodyMoveIndex;

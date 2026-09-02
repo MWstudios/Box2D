@@ -350,7 +350,8 @@ public partial class World
         BodySim sourceSim = sourceSet.bodySims[sourceIndex];
         int targetIndex = targetSet.bodySims.Count;
         BodySim targetSim = sourceSim with { }; targetSet.bodySims.Add(targetSim);
-        targetSim.flags &= ~(BodyFlags.IsFast | BodyFlags.IsSpeedCapped | BodyFlags.HadTimeOfImpact);
+        body.flags &= ~BodyFlags.TransientFlags;
+        targetSim.flags &= ~BodyFlags.TransientFlags;
         RemoveBodySim(sourceSet.bodySims, bodies, sourceIndex);
         if (sourceSet.setIndex == (int)SetType.Awake) sourceSet.bodyStates.RemoveSwap(sourceIndex);
         else if (targetSet.setIndex == (int)SetType.Awake)

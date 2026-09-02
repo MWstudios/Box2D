@@ -23,6 +23,7 @@ public unsafe static class BodyAPI
         Debug.Assert(float.IsFinite(def.linearDamping) && def.linearDamping >= 0);
         Debug.Assert(float.IsFinite(def.angularVelocity) && def.angularDamping >= 0);
         Debug.Assert(float.IsFinite(def.sleepThreshold) && def.sleepThreshold >= 0);
+        Debug.Assert(float.IsFinite(def.safetyFactor) && def.safetyFactor >= 0);
         Debug.Assert(float.IsFinite(def.gravityScale));
         World world = worldId.index1; Debug.Assert(!world.locked); if (world.locked) return new();
         bool isAwake = (def.isAwake || !def.enableSleep) && def.isEnabled;
@@ -97,6 +98,7 @@ public unsafe static class BodyAPI
         body.inertia = 0;
         body.sleepThreshold = def.sleepThreshold;
         body.sleepTime = 0;
+        body.safetyFactor = def.safetyFactor;
         body.type = def.type;
         body.flags = bodySim.flags;
         if (setId >= (int)_SetType.Awake) world.CreateIslandForBody(setId, body);
@@ -724,6 +726,16 @@ public unsafe static class BodyAPI
 
     ///<summary> Get the sleep threshold, usually in meters per second.</summary>
     public static float GetSleepThreshold(BodyID bodyId) => bodyId.world0.GetBodyFullID(bodyId).sleepThreshold;
+
+    /// <summary>Set the continuous collision safety factor. Smaller is safer but can lead to hitching. Recommended range [0.01, 0.5]. Non-dimensional.</summary>
+    public static void SetSafetyFactor(BodyID bodyId, float safetyFactor)
+    {
+        World world = World.GetWorldLocked(bodyId.world0); if (world == null) return;
+        world.GetBodyFullID(bodyId).safetyFactor = safetyFactor;
+    }
+
+    /// <summary>Get the continuous collision safety factor. Non-dimensional.</summary>
+    public static float GetSafetyFactor(BodyID bodyId) => bodyId.world0.GetBodyFullID(bodyId).safetyFactor;
 
     ///<summary> Returns true if this body is enabled</summary>
     public static bool IsEnabled(BodyID bodyId) => bodyId.world0.GetBodyFullID(bodyId).setIndex != (int)_SetType.Disabled;

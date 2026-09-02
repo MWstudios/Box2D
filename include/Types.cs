@@ -183,6 +183,12 @@ public struct BodyDef
     public float gravityScale = 1;
     /// <summary>Sleep speed threshold, default is 0.05 meters per second</summary>
     public float sleepThreshold = 0.05f * Box2D.LengthUnitsPerMeter;
+    /// <summary>Continuous collision safety factor. The solver only uses continuous collision if there is a
+    /// risk of tunneling. If the body is moving fast enough to risk tunneling then it is considered a "fast body".
+    /// This improves performance and prevents movement hitches. If a body moving N meter risks tunneling, then the
+    /// body will be considered fast if it moves more than a safetyFactor times N meters over one full time step.
+    /// Non-dimensional. Recommended range [0.01, 0.5]. Default is 0.5 for high performance with low tunneling risk.</summary>
+    public float safetyFactor = 0.5f;
     /// <summary>Optional body name for debugging. Up to 31 characters (excluding null termination)</summary>
     public string name = null;
     /// <summary>Use this to store application specific body data.</summary>
