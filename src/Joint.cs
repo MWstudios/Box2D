@@ -68,6 +68,7 @@ public interface IJoint
         draw.DrawLineFcn(pA, pB, color, draw.context);
         draw.DrawLineFcn(transformB.p, pB, color, draw.context);
     }
+    public void HashStateDeep(ref ulong hash);
     public IJoint Copy();
 }
 
@@ -167,7 +168,6 @@ public partial class World
             contactKey = bodyB.headContactKey;
             otherBodyId = bodyA.id;
         }
-        bool wakeBodies = false;
         while (contactKey != -1)
         {
             int contactId = contactKey >> 1;
@@ -176,7 +176,7 @@ public partial class World
             contactKey = edgeIndex == 1 ? contact.edge1.nextKey : contact.edge0.nextKey;
             int otherEdgeIndex = edgeIndex ^ 1;
             if ((otherEdgeIndex == 1 ? contact.edge1.bodyId : contact.edge0.bodyId) == otherBodyId)
-                DestroyContact(contact, wakeBodies);
+                DestroyContact(contact);
         }
         ValidateSolverSets();
     }
@@ -189,6 +189,7 @@ public partial class World
         Debug.Assert(def.bodyIdA != def.bodyIdB);
         Body bodyA = GetBodyFullID(def.bodyIdA);
         Body bodyB = GetBodyFullID(def.bodyIdB);
+        if (!def.collideConnected) DestroyContactsBetweeenBodies(bodyA, bodyB);
         int bodyIdA = bodyA.id, bodyIdB = bodyB.id;
         int maxSetindex = Math.Max(bodyA.setIndex, bodyB.setIndex);
         int jointId = jointIdPool.AllocId();
@@ -291,11 +292,10 @@ public partial class World
         Debug.Assert(jointSim.bodyIdA == bodyIdA);
         Debug.Assert(jointSim.bodyIdB == bodyIdB);
         if (joint.setIndex > (int)SetType.Disabled) LinkJoint(joint);
-        if (!def.collideConnected) DestroyContactsBetweeenBodies(bodyA, bodyB);
         ValidateSolverSets();
         return new() { joint = joint, jointSim = jointSim };
     }
-    public void DestroyJointInternal(Joint joint, bool wakeBodies)
+    public void DestroyJointInternal(Joint joint)
     {
         int jointId = joint.jointId;
         JointEdge edgeA = joint.edge0;
@@ -360,10 +360,7 @@ public partial class World
         joint.colorIndex = -1;
         joint.jointId = -1;
         jointIdPool.FreeId(jointId);
-        if (wakeBodies)
-        {
-            WakeBody(bodyA); WakeBody(bodyB);
-        }
+        WakeBody(bodyA); WakeBody(bodyB);
         ValidateSolverSets();
     }
     public Vector2 GetJointConstraintForce(Joint joint)

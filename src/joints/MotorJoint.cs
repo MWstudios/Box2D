@@ -221,5 +221,14 @@ public unsafe record class MotorJoint : IJoint
         draw.DrawPointFcn(pA, 8, HexColor.YellowGreen, draw.context);
         draw.DrawPointFcn(pB, 8, HexColor.Plum, draw.context);
     }
+    public void HashStateDeep(ref ulong hash)
+    {
+        hash = Box2D.FnvMixFloat(hash, linearVelocityImpulse.x);
+        hash = Box2D.FnvMixFloat(hash, linearVelocityImpulse.y);
+        hash = Box2D.FnvMixFloat(hash, angularVelocityImpulse);
+        hash = Box2D.FnvMixFloat(hash, linearSpringImpulse.x);
+        hash = Box2D.FnvMixFloat(hash, linearSpringImpulse.y);
+        hash = Box2D.FnvMixFloat(hash, angularSpringImpulse);
+    }
     public IJoint Copy() => new MotorJoint(this);
 }

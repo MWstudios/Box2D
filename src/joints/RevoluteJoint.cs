@@ -33,8 +33,6 @@ public unsafe record class RevoluteJoint : IJoint
     {
         Debug.Assert(def.internalValue == Box2D.SECRET_COOKIE);
         Debug.Assert(def.lowerAngle <= def.upperAngle);
-        Debug.Assert(def.lowerAngle >= -0.99f * MathF.PI);
-        Debug.Assert(def.upperAngle <= 0.99f * MathF.PI);
         World world = worldId.index1;
         Debug.Assert(!world.locked);
         if (world.locked) return new();
@@ -44,8 +42,8 @@ public unsafe record class RevoluteJoint : IJoint
             targetAngle = Math.Clamp(def.targetAngle, -MathF.PI, MathF.PI),
             hertz = def.hertz,
             dampingRatio = def.dampingRatio,
-            lowerAngle = def.lowerAngle,
-            upperAngle = def.upperAngle,
+            lowerAngle = def.lowerAngle = Math.Clamp(Math.Min(def.lowerAngle, def.upperAngle), -0.99f * MathF.PI, 0.99f * MathF.PI),
+            upperAngle = def.upperAngle = Math.Clamp(Math.Max(def.lowerAngle, def.upperAngle), -0.99f * MathF.PI, 0.99f * MathF.PI),
             maxMotorTorque = def.maxMotorTorque,
             motorSpeed = def.motorSpeed,
             enableSpring = def.enableSpring,
@@ -140,16 +138,16 @@ public unsafe record class RevoluteJoint : IJoint
             float bias = springSoftness.biasRate * jointAngleDelta;
             float massScale = springSoftness.massScale;
             float impulseScale = springSoftness.impulseScale;
-            float Cdot = wB - wA;
-            float impulse = -massScale * axialMass * (Cdot + bias) - impulseScale * springImpulse;
+            float cdot = wB - wA;
+            float impulse = -massScale * axialMass * (cdot + bias) - impulseScale * springImpulse;
             springImpulse += impulse;
             wA -= iA * impulse;
             wB += iB * impulse;
         }
         if (enableMotor && !fixedRotation)
         {
-            float Cdot = wB - wA - motorSpeed;
-            float impulse = -axialMass * Cdot;
+            float cdot = wB - wA - motorSpeed;
+            float impulse = -axialMass * cdot;
             float oldImpulse = motorImpulse;
             float maxImpulse = context.h * maxMotorTorque;
             motorImpulse = Math.Clamp(motorImpulse + impulse, -maxImpulse, maxImpulse);
@@ -170,9 +168,9 @@ public unsafe record class RevoluteJoint : IJoint
                     massScale = joint.constraintSoftness.massScale;
                     impulseScale = joint.constraintSoftness.impulseScale;
                 }
-                float Cdot = wB - wA;
+                float cdot = wB - wA;
                 float oldImpulse = lowerImpulse;
-                float impulse = -massScale * axialMass * (Cdot + bias) - impulseScale * oldImpulse;
+                float impulse = -massScale * axialMass * (cdot + bias) - impulseScale * oldImpulse;
                 lowerImpulse = Math.Max(oldImpulse + impulse, 0);
                 impulse = lowerImpulse - oldImpulse;
                 wA -= iA * impulse;
@@ -188,9 +186,9 @@ public unsafe record class RevoluteJoint : IJoint
                     massScale = joint.constraintSoftness.massScale;
                     impulseScale = joint.constraintSoftness.impulseScale;
                 }
-                float Cdot = wA - wB;
+                float cdot = wA - wB;
                 float oldImpulse = upperImpulse;
-                float impulse = -massScale * axialMass * (Cdot + bias) - impulseScale * oldImpulse;
+                float impulse = -massScale * axialMass * (cdot + bias) - impulseScale * oldImpulse;
                 upperImpulse = Math.Max(oldImpulse + impulse, 0);
                 impulse = upperImpulse - oldImpulse;
                 wA += iA * impulse;
@@ -199,7 +197,7 @@ public unsafe record class RevoluteJoint : IJoint
         }
         {
             Vector2 rA = stateA->deltaRotation * frameA.p, rB = stateB->deltaRotation * frameB.p;
-            Vector2 Cdot = vB + Vector2.CrossSV(wB, rB) - (vA + Vector2.CrossSV(wA, rA));
+            Vector2 cdot = vB + Vector2.CrossSV(wB, rB) - (vA + Vector2.CrossSV(wA, rA));
             Vector2 bias = Vector2.Zero;
             float massScale = 1, impulseScale = 0;
             if (useBias)
@@ -214,7 +212,7 @@ public unsafe record class RevoluteJoint : IJoint
                 new(0, mA + mB + rA.x * rA.x * iA + rB.x * rB.x * iB));
             K.cy.x = K.cx.y;
             K.cy.y = mA + mB + rA.x * rA.x * iA + rB.x * rB.x * iB;
-            Vector2 b = K.Solve(Cdot + bias);
+            Vector2 b = K.Solve(cdot + bias);
             Vector2 impulse = -massScale * b - impulseScale * linearImpulse;
             linearImpulse += impulse;
             vA = Vector2.MulSub(vA, mA, impulse);
@@ -237,7 +235,7 @@ public unsafe record class RevoluteJoint : IJoint
         Position pA, Position pB, float drawSize, HexColor color)
     {
         Debug.Assert(jointSim.type == JointType.Revolute);
-        WorldTransform frameA = transformA.Offset(jointSim.localFrameA), frameB = transformB.Offset(jointSim.localFrameB);
+        WorldTransform frameA = transformA.Mul(jointSim.localFrameA), frameB = transformB.Mul(jointSim.localFrameB);
         float radius = 0.25f * drawSize;
         draw.DrawCircleFcn(frameB.p, radius, HexColor.Gray, draw.context);
         Vector2 rx = new(radius, 0), r = frameA.q * rx;
@@ -266,6 +264,14 @@ public unsafe record class RevoluteJoint : IJoint
         draw.DrawLineFcn(transformA.p, frameA.p, HexColor.Gold, draw.context);
         draw.DrawLineFcn(frameA.p, frameB.p, HexColor.Gold, draw.context);
         draw.DrawLineFcn(transformB.p, frameB.p, HexColor.Gold, draw.context);
+    }
+    public void HashStateDeep(ref ulong hash)
+    {
+        fixed (Vector2* i = &linearImpulse) hash = Box2D.FnvMixBytes(hash, (nint)i, sizeof(Vector2));
+        hash = Box2D.FnvMixFloat(hash, springImpulse);
+        hash = Box2D.FnvMixFloat(hash, motorImpulse);
+        hash = Box2D.FnvMixFloat(hash, lowerImpulse);
+        hash = Box2D.FnvMixFloat(hash, upperImpulse);
     }
     public IJoint Copy() => new RevoluteJoint(this);
 }

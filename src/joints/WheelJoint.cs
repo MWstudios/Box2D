@@ -185,8 +185,8 @@ public unsafe record class WheelJoint : IJoint
         float a2 = Vector2.Cross(rB, axisA);
         if (enableMotor && !fixedRotation)
         {
-            float Cdot = wB - wA - motorSpeed;
-            float impulse = -motorMass * Cdot;
+            float cdot = wB - wA - motorSpeed;
+            float impulse = -motorMass * cdot;
             float oldImpulse = motorImpulse;
             float maxImpulse = context.h * maxMotorTorque;
             motorImpulse = Math.Clamp(motorImpulse + impulse, -maxImpulse, maxImpulse);
@@ -199,8 +199,8 @@ public unsafe record class WheelJoint : IJoint
             float bias = springSoftness.biasRate * translation;
             float massScale = springSoftness.massScale;
             float impulseScale = springSoftness.impulseScale;
-            float Cdot = Vector2.Dot(axisA, vB - vA) + a2 * wB - a1 * wA;
-            float impulse = -massScale * axialMass * (Cdot + bias) - impulseScale * springImpulse;
+            float cdot = Vector2.Dot(axisA, vB - vA) + a2 * wB - a1 * wA;
+            float impulse = -massScale * axialMass * (cdot + bias) - impulseScale * springImpulse;
             springImpulse += impulse;
             Vector2 P = impulse * axisA;
             float LA = impulse * a1, LB = impulse * a2;
@@ -221,8 +221,8 @@ public unsafe record class WheelJoint : IJoint
                     massScale = joint.constraintSoftness.massScale;
                     impulseScale = joint.constraintSoftness.impulseScale;
                 }
-                float Cdot = Vector2.Dot(axisA, vB - vA) + a2 * wB - a1 * wA;
-                float impulse = -massScale * axialMass * (Cdot + bias) - impulseScale * lowerImpulse;
+                float cdot = Vector2.Dot(axisA, vB - vA) + a2 * wB - a1 * wA;
+                float impulse = -massScale * axialMass * (cdot + bias) - impulseScale * lowerImpulse;
                 float oldImpulse = lowerImpulse;
                 lowerImpulse = Math.Max(oldImpulse + impulse, 0);
                 impulse = lowerImpulse - oldImpulse;
@@ -241,8 +241,8 @@ public unsafe record class WheelJoint : IJoint
                     massScale = joint.constraintSoftness.massScale;
                     impulseScale = joint.constraintSoftness.impulseScale;
                 }
-                float Cdot = Vector2.Dot(axisA, vA - vB) + a1 * wA - a2 * wB;
-                float impulse = -massScale * axialMass * (Cdot + bias) - impulseScale * upperImpulse;
+                float cdot = Vector2.Dot(axisA, vA - vB) + a1 * wA - a2 * wB;
+                float impulse = -massScale * axialMass * (cdot + bias) - impulseScale * upperImpulse;
                 float oldImpulse = upperImpulse;
                 upperImpulse = Math.Max(oldImpulse + impulse, 0);
                 impulse = upperImpulse - oldImpulse;
@@ -263,8 +263,8 @@ public unsafe record class WheelJoint : IJoint
             }
             float s1 = Vector2.Cross(d + rA, perpA);
             float s2 = Vector2.Cross(rB, perpA);
-            float Cdot = Vector2.Dot(axisA, vB - vA) + s2 * wB - s1 * wA;
-            float impulse = -massScale * perpMass * (Cdot + bias) - impulseScale * perpImpulse;
+            float cdot = Vector2.Dot(axisA, vB - vA) + s2 * wB - s1 * wA;
+            float impulse = -massScale * perpMass * (cdot + bias) - impulseScale * perpImpulse;
             perpImpulse += impulse;
             Vector2 P = impulse * perpA;
             float LA = impulse * s1, LB = impulse * s2;
@@ -286,7 +286,7 @@ public unsafe record class WheelJoint : IJoint
         Position pA, Position pB, float drawSize, HexColor color)
     {
         Debug.Assert(jointSim.type == JointType.Wheel);
-        WorldTransform frameA = transformA.Offset(jointSim.localFrameA), frameB = transformB.Offset(jointSim.localFrameB);
+        WorldTransform frameA = transformA.Mul(jointSim.localFrameA), frameB = transformB.Mul(jointSim.localFrameB);
         Vector2 axisA = frameA.q * new Vector2(1, 0);
         draw.DrawLineFcn(frameA.p, frameB.p, HexColor.Blue, draw.context);
         if (enableLimit)
@@ -301,6 +301,14 @@ public unsafe record class WheelJoint : IJoint
         else draw.DrawLineFcn(frameA.p - axisA, frameA.p + axisA, HexColor.Gray, draw.context);
         draw.DrawPointFcn(frameA.p, 5, HexColor.Gray, draw.context);
         draw.DrawPointFcn(frameB.p, 5, HexColor.DimGray, draw.context);
+    }
+    public void HashStateDeep(ref ulong hash)
+    {
+        hash = Box2D.FnvMixFloat(hash, perpImpulse);
+        hash = Box2D.FnvMixFloat(hash, motorImpulse);
+        hash = Box2D.FnvMixFloat(hash, springImpulse);
+        hash = Box2D.FnvMixFloat(hash, lowerImpulse);
+        hash = Box2D.FnvMixFloat(hash, upperImpulse);
     }
     public IJoint Copy() => new WheelJoint(this);
 }

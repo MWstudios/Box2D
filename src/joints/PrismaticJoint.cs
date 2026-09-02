@@ -172,8 +172,8 @@ public unsafe record class PrismaticJoint : IJoint
             float bias = springSoftness.biasRate * C;
             float massScale = springSoftness.massScale;
             float impulseScale = springSoftness.impulseScale;
-            float Cdot = Vector2.Dot(axisA, vB - vA) + a2 * wB - a1 * wA;
-            float deltaImpulse = -massScale * axialMass * (Cdot + bias) - impulseScale * springImpulse;
+            float cdot = Vector2.Dot(axisA, vB - vA) + a2 * wB - a1 * wA;
+            float deltaImpulse = -massScale * axialMass * (cdot + bias) - impulseScale * springImpulse;
             springImpulse += deltaImpulse;
             Vector2 P = deltaImpulse * axisA;
             float LA = deltaImpulse * a1, LB = deltaImpulse * a2;
@@ -182,8 +182,8 @@ public unsafe record class PrismaticJoint : IJoint
         }
         if (enableMotor)
         {
-            float Cdot = Vector2.Dot(axisA, vB - vA) + a2 * wB - a1 * wA;
-            float impulse = axialMass * (motorSpeed - Cdot);
+            float cdot = Vector2.Dot(axisA, vB - vA) + a2 * wB - a1 * wA;
+            float impulse = axialMass * (motorSpeed - cdot);
             float oldImpulse = motorImpulse;
             float maxImpulse = context.h * maxMotorForce;
             motorImpulse = Math.Clamp(motorImpulse + impulse, -maxImpulse, maxImpulse);
@@ -209,8 +209,8 @@ public unsafe record class PrismaticJoint : IJoint
                         impulseScale = joint.constraintSoftness.impulseScale;
                     }
                     float oldImpulse = lowerImpulse;
-                    float Cdot = Vector2.Dot(axisA, vB - vA) + a2 * wB - a1 * wA;
-                    float deltaImpulse = -axialMass * massScale * (Cdot + bias) - impulseScale * oldImpulse;
+                    float cdot = Vector2.Dot(axisA, vB - vA) + a2 * wB - a1 * wA;
+                    float deltaImpulse = -axialMass * massScale * (cdot + bias) - impulseScale * oldImpulse;
                     lowerImpulse = Math.Max(oldImpulse + deltaImpulse, 0);
                     deltaImpulse = lowerImpulse - oldImpulse;
                     Vector2 P = impulse * axisA;
@@ -233,8 +233,8 @@ public unsafe record class PrismaticJoint : IJoint
                         impulseScale = joint.constraintSoftness.impulseScale;
                     }
                     float oldImpulse = upperImpulse;
-                    float Cdot = Vector2.Dot(axisA, vA - vB) + a1 * wA - a2 * wB;
-                    float deltaImpulse = -axialMass * massScale * (Cdot + bias) - impulseScale * oldImpulse;
+                    float cdot = Vector2.Dot(axisA, vA - vB) + a1 * wA - a2 * wB;
+                    float deltaImpulse = -axialMass * massScale * (cdot + bias) - impulseScale * oldImpulse;
                     upperImpulse = Math.Max(oldImpulse + deltaImpulse, 0);
                     deltaImpulse = upperImpulse - oldImpulse;
                     Vector2 P = impulse * axisA;
@@ -249,7 +249,7 @@ public unsafe record class PrismaticJoint : IJoint
             Vector2 perpA = axisA.LeftPerp();
             float s1 = Vector2.Cross(d + rA, perpA);
             float s2 = Vector2.Cross(rB, perpA);
-            Vector2 Cdot = new(Vector2.Dot(perpA, vB - vA) + s2 * wB - s1 * wA, wB - wA);
+            Vector2 cdot = new(Vector2.Dot(perpA, vB - vA) + s2 * wB - s1 * wA, wB - wA);
             Vector2 bias = Vector2.Zero;
             float massScale = 1, impulseScale = 0;
             if (useBias)
@@ -264,7 +264,7 @@ public unsafe record class PrismaticJoint : IJoint
             float k22 = iA + iB;
             if (k22 == 0) k22 = 1;
             Mat22 K = new(new(k11, k12), new(k12, k22));
-            Vector2 b = K.Solve(Cdot + bias);
+            Vector2 b = K.Solve(cdot + bias);
             Vector2 deltaImpulse = -massScale * b - impulseScale * this.impulse;
             this.impulse += deltaImpulse;
             Vector2 P = deltaImpulse.x * perpA;
@@ -291,7 +291,7 @@ public unsafe record class PrismaticJoint : IJoint
         Position pA, Position pB, float drawScale, HexColor color)
     {
         Debug.Assert(jointSim.type == JointType.Prismatic);
-        WorldTransform frameA = transformA.Offset(jointSim.localFrameA), frameB = transformB.Offset(jointSim.localFrameB);
+        WorldTransform frameA = transformA.Mul(jointSim.localFrameA), frameB = transformB.Mul(jointSim.localFrameB);
         Vector2 axisA = frameA.q * new Vector2(1, 0);
         draw.DrawLineFcn(frameA.p, frameB.p, HexColor.DimGray, draw.context);
         if (enableLimit)
@@ -308,6 +308,14 @@ public unsafe record class PrismaticJoint : IJoint
         if (enableSpring) draw.DrawPointFcn(frameA.p + targetTranslation * axisA, 8, HexColor.Violet, draw.context);
         draw.DrawPointFcn(frameA.p, 5, HexColor.Gray, draw.context);
         draw.DrawPointFcn(frameB.p, 5, HexColor.Blue, draw.context);
+    }
+    public void HashStateDeep(ref ulong hash)
+    {
+        fixed (Vector2* i = &impulse) hash = Box2D.FnvMixBytes(hash, (nint)i, sizeof(Vector2));
+        hash = Box2D.FnvMixFloat(hash, springImpulse);
+        hash = Box2D.FnvMixFloat(hash, motorImpulse);
+        hash = Box2D.FnvMixFloat(hash, lowerImpulse);
+        hash = Box2D.FnvMixFloat(hash, upperImpulse);
     }
     public IJoint Copy() => new PrismaticJoint(this);
 }

@@ -125,7 +125,7 @@ public static class ChainAPI
         {
             int shapeId = chain.shapeIndices[i];
             Shape shape = world.shapes[shapeId];
-            world.DestroyShapeInternal(shape, body, true);
+            world.DestroyShapeInternal(shape, body);
         }
         world.chainIdPool.FreeId(chain.id);
         chain.id = -1;

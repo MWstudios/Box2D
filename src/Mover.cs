@@ -5,7 +5,7 @@ namespace Box2D;
 public static class Mover
 {
     /// <summary>Solves the position of a mover that satisfies the given collision planes.</summary>
-    /// <param name="targetDelta">the desired movement from the position used to generate the collision planes</param>
+    /// <param name="targetDelta">the desired translation from the position used to generate the collision planes</param>
     /// <param name="planes">the collision planes</param>
     /// <param name="count">the number of collision planes</param>
     public static PlaneSolverResult SolvePlanes(Vector2 targetDelta, CollisionPlane[] planes)
@@ -30,7 +30,7 @@ public static class Mover
             }
             if (totalPush < tolerance) break;
         }
-        return new() { translation = delta, iterationCount = iteration };
+        return new() { delta = delta, iterationCount = iteration };
     }
     /// <summary>Clips the velocity against the given collision planes. Planes with zero push or clipVelocity
     /// set to false are skipped.</summary>

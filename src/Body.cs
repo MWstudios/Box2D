@@ -36,8 +36,7 @@ public enum BodyFlags
     EnableContactRecycling = 0x1000,
     /// <summary>All lock flags</summary>
     AllLocks = LockLinearX | LockLinearY | LockAngularZ,
-    /// <summary>If this flag is set then the body has fixed rotation
-    /// todo use this to set the inverse inertia to zero</summary>
+    /// <summary>If this flag is set then the body has fixed rotation</summary>
     FixedRotation = LockAngularZ,
     /// <summary>These flags are transient per time step. These may be different across b2Body, b2BodySim, and b2BodyState.</summary>
     TransientFlags = IsFast | IsSpeedCapped | HadTimeOfImpact,
@@ -251,7 +250,7 @@ public unsafe partial class World
         body.islandId = -1;
         body.islandIndex = -1;
     }
-    public void DestroyBodyContacts(Body body, bool wakeBodies)
+    public void DestroyBodyContacts(Body body)
     {
         int edgeKey = body.headContactKey;
         while (edgeKey != -1)
@@ -260,7 +259,7 @@ public unsafe partial class World
             int edgeIndex = edgeKey & 1;
             Contact contact = contacts[contactId];
             edgeKey = edgeIndex == 1 ? contact.edge1.nextKey : contact.edge0.nextKey;
-            DestroyContact(contact, wakeBodies);
+            DestroyContact(contact);
         }
         ValidateSolverSets();
     }
@@ -351,7 +350,7 @@ public unsafe partial class World
             }
             masses = null;
             Debug.Assert(body.inertia >= 0);
-            if (body.inertia > 0) bodySim.invInertia = 1 / body.inertia;
+            if (body.inertia > 0 && !body.flags.HasFlag(BodyFlags.FixedRotation)) bodySim.invInertia = 1 / body.inertia;
             else { body.inertia = 0; bodySim.invInertia = 0; }
             Position oldCenter = bodySim.center;
             bodySim.localCenter = localCenter;

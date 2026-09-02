@@ -216,7 +216,7 @@ public partial class World
         ValidateSolverSets();
         return shape;
     }
-    public void DestroyShapeInternal(Shape shape, Body body, bool wakeBodies)
+    public void DestroyShapeInternal(Shape shape, Body body)
     {
         int shapeId = shape.id;
         if (shape.prevShapeId != -1)
@@ -240,7 +240,7 @@ public partial class World
             Contact contact = contacts[contactId];
             contactKey = edgeIndex == 1 ? contact.edge1.nextKey : contact.edge0.nextKey;
             if (contact.shapeIdA == shapeId || contact.shapeIdB == shapeId)
-                DestroyContact(contact, wakeBodies);
+                DestroyContact(contact);
         }
         if (shape.sensorIndex != -1)
         {
@@ -270,7 +270,7 @@ public partial class World
         shape.id = -1;
         ValidateSolverSets();
     }
-    public void ResetProxy(Shape shape, bool wakeBodies, bool destroyProxy)
+    public void ResetProxy(Shape shape, bool destroyProxy)
     {
         Body body = bodies[shape.bodyId];
         int shapeId = shape.id;
@@ -282,7 +282,7 @@ public partial class World
             Contact contact = contacts[contactId];
             contactKey = edgeIndex == 1 ? contact.edge1.nextKey : contact.edge0.nextKey;
             if (contact.shapeIdA == shapeId || contact.shapeIdB == shapeId)
-                DestroyContact(contact, wakeBodies);
+                DestroyContact(contact);
         }
         WorldTransform transform = GetBodyTransformQuick(body);
         if (shape.proxyKey != -1)

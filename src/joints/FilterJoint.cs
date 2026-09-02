@@ -14,5 +14,6 @@ public record class FilterJoint : IJoint
         pair.jointSim.joint = new FilterJoint();
         return new() { index1 = pair.jointSim.jointId + 1, world0 = world, generation = pair.joint.generation };
     }
+    public void HashStateDeep(ref ulong hash) { }
     public IJoint Copy() => new FilterJoint(this);
 }

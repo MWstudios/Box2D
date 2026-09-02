@@ -154,6 +154,7 @@ public partial class World
     public Capacity maxCapacity;
 
     public PreSolveFcn preSolveFcn;
+    public PreContinuousFcn preContinuousFcn;
     public object preSolveContext;
 
     public CustomFilterFcn customFilterFcn;
@@ -488,7 +489,7 @@ public partial class World
                 ContactFlags simFlags = contactSim.simFlags;
                 if (simFlags.HasFlag(ContactFlags.SimDisjoint))
                 {
-                    world.DestroyContact(contact, false);
+                    world.DestroyContact(contact);
                     contact = null;
                     contactSim = null;
                 }
@@ -837,6 +838,102 @@ public partial class World
         Debug.Assert(allocatedContactCount == contactIdPool.GetIdCount());
 #endif
     }
+    public unsafe ulong HashWorldStateDeep()
+    {
+        ulong hash = 14695981039346656037ul;
+        for (int i = 0; i < bodies.Count; i++)
+        {
+            Body body = bodies[i];
+            if (body.id != i) continue;
+            BodySim sim = GetBodySim(body);
+            hash = Box2D.FnvMixPosition(hash, sim.transform.p);
+            hash = Box2D.FnvMixFloat(hash, sim.transform.q.c);
+            hash = Box2D.FnvMixFloat(hash, sim.transform.q.s);
+            BodyState* state = GetBodyState(body);
+            if (state != null)
+            {
+                hash = Box2D.FnvMixFloat(hash, state->linearVelocity.x);
+                hash = Box2D.FnvMixFloat(hash, state->linearVelocity.y);
+                hash = Box2D.FnvMixFloat(hash, state->angularVelocity);
+            }
+            hash = Box2D.FnvMixInt(hash, body.setIndex);
+            hash = Box2D.FnvMixInt(hash, body.localIndex);
+        }
+        for (int i = 0; i < contacts.Count; i++)
+        {
+            Contact contact = contacts[i];
+            if (contact.contactId != i) continue;
+            hash = Box2D.FnvMixInt(hash, contact.setIndex);
+            hash = Box2D.FnvMixInt(hash, contact.colorIndex);
+            hash = Box2D.FnvMixInt(hash, contact.localIndex);
+            ContactSim sim = GetContactSim(contact);
+            if (sim != null)
+            {
+                ref Manifold m = ref sim.manifold;
+                hash = Box2D.FnvMixInt(hash, m.pointCount);
+                if (m.pointCount > 0)
+                {
+                    hash = Box2D.FnvMixFloat(hash, m.point0.normalImpulse);
+                    hash = Box2D.FnvMixFloat(hash, m.point0.tangentImpulse);
+                    hash = Box2D.FnvMixFloat(hash, m.point0.totalNormalImpulse);
+                }
+                if (m.pointCount > 1)
+                {
+                    hash = Box2D.FnvMixFloat(hash, m.point1.normalImpulse);
+                    hash = Box2D.FnvMixFloat(hash, m.point1.tangentImpulse);
+                    hash = Box2D.FnvMixFloat(hash, m.point1.totalNormalImpulse);
+                }
+            }
+        }
+        for (int i = 0; i < joints.Count; i++)
+        {
+            Joint joint = joints[i];
+            if (joint.jointId != i) continue;
+            hash = Box2D.FnvMixInt(hash, joint.setIndex);
+            hash = Box2D.FnvMixInt(hash, joint.colorIndex);
+            hash = Box2D.FnvMixInt(hash, joint.localIndex);
+            JointSim sim = GetJointSim(joint);
+            sim?.joint.HashStateDeep(ref hash);
+        }
+        hash = Box2D.FnvMixInt(hash, bodyIdPool.GetIdCapacity());
+        hash = Box2D.FnvMixInt(hash, bodyIdPool.GetIdCount());
+        hash = Box2D.FnvMixInt(hash, shapeIdPool.GetIdCapacity());
+        hash = Box2D.FnvMixInt(hash, shapeIdPool.GetIdCount());
+        hash = Box2D.FnvMixInt(hash, chainIdPool.GetIdCapacity());
+        hash = Box2D.FnvMixInt(hash, chainIdPool.GetIdCount());
+        hash = Box2D.FnvMixInt(hash, contactIdPool.GetIdCapacity());
+        hash = Box2D.FnvMixInt(hash, contactIdPool.GetIdCount());
+        hash = Box2D.FnvMixInt(hash, jointIdPool.GetIdCapacity());
+        hash = Box2D.FnvMixInt(hash, jointIdPool.GetIdCount());
+        hash = Box2D.FnvMixInt(hash, islandIdPool.GetIdCapacity());
+        hash = Box2D.FnvMixInt(hash, islandIdPool.GetIdCount());
+        hash = Box2D.FnvMixInt(hash, solverSetIdPool.GetIdCapacity());
+        hash = Box2D.FnvMixInt(hash, solverSetIdPool.GetIdCount());
+        hash = Box2D.FnvMixInt(hash, solverSets.Count);
+        return hash;
+    }
+}
+public static partial class Box2D
+{
+    const ulong SnapFnvPrime = 1099511628211ul;
+    public static unsafe ulong FnvMixPosition(ulong hash, Position p)
+    {
+#if BOX2D_DOUBLE_PRECISION
+        ulong bx = *(ulong*)&p.x, by = *(ulong*)&p.y;
+#else
+        uint bx = *(uint*)&p.x, by = *(uint*)&p.y;
+#endif
+        hash = (hash ^ bx) * SnapFnvPrime;
+        hash = (hash ^ by) * SnapFnvPrime;
+        return hash;
+    }
+    public static unsafe ulong FnvMixBytes(ulong hash, nint data, int n)
+    {
+        for (int i = 0; i < n; i++) hash = (hash ^ ((byte*)data)[i]) * SnapFnvPrime;
+        return hash;
+    }
+    public static unsafe ulong FnvMixFloat(ulong hash, float f) => (hash ^ *(uint*)&f) * SnapFnvPrime;
+    public static ulong FnvMixInt(ulong hash, int v) => (hash ^ (uint)v) * SnapFnvPrime;
 }
 public partial class DebugDraw
 {

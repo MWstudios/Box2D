@@ -61,9 +61,13 @@ public struct Vector2
     /// <summary>Convert a vector into a unit vector if possible, otherwise returns the zero vector.</summary>
     public Vector2 Normalize()
     {
-        float length = MathF.Sqrt(x * x + y * y);
-        if (length < Box2D.FLT_EPSILON) return new(0, 0);
-        float invLength = 1 / length; return new(x * invLength, y * invLength);
+        float lengthSquared = x * x + y * y;
+        if (lengthSquared > 1000 * Box2D.FLT_EPSILON)
+        {
+            float s = 1 / MathF.Sqrt(lengthSquared);
+            return new(x * s, y * s);
+        }
+        return new(0, 0);
     }
     /// <summary>Determines if the provided vector is normalized (norm(a) == 1).</summary>
     public bool IsNormalized() => Math.Abs(1 - Dot(this, this)) < 100 * Box2D.FLT_EPSILON;
@@ -71,9 +75,15 @@ public struct Vector2
     /// outputs the length.</summary>
     public Vector2 GetLengthAndNormalize(out float length)
     {
-        length = MathF.Sqrt(x * x + y * y);
-        if (length < Box2D.FLT_EPSILON) return new(0, 0);
-        float invLength = 1 / length; return new(x * invLength, y * invLength);
+        float lengthSquared = x * x + y * y;
+        if (lengthSquared > 1000 * Box2D.FLT_EPSILON)
+        {
+            length = MathF.Sqrt(lengthSquared);
+            float s = 1 / length;
+            return new(x * s, y * s);
+        }
+        length = 0;
+        return new(0, 0);
     }
     /// <summary>Get the length squared of this vector</summary>
     public float LengthSquared() => x * x + y * y;
@@ -161,13 +171,19 @@ public struct Rotation
     /// <summary>Transpose multiply two rotations: inv(a) * b<br/>
     /// This rotates a vector local in frame b into a vector local in frame a</summary>
     public static Rotation InvMulRot(Rotation a, Rotation b) => new(a.c * b.c + a.s * b.s, a.c * b.s - a.s * b.c);
-    /// <summary>Relative angle between a and b</summary>
+    /// <summary>Relative angle between a and b.</summary>
     public static float RelativeAngle(Rotation a, Rotation b) => MathF.Atan2(a.c * b.s - a.s * b.c, a.c * b.c + a.s * b.s);
     /// <summary>Convert any angle into the range [-pi, pi]</summary>
-    public static float UnwindAngle(float radians) => (radians + MathF.PI) % MathF.Tau - MathF.PI;
-    /// <summary>Rotate a vector</summary>
+    public static float UnwindAngle(float radians)
+    {
+        Debug.Assert(MathF.Abs(radians) < 1e4f);
+        float x = Math.Clamp(radians, -1e6f, 1e6f);
+        const double twoPi = 2 * Math.PI, roundToNearest = 6755399441055744;
+        return (float)(x - (x / twoPi + roundToNearest - roundToNearest) * twoPi);
+    }
+    /// <summary>Rotate a vector.</summary>
     public static Vector2 operator *(Rotation q, Vector2 v) => new(q.c * v.x - q.s * v.y, q.s * v.x + q.c * v.y);
-    /// <summary>Inverse rotate a vector</summary>
+    /// <summary>Inverse rotate a vector.</summary>
     public Vector2 InvRotateVector(Vector2 v) => new(c * v.x + s * v.y, -s * v.x + c * v.y);
     public static float RelativeCos(Rotation a, Rotation b) => a.c * b.c + a.s * b.s;
     public override string ToString() => $"(c={c}, s={s})";
@@ -180,9 +196,9 @@ public struct Transform
     public Transform(Vector2 p, Rotation q) { this.p = p; this.q = q; }
     /// <summary>Is this a valid transform? Not NaN or infinity. Rotation is normalized.</summary>
     public bool IsValid() => p.IsValid() && q.IsValid();
-    /// <summary>Transform a point (e.g. local space to world space)</summary>
+    /// <summary>Transform a point (e.g. local space to world space).</summary>
     public Vector2 TransformPoint(Vector2 p) => new(q.c * p.x - q.s * p.y + this.p.x, q.s * p.x + q.c * p.y + this.p.y);
-    /// <summary>Inverse transform a point (e.g. world space to local space)</summary>
+    /// <summary>Inverse transform a point (e.g. world space to local space).</summary>
     public Vector2 InvTransformPoint(Vector2 p) { float vx = p.x - this.p.x, vy = p.y - this.p.y; return new(q.c * vx + q.s * vy, -q.s * vx + q.c * vy); }
     /// <summary>Multiply two transforms. If the result is applied to a point p local to frame B,<br/>
     /// the transform would first convert p to a point local to frame A, then into a point<br/>
@@ -241,7 +257,7 @@ public struct WorldTransform
     /// <summary>Shift a world transform into the frame of a base position.</summary>
     public Transform ToRelativeTransform(Position base_) => new(p - base_, q);
     /// <summary>Convert a local transform B into world space using world transform A.</summary>
-    public WorldTransform Offset(Transform B) => new(p + q * B.p, q * B.q);
+    public WorldTransform Mul(Transform B) => new(p + q * B.p, q * B.q);
 }
 /// <summary>A 2-by-2 Matrix</summary>
 public struct Mat22

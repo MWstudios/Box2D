@@ -27,12 +27,17 @@ public delegate float RestitutionCallback(float restitutionA, ulong userMaterial
 /// If there is initial overlap the fraction and normal will be zero while the point is an arbitrary point in the overlap region.</summary>
 public class RayResult
 {
+    /// <summary>The shape hit.</summary>
     public ShapeID shapeID;
     public Position point;
     public Vector2 normal;
+    /// <summary>The fraction of the input ray.</summary>
     public float fraction;
+    /// <summary>The number of BVH nodes visited. Diagnostic.</summary>
     public int nodeVisits;
+    /// <summary>The number of BVH leaves visited. Diagnostic.</summary>
     public int leafVisits;
+    /// <summary>Did the ray hit? If false, all other data is invalid.</summary>
     public bool hit;
 }
 /// <summary>Optional world capacities that can be used to avoid run-time allocations.</summary>
@@ -335,7 +340,7 @@ public struct ShapeDef
     /// This is flag is ignored for dynamic and kinematic shapes which always invoke contact creation.</summary>
     public bool invokeContactCreation = true;
     /// <summary>Should the body update the mass properties when this shape is created. Default is true.
-    /// Warning: if this is true, you MUST call b2Body_ApplyMassFromShapes before simulating the world.</summary>
+    /// Warning: if this is false, you MUST call b2Body_ApplyMassFromShapes or b2Body_SetMassData before simulating the world.</summary>
     public bool updateBodyMass = true;
     /// <summary>Used internally to detect a valid definition. DO NOT SET.</summary>
     internal int internalValue = Box2D.SECRET_COOKIE;
@@ -426,7 +431,7 @@ public struct Counters
 /// want to get the type of a joint.</summary>
 public enum JointType
 {
-    Distance, Filter, Motor, Prismatic, Revolute, Weld, Wheel
+    Distance, Filter, Motor, Mover, Pogo, Prismatic, Revolute, Weld, Wheel
 }
 /// <summary>Base joint definition used by all joint types.
 /// The local frames are measured from the body's origin rather than the center of mass because:
@@ -494,6 +499,15 @@ public struct DistanceJointDef
     internal int internalValue = Box2D.SECRET_COOKIE;
     public DistanceJointDef() { }
 }
+/// <summary>A filter joint is used to disable collision between two specific bodies.</summary>
+public struct FilterJointDef
+{
+    /// <summary>Base joint definition</summary>
+    public JointDef base_ = new();
+    /// <summary>Used internally to detect a valid definition. DO NOT SET.</summary>
+    internal int internalValue = Box2D.SECRET_COOKIE;
+    public FilterJointDef() { }
+}
 /// <summary>A motor joint is used to control the relative motion between two bodies
 /// You may move local frame A to change the target transform.
 /// A typical usage is to control the movement of a dynamic body with respect to the ground.</summary>
@@ -527,14 +541,46 @@ public struct MotorJointDef
     internal int internalValue = Box2D.SECRET_COOKIE;
     public MotorJointDef() { }
 }
-/// <summary>A filter joint is used to disable collision between two specific bodies.</summary>
-public struct FilterJointDef
+/// <summary>A mover joint is used to move a dynamic character mover through velocity commands.
+/// The x and y directions are handled separately. Does not affect rotation.</summary>
+public struct MoverJointDef
 {
     /// <summary>Base joint definition</summary>
     public JointDef base_ = new();
+    /// <summary>The desired linear velocity</summary>
+    public Vector2 linearVelocity;
+    /// <summary>The maximum motor force in newtons</summary>
+    public Vector2 maxVelocityForce;
     /// <summary>Used internally to detect a valid definition. DO NOT SET.</summary>
     internal int internalValue = Box2D.SECRET_COOKIE;
-    public FilterJointDef() { }
+    public MoverJointDef() { }
+}
+/// <summary>Pogo joint definition</summary>
+public struct PogoJointDef
+{
+    /// <summary>Base joint definition</summary>
+    public JointDef base_ = new();
+    /// <summary>Normal vector at the contact</summary>
+    public Vector2 normal;
+    /// <summary>The spring stiffness Hertz, cycles per second</summary>
+    public float hertz;
+    /// <summary>The spring damping ratio, non-dimensional</summary>
+    public float dampingRatio;
+    /// <summary>Spring length.</summary>
+    public float restLength;
+    /// <summary>Maximum tension force. Controls how sticky the mover is to ground.</summary>
+    public float maxTensionForce;
+    /// <summary>Maximum compression force. How hard the pogo pushes the mover up from the ground.</summary>
+    public float maxCompressionForce;
+    /// <summary>The initial pogo internal impulse. The pogo is typically recreated every frame. This
+    /// gives a way to move the internal state forward for smoother spring behavior.</summary>
+    public float impulse;
+    /// <summary>The initial pogo internal velocity. The pogo is typically recreated every frame. This
+    /// gives a way to move the internal state forward for smoother spring behavior.</summary>
+    public float velocity;
+    /// <summary>Used internally to detect a valid definition. DO NOT SET.</summary>
+    internal int internalValue = Box2D.SECRET_COOKIE;
+    public PogoJointDef() { }
 }
 /// <summary>Prismatic joint definition
 /// Body B may slide along the x-axis in local frame A. Body B cannot rotate relative to body A.
@@ -768,9 +814,11 @@ public struct ContactEvents
 /// <remarks>If sleeping is disabled all dynamic and kinematic bodies will trigger move events.</remarks>
 public struct BodyMoveEvent
 {
+    /// <summary>The body user data.</summary>
     public object userData;
     public WorldTransform transform;
     public BodyID bodyId;
+    /// <summary>Did the body fall asleep this time step?</summary>
     public bool fellAsleep;
 }
 /// <summary>Body events are buffered in the Box2D world and are available
@@ -803,9 +851,14 @@ public struct JointEvents
 /// @see b2Shape_GetContactData() and b2Body_GetContactData()</summary>
 public struct ContactData
 {
+    /// <summary>The contact id. You may hold onto this to track a contact across time steps.
+    /// This id may become orphaned. Use b2Contact_IsValid before using it for other functions.</summary>
     public ContactID contactId;
+    /// <summary>The first shape id.</summary>
     public ShapeID shapeIdA;
+    /// <summary>The second shape id.</summary>
     public ShapeID shapeIdB;
+    /// <summary>The manifold copied from the contact.</summary>
     public Manifold manifold;
 }
 /// <summary>Prototype for a contact filter callback.
@@ -819,20 +872,31 @@ public struct ContactData
 /// <returns>false if you want to disable the collision</returns>
 /// <remarks>Do not attempt to modify the world inside this callback</remarks>
 public delegate bool CustomFilterFcn(ShapeID shapeIdA, ShapeID shapeIdB, object context);
-/// <summary>
-/// Prototype for a pre-solve callback.
-/// This is called after a contact is updated. This allows you to inspect a
-/// contact before it goes to the solver. If you are careful, you can modify the
-/// contact manifold (e.g. modify the normal).<br/>
+/// <summary>Prototype for a pre-solve callback.
+/// This is called after a contact manifold is updated. This allows you to inspect a
+/// manifold before it goes to the solver. If you are careful, you can modify the
+/// manifold (e.g. modify the normal). You can set the manifold point count to zero disable collision.<br/>
 /// Notes:<br/>
 /// - this function must be thread-safe<br/>
 /// - this is only called if the shape has enabled pre-solve events<br/>
 /// - this is called only for awake dynamic bodies<br/>
 /// - this is not called for sensors<br/>
-/// - the supplied manifold has impulse values from the previous step</summary>
-/// <returns>false if you want to disable the contact this step</returns>
+/// - the supplied manifold impulses are not reliable<br/></summary>
 /// <remarks>Do not attempt to modify the world inside this callback</remarks>
-public delegate bool PreSolveFcn(ShapeID shapeIdA, ShapeID shapeIdB, Position point, Vector2 normal, object context);
+public delegate bool PreSolveFcn(ShapeID shapeIdA, ShapeID shapeIdB, ref Manifold manifold, object context);
+/// <summary>Prototype for a pre-continuous callback.
+/// This is called when a time of impact event is computed in continuous collision. This function
+/// can be used to skip the event. Unlike the pre-solve callback, this only supplies the point and normal.
+/// At this stage of the solver the manifold may not exist or may be stale.<br/>
+/// Notes:<br/>
+/// - this function must be thread-safe<br/>
+/// - this is only called if the shape has enabled pre-solve events<br/>
+/// - this is called only for awake dynamic bodies<br/>
+/// - this is not called for sensors<br/>
+/// </summary>
+/// <returns>Return false if you want to disable the time of impact event.</returns>
+/// <remarks>Do not attempt to modify the world inside this callback</remarks>
+public delegate bool PreContinuousFcn(ShapeID shapeIdA, ShapeID shapeIdB, Position point, Vector2 normal, object context);
 /// <summary>Prototype callback for overlap queries.
 /// Called for each shape found in the query.
 /// @see b2World_OverlapABB</summary>

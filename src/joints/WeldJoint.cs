@@ -115,8 +115,8 @@ public unsafe record class WeldJoint : IJoint
                 massScale = angularSpring.massScale;
                 impulseScale = angularSpring.impulseScale;
             }
-            float Cdot = wB - wA;
-            float impulse = -massScale * axialMass * (Cdot + bias) - impulseScale * angularImpulse;
+            float cdot = wB - wA;
+            float impulse = -massScale * axialMass * (cdot + bias) - impulseScale * angularImpulse;
             angularImpulse += impulse;
             wA -= iA * impulse;
             wB += iB * impulse;
@@ -132,10 +132,10 @@ public unsafe record class WeldJoint : IJoint
                 massScale = linearSpring.massScale;
                 impulseScale = linearSpring.impulseScale;
             }
-            Vector2 Cdot = vB + Vector2.CrossSV(wB, rB) - (vA + Vector2.CrossSV(wA, rA));
+            Vector2 cdot = vB + Vector2.CrossSV(wB, rB) - (vA + Vector2.CrossSV(wA, rA));
             Mat22 K = new(new(mA + mB + rA.y * rA.y * iA + rB.y * rB.y * iB, -rA.y * rA.x * iA - rB.y * rB.x * iB),
                 new(0, mA + mB + rA.x * rA.x * iA + rB.x * rB.x * iB));
-            Vector2 b = K.Solve(Cdot + bias);
+            Vector2 b = K.Solve(cdot + bias);
             Vector2 impulse = new(-massScale * b.x - impulseScale * linearImpulse.x,
                 -massScale * b.y - impulseScale * linearImpulse.y);
             linearImpulse += impulse;
@@ -163,10 +163,15 @@ public unsafe record class WeldJoint : IJoint
         Position pA, Position pB, float drawSize, HexColor color)
     {
         Debug.Assert(jointSim.type == JointType.Weld);
-        WorldTransform frameA = transformA.Offset(jointSim.localFrameA), frameB = transformB.Offset(jointSim.localFrameB);
+        WorldTransform frameA = transformA.Mul(jointSim.localFrameA), frameB = transformB.Mul(jointSim.localFrameB);
         Polygon box = Geometry.MakeBox(0.25f * drawSize, 0.25f * drawSize);
         draw.DrawPolygonFcn(frameA, box.vertices, HexColor.DarkOrange, draw.context);
         draw.DrawPolygonFcn(frameB, box.vertices, HexColor.DarkCyan, draw.context);
+    }
+    public void HashStateDeep(ref ulong hash)
+    {
+        fixed (Vector2* i = &linearImpulse) hash = Box2D.FnvMixBytes(hash, (nint)i, sizeof(Vector2));
+        hash = Box2D.FnvMixFloat(hash, angularImpulse);
     }
     public IJoint Copy() => new WeldJoint(this);
 }

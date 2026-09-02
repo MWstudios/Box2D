@@ -338,8 +338,8 @@ public unsafe partial class World
                 if (0 < output.fraction && output.fraction < continuousContext.fraction)
                 { hitFraction = output.fraction; didHit = true; }
             }
-            if (didHit && (shape.enablePreSolveEvents || fastShape.enablePreSolveEvents) && world.preSolveFcn != null)
-                didHit = world.preSolveFcn(new() { index1 = shape.id + 1, world0 = world, generation = shape.generation },
+            if (didHit && (shape.enablePreSolveEvents || fastShape.enablePreSolveEvents) && world.preContinuousFcn != null)
+                didHit = world.preContinuousFcn(new() { index1 = shape.id + 1, world0 = world, generation = shape.generation },
                     new() { index1 = fastShape.id + 1, world0 = world, generation = fastShape.generation },
                     continuousContext.base_ + output.point, output.normal, world.preSolveContext);
             if (didHit)
@@ -838,17 +838,7 @@ public unsafe partial class World
         stepIndex++;
         SolverSet awakeSet = solverSets[(int)SetType.Awake];
         int awakeBodyCount = awakeSet.bodySims.Count;
-        if (awakeBodyCount == 0)
-        {
-            if (userTreeTask != null)
-            {
-                finishTaskFcn(userTreeTask, userTaskContext);
-                userTreeTask = null;
-                activeTaskCount--;
-            }
-            broadPhase.ValidateNoEnlarged();
-            return;
-        }
+        if (awakeBodyCount == 0) return;
         {
             Stopwatch setupTicks = new(); setupTicks.Start();
             Interlocked.Exchange(ref stepContext.bulletBodyCount, 0);

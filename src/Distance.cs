@@ -255,15 +255,19 @@ public static class Distance
             };
             if (simplex.count == 3)
             {
+                MakeSimplexCache(ref cache, ref simplex);
                 ComputeWitnessPoints(ref simplex, out Vector2 localPointA, out Vector2 localPointB);
+                output.distance = 0;
                 output.pointA = localPointA;
                 output.pointB = localPointB;
                 return output;
             }
 
-            if (Vector2.Dot(d, d) < Box2D.FLT_EPSILON * Box2D.FLT_EPSILON)
+            if (Vector2.Dot(d, d) < 1000 * 1.175494351e-38F)
             {
+                MakeSimplexCache(ref cache, ref simplex);
                 ComputeWitnessPoints(ref simplex, out Vector2 localPointA, out Vector2 localPointB);
+                output.distance = 0;
                 output.pointA = localPointA;
                 output.pointB = localPointB;
                 return output;

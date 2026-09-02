@@ -231,7 +231,7 @@ public partial class World
             contactSim.simFlags |= ContactFlags.SimEnablePreSolveEvents;
         }
     }
-    public void DestroyContact(Contact contact, bool wakeBodies)
+    public void DestroyContact(Contact contact)
     {
         ulong pairKey = B2_SHAPE_PAIR_KEY((ulong)contact.shapeIdA, (ulong)contact.shapeIdB);
         broadPhase.pairSet.Remove(pairKey);
@@ -311,7 +311,7 @@ public partial class World
         contact.colorIndex = -1;
         contact.localIndex = -1;
         contactIdPool.FreeId(contactId);
-        if (wakeBodies && touching)
+        if (touching)
         {
             WakeBody(bodyA); WakeBody(bodyB);
         }
@@ -375,24 +375,8 @@ public partial class World
         {
             ShapeID shapeIdA = new() { index1 = shapeA.id + 1, world0 = this, generation = shapeA.generation };
             ShapeID shapeIdB = new() { index1 = shapeB.id + 1, world0 = this, generation = shapeB.generation };
-            ref Manifold manifold = ref contactSim.manifold;
-            float bestSeparation = manifold.point0.separation;
-            Vector2 bestPoint = transformA.p + manifold.point0.anchorA;
-            for (int i = 1; i < manifold.pointCount; i++)
-            {
-                float separation = manifold.point1.separation;
-                if (separation < bestSeparation)
-                {
-                    bestSeparation = separation;
-                    bestPoint = transformA.p + manifold.point1.anchorA;
-                }
-            }
-            touching = preSolveFcn(shapeIdA, shapeIdB, bestPoint, manifold.normal, preSolveContext);
-            if (!touching)
-            {
-                pointCount = 0;
-                manifold.pointCount = 0;
-            }
+            preSolveFcn(shapeIdA, shapeIdB, ref contactSim.manifold, preSolveContext);
+            touching = contactSim.manifold.pointCount > 0;
         }
         if (!enableSpeculative && pointCount == 2)
         {

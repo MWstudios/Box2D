@@ -165,12 +165,12 @@ public unsafe record class DistanceJoint : IJoint
             if (hertz > 0)
             {
                 Vector2 vr = vB - vA + (Vector2.CrossSV(wB, rB) - Vector2.CrossSV(wA, rA));
-                float Cdot = Vector2.Dot(axis, vr);
+                float cdot = Vector2.Dot(axis, vr);
                 float C = length - this.length;
                 float bias = distanceSoftness.biasRate * C;
                 float m = distanceSoftness.massScale * axialMass;
                 float oldImpulse = this.impulse;
-                float impulse = -m * (Cdot + bias) - distanceSoftness.impulseScale * oldImpulse;
+                float impulse = -m * (cdot + bias) - distanceSoftness.impulseScale * oldImpulse;
                 float h = context.h;
                 this.impulse = Math.Clamp(this.impulse + impulse, lowerSpringForce * h, upperSpringForce * h);
                 impulse = this.impulse - oldImpulse;
@@ -181,8 +181,8 @@ public unsafe record class DistanceJoint : IJoint
             if (enableMotor)
             {
                 Vector2 vr = vB - vA + (Vector2.CrossSV(wB, rB) - Vector2.CrossSV(wA, rA));
-                float Cdot = Vector2.Dot(axis, vr);
-                float impulse = axialMass * (motorSpeed - Cdot);
+                float cdot = Vector2.Dot(axis, vr);
+                float impulse = axialMass * (motorSpeed - cdot);
                 float oldImpulse = motorImpulse;
                 float maxImpulse = context.h * maxMotorForce;
                 motorImpulse = Math.Clamp(motorImpulse + impulse, -maxImpulse, maxImpulse);
@@ -195,17 +195,17 @@ public unsafe record class DistanceJoint : IJoint
             {
                 {
                     Vector2 vr = vB - vA + (Vector2.CrossSV(wB, rB) - Vector2.CrossSV(wA, rA));
-                    float Cdot = Vector2.Dot(axis, vr);
+                    float cdot = Vector2.Dot(axis, vr);
                     float C = length - minLength;
-                    float bias = 0, massCoeff = 1, impulseCoeff = 0;
+                    float bias = 0, massScale = 1, impulseScale = 0;
                     if (C > 0) bias = C * context.inv_h;
                     else if (useBias)
                     {
                         bias = joint.constraintSoftness.biasRate * C;
-                        massCoeff = joint.constraintSoftness.massScale;
-                        impulseCoeff = joint.constraintSoftness.impulseScale;
+                        massScale = joint.constraintSoftness.massScale;
+                        impulseScale = joint.constraintSoftness.impulseScale;
                     }
-                    float impulse = -massCoeff * axialMass * (Cdot + bias) - impulseCoeff * lowerImpulse;
+                    float impulse = -massScale * axialMass * (cdot + bias) - impulseScale * lowerImpulse;
                     float newImpulse = Math.Max(0, lowerImpulse + impulse);
                     impulse = newImpulse - lowerImpulse;
                     lowerImpulse = newImpulse;
@@ -215,7 +215,7 @@ public unsafe record class DistanceJoint : IJoint
                 }
                 {
                     Vector2 vr = vA - vB + (Vector2.CrossSV(wA, rA) - Vector2.CrossSV(wB, rB));
-                    float Cdot = Vector2.Dot(axis, vr);
+                    float cdot = Vector2.Dot(axis, vr);
                     float C = maxLength - length;
                     float bias = 0, massScale = 1, impulseScale = 0;
                     if (C > 0) bias = C * context.inv_h;
@@ -225,7 +225,7 @@ public unsafe record class DistanceJoint : IJoint
                         massScale = joint.constraintSoftness.massScale;
                         impulseScale = joint.constraintSoftness.impulseScale;
                     }
-                    float impulse = -massScale * axialMass * (Cdot + bias) - impulseScale * upperImpulse;
+                    float impulse = -massScale * axialMass * (cdot + bias) - impulseScale * upperImpulse;
                     float newImpulse = Math.Max(0, upperImpulse + impulse);
                     impulse = newImpulse - upperImpulse;
                     upperImpulse = newImpulse;
@@ -238,7 +238,7 @@ public unsafe record class DistanceJoint : IJoint
         else
         {
             Vector2 vr = vB - vA + (Vector2.CrossSV(wB, rB) - Vector2.CrossSV(wA, rA));
-            float Cdot = Vector2.Dot(axis, vr);
+            float cdot = Vector2.Dot(axis, vr);
             float C = length - this.length;
             float bias = 0, massScale = 1, impulseScale = 0;
             if (useBias)
@@ -247,7 +247,7 @@ public unsafe record class DistanceJoint : IJoint
                 massScale = joint.constraintSoftness.massScale;
                 impulseScale = joint.constraintSoftness.impulseScale;
             }
-            float impulse = -massScale * axialMass * (Cdot + bias) - impulseScale * this.impulse;
+            float impulse = -massScale * axialMass * (cdot + bias) - impulseScale * this.impulse;
             this.impulse += impulse;
             Vector2 P = impulse * axis;
             vA = Vector2.MulSub(vA, mA, P); wA -= iA * Vector2.Cross(rA, P);
@@ -279,6 +279,13 @@ public unsafe record class DistanceJoint : IJoint
             Vector2 pRest = pA + length * axis;
             draw.DrawPointFcn(pRest, 4, HexColor.Blue, draw.context);
         }
+    }
+    public void HashStateDeep(ref ulong hash)
+    {
+        hash = Box2D.FnvMixFloat(hash, impulse);
+        hash = Box2D.FnvMixFloat(hash, lowerImpulse);
+        hash = Box2D.FnvMixFloat(hash, upperImpulse);
+        hash = Box2D.FnvMixFloat(hash, motorImpulse);
     }
     public IJoint Copy() => new DistanceJoint(this);
 }

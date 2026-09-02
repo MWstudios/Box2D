@@ -112,6 +112,7 @@ public static class WorldAPI
             world.finishTaskFcn(world.userTreeTask, world.userTaskContext);
             world.userTreeTask = null;
             world.activeTaskCount--;
+            world.broadPhase.ValidateNoEnlarged();
         }
         {
             pairTicks.Restart();
@@ -445,13 +446,12 @@ public static class WorldAPI
         Shape shape = world.shapes[shapeId];
         if (!Shape.ShouldQueryCollide(shape.filter, worldContext.filter)) return input.maxFraction;
         Body body = world.bodies[shape.bodyId];
-        WorldTransform xf = world.GetBodyTransformQuick(body);
-        RayCastInput localInput = input with { origin = worldContext.origin - xf.p };
-        CastOutput output = shape.RayCast(ref localInput, xf.ToRelativeTransform(xf.p));
+        RayCastInput localInput = input with { origin = Vector2.Zero };
+        CastOutput output = shape.RayCast(ref localInput, world.GetBodyTransformQuick(body).ToRelativeTransform(worldContext.origin));
         if (output.hit)
         {
             ShapeID id = new() { index1 = shapeId + 1, world0 = world, generation = shape.generation };
-            float fraction = worldContext.fcn(id, xf.p - output.point, output.normal, output.fraction, worldContext.userContext);
+            float fraction = worldContext.fcn(id, worldContext.origin - output.point, output.normal, output.fraction, worldContext.userContext);
             if (0 <= fraction && fraction <= 1) worldContext.fraction = fraction;
             return fraction;
         }
@@ -736,9 +736,13 @@ public static class WorldAPI
     public static void SetCustomFilterCallback(WorldID worldId, ref CustomFilterFcn fcn, object context)
     { worldId.index1.customFilterFcn = fcn; worldId.index1.customFilterContext = context; }
 
-    ///<summary> Register the pre-solve callback. This is optional.</summary>
-    public static void SetPreSolveCallback(WorldID worldId, ref PreSolveFcn fcn, object context)
-    { worldId.index1.preSolveFcn = fcn; worldId.index1.preSolveContext = context; }
+    ///<summary> Register the pre-solve and pre-continuous callback. This is optional.</summary>
+    public static void SetPreSolveCallback(WorldID worldId, ref PreSolveFcn preSolveFcn, ref PreContinuousFcn preContinuousFcn, object context)
+    {
+        worldId.index1.preSolveFcn = preSolveFcn;
+        worldId.index1.preContinuousFcn = preContinuousFcn;
+        worldId.index1.preSolveContext = context;
+    }
 
     ///<summary>Set the gravity vector for the entire world. Box2D has no concept of an up direction and this
     /// is left as a decision for the application. Usually in m/s^2.
@@ -1028,4 +1032,10 @@ public static class WorldAPI
 
     ///<summary> This is for internal testing</summary>
     public static void EnableSpeculative(WorldID worldId, bool flag) => worldId.index1.enableSpeculative = flag;
+    /// <summary>Compute a deterministic hash of the simulation state: body transforms and velocities, contact and
+    /// joint impulses, and the index bookkeeping that drives the solve. Reproduces exactly across worker
+    /// counts and ignores struct padding and free slots, so two worlds that simulate identically always
+    /// agree. Use this to detect desyncs (for example rollback resimulation) instead of comparing
+    /// serialized world bytes, which carry non-canonical padding.</summary>
+    public static ulong GetStateHash(WorldID worldId) => worldId.index1.HashWorldStateDeep();
 }

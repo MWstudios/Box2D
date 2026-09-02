@@ -6,13 +6,13 @@ namespace Box2D.API;
 public static class JointAPI
 {
     ///<summary> Destroy a joint</summary>
-    public static void DestroyJoint(JointID jointId, bool wakeAttached)
+    public static void DestroyJoint(JointID jointId)
     {
         World world = jointId.world0;
         Debug.Assert(!world.locked);
         if (world.locked) return;
         Joint joint = world.GetJointFullID(jointId);
-        world.DestroyJointInternal(joint, wakeAttached);
+        world.DestroyJointInternal(joint);
     }
 
     ///<summary> Joint identifier validation. Provides validation for up to 64K allocations.</summary>
@@ -257,9 +257,6 @@ public static class JointAPI
         maxLength = Math.Clamp(maxLength, Box2D.LinearSlop, Box2D.Huge);
         joint.minLength = Math.Min(minLength, maxLength);
         joint.maxLength = Math.Max(minLength, maxLength);
-        joint.impulse = 0;
-        joint.lowerImpulse = 0;
-        joint.upperImpulse = 0;
     }
 
     ///<summary> Get the distance joint minimum length</summary>
@@ -320,7 +317,9 @@ public static class JointAPI
     ///<summary> Get the distance joint current motor force, usually in newtons</summary>
     public static float DistanceJoint_GetMotorForce(JointID jointId) =>
         ((DistanceJoint)GetJointSimCheckType(jointId, JointType.Distance).joint).motorImpulse * jointId.world0.inv_h;
-
+    /// <summary>Create a filter joint.
+    /// @see FilterJointDef for details</summary>
+    public static JointID CreateFilterJoint(WorldID worldId, ref FilterJointDef def) => FilterJoint.Create(worldId, ref def);
     ///<summary> Create a motor joint
     /// @see MotorJointDef for details</summary>
     public static JointID CreateMotorJoint(WorldID worldId, ref MotorJointDef def) => MotorJoint.Create(worldId, ref def);
@@ -405,9 +404,77 @@ public static class JointAPI
     public static float MotorJoint_GetMaxSpringTorque(JointID jointId) =>
         ((MotorJoint)GetJointSimCheckType(jointId, JointType.Motor).joint).maxSpringTorque;
 
-    ///<summary>Create a filter joint.
-    /// @see FilterJointDef for details</summary>
-    public static JointID CreateFilterJoint(WorldID worldId, ref FilterJointDef def) => FilterJoint.Create(worldId, ref def);
+    ///<summary>Create a mover joint.
+    /// @see MoverJointDef for details</summary>
+    public static JointID CreateMoverJoint(WorldID worldId, ref MoverJointDef def) => MoverJoint.Create(worldId, ref def);
+
+    /// <summary>Set the desired relative linear velocity in meters per second</summary>
+    public static void MoverJoint_SetLinearVelocity(JointID jointId, Vector2 velocity) =>
+        ((MoverJoint)GetJointSimCheckType(jointId, JointType.Mover).joint).linearVelocity = velocity;
+
+    /// <summary>Get the desired relative linear velocity in meters per second</summary>
+    public static Vector2 MoverJoint_GetLinearVelocity(JointID jointId) =>
+        ((MoverJoint)GetJointSimCheckType(jointId, JointType.Mover).joint).linearVelocity;
+
+    /// <summary>Set the motor joint maximum force, usually in newtons</summary>
+    public static void MoverJoint_SetMaxVelocityForce(JointID jointId, Vector2 maxForce) =>
+        ((MoverJoint)GetJointSimCheckType(jointId, JointType.Mover).joint).maxVelocityForce = maxForce;
+
+    /// <summary>Get the motor joint maximum force, usually in newtons</summary>
+    public static Vector2 MoverJoint_GetMaxVelocityForce(JointID jointId) =>
+        ((MoverJoint)GetJointSimCheckType(jointId, JointType.Mover).joint).maxVelocityForce;
+
+    /// <summary>Create a pog joint
+    /// @see PogoJointDef for details</summary>
+    public static JointID CreatePogoJoint(WorldID worldId, ref PogoJointDef def) => PogoJoint.Create(worldId, ref def);
+
+    /// <summary>Set the rest length of a pogo joint</summary>
+    /// <param name="jointId">The id for a pogo joint</param>
+    /// <param name="length">The new pogo joint length</param>
+    public static void PogoJoint_SetRestLength(JointID jointId, float length) =>
+        ((PogoJoint)GetJointSimCheckType(jointId, JointType.Pogo).joint).restLength = length;
+
+    /// <summary>Get the rest length of a pogo joint</summary>
+    public static float PogoJoint_GetRestLength(JointID jointId) =>
+        ((PogoJoint)GetJointSimCheckType(jointId, JointType.Pogo).joint).restLength;
+
+    /// <summary>Set the spring stiffness in Hertz</summary>
+    public static void PogoJoint_SetSpringHertz(JointID jointId, float hertz) =>
+        ((PogoJoint)GetJointSimCheckType(jointId, JointType.Pogo).joint).hertz = hertz;
+
+    /// <summary>Get the spring Hertz</summary>
+    public static float PogoJoint_GetSpringHertz(JointID jointId) =>
+        ((PogoJoint)GetJointSimCheckType(jointId, JointType.Pogo).joint).hertz;
+
+    /// <summary>Set the spring damping ratio, non-dimensional</summary>
+    public static void PogoJoint_SetSpringDampingRatio(JointID jointId, float ratio) =>
+        ((PogoJoint)GetJointSimCheckType(jointId, JointType.Pogo).joint).dampingRatio = ratio;
+
+    /// <summary>Get the spring damping ratio</summary>
+    public static float PogoJoint_GetSpringDampingRatio(JointID jointId) =>
+        ((PogoJoint)GetJointSimCheckType(jointId, JointType.Pogo).joint).dampingRatio;
+
+    /// <summary>Get the current length of the pogo.</summary>
+    public static float PogoJoint_GetLength(JointID jointId)
+    {
+        JointSim jointSim = GetJointSimCheckType(jointId, JointType.Pogo);
+        WorldTransform wxfA = jointId.world0.GetBodyTransform(jointSim.bodyIdA);
+        Transform transformA = wxfA.ToRelativeTransform(wxfA.p);
+        Transform transformB = jointId.world0.GetBodyTransform(jointSim.bodyIdB).ToRelativeTransform(wxfA.p);
+        Vector2 axis = transformB.q * (jointSim.localFrameB.q * PogoJoint.Axis);
+        Vector2 pA = transformA.TransformPoint(jointSim.localFrameA.p);
+        Vector2 pB = transformB.TransformPoint(jointSim.localFrameB.p);
+        Vector2 d = pB - pA;
+        return Vector2.Dot(d, axis);
+    }
+
+    /// <summary>Get the internal pogo velocity.</summary>
+    public static float PogoJoint_GetVelocity(JointID jointId) =>
+        ((PogoJoint)GetJointSimCheckType(jointId, JointType.Pogo).joint).velocity;
+
+    /// <summary>Get the internal pogo impulse.</summary>
+    public static float PogoJoint_GetImpulse(JointID jointId) =>
+        ((PogoJoint)GetJointSimCheckType(jointId, JointType.Pogo).joint).impulse;
 
     ///<summary>Create a prismatic (slider) joint.
     /// @see PrismaticJointDef for details</summary>
@@ -474,12 +541,8 @@ public static class JointAPI
     {
         Debug.Assert(lower <= upper);
         PrismaticJoint joint = (PrismaticJoint)GetJointSimCheckType(jointId, JointType.Prismatic).joint;
-        if (lower != joint.lowerTranslation || upper != joint.upperTranslation)
-        {
-            joint.lowerTranslation = Math.Min(lower, upper);
-            joint.upperTranslation = Math.Max(lower, upper);
-            joint.lowerImpulse = 0; joint.upperImpulse = 0;
-        }
+        joint.lowerTranslation = Math.Min(lower, upper);
+        joint.upperTranslation = Math.Max(lower, upper);
     }
 
     ///<summary> Enable/disable a prismatic joint motor</summary>
@@ -626,14 +689,9 @@ public static class JointAPI
     public static void RevoluteJoint_SetLimits(JointID jointId, float lower, float upper)
     {
         Debug.Assert(lower <= upper);
-        Debug.Assert(lower >= -0.99f * MathF.PI);
-        Debug.Assert(upper <= 0.99f * MathF.PI);
         RevoluteJoint joint = (RevoluteJoint)GetJointSimCheckType(jointId, JointType.Revolute).joint;
-        if (lower != joint.lowerAngle || upper != joint.upperAngle)
-        {
-            joint.lowerAngle = Math.Min(lower, upper); joint.upperAngle = Math.Max(lower, upper);
-            joint.lowerImpulse = 0; joint.upperImpulse = 0;
-        }
+        joint.lowerAngle = Math.Clamp(Math.Min(lower, upper), -0.99f * MathF.PI, 0.99f * MathF.PI);
+        joint.upperAngle = Math.Clamp(Math.Max(lower, upper), -0.99f * MathF.PI, 0.99f * MathF.PI);
     }
 
     ///<summary> Enable/disable a revolute joint motor</summary>
@@ -770,13 +828,8 @@ public static class JointAPI
     {
         Debug.Assert(lower <= upper);
         WheelJoint joint = (WheelJoint)GetJointSimCheckType(jointId, JointType.Wheel).joint;
-        if (lower != joint.lowerTranslation || upper != joint.upperTranslation)
-        {
-            joint.lowerTranslation = Math.Min(lower, upper);
-            joint.upperTranslation = Math.Max(lower, upper);
-            joint.lowerImpulse = 0;
-            joint.upperImpulse = 0;
-        }
+        joint.lowerTranslation = Math.Min(lower, upper);
+        joint.upperTranslation = Math.Max(lower, upper);
     }
 
     ///<summary> Enable/disable the wheel joint motor</summary>

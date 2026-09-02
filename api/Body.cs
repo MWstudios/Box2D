@@ -117,9 +117,9 @@ public unsafe static class BodyAPI
             int edgeIndex = edgeKey & 1;
             Joint joint = world.joints[jointId];
             edgeKey = edgeIndex == 1 ? joint.edge1.nextKey : joint.edge0.nextKey;
-            world.DestroyJointInternal(joint, true);
+            world.DestroyJointInternal(joint);
         }
-        world.DestroyBodyContacts(body, true);
+        world.DestroyBodyContacts(body);
         int shapeId = body.headShapeId;
         while (shapeId != -1)
         {
@@ -184,7 +184,7 @@ public unsafe static class BodyAPI
             world.UpdateBodyMassData(body);
             return;
         }
-        world.DestroyBodyContacts(body, false);
+        world.DestroyBodyContacts(body);
         world.WakeBody(body);
         SolverSet staticSet = world.solverSets[(int)_SetType.Static];
         int jointKey = body.headJointKey;
@@ -570,7 +570,9 @@ public unsafe static class BodyAPI
 
     ///<summary>Override the body's mass properties. Normally this is computed automatically using the
     /// shape geometry and density. This information is lost if a shape is added or removed or if the
-    /// body type changes.</summary>
+    /// body type changes.
+    /// If motion locks are used to fix rotation then the rotational inertia value is ignored and
+    /// rotational inertia remains fixed at zero.</summary>
     public static void SetMassData(BodyID bodyId, MassData massData)
     {
         Debug.Assert(float.IsFinite(massData.mass) && massData.mass >= 0);
@@ -587,6 +589,23 @@ public unsafe static class BodyAPI
         bodySim.center0 = center;
         bodySim.invMass = body.mass > 0 ? 1 / body.mass : 0;
         bodySim.invInertia = body.inertia > 0 ? 1 / body.inertia : 0;
+        bodySim.minExtent = Box2D.Huge;
+        bodySim.maxExtent = 0;
+        int shapeId = body.headShapeId;
+        while (shapeId != -1)
+        {
+            Shape s = world.shapes[shapeId];
+            ShapeExtent extent = s.ComputeExtent(massData.center);
+            bodySim.minExtent = Math.Min(bodySim.minExtent, extent.minExtent);
+            bodySim.maxExtent = Math.Max(bodySim.maxExtent, extent.maxExtent);
+            shapeId = s.nextShapeId;
+        }
+        if (body.flags.HasFlag(BodyFlags.FixedRotation))
+        {
+            body.inertia = 0;
+            bodySim.invInertia = 0;
+        }
+        body.flags &= ~BodyFlags.DirtyMass;
     }
 
     ///<summary> Get the mass data for a body</summary>
@@ -715,7 +734,7 @@ public unsafe static class BodyAPI
         World world = World.GetWorldLocked(bodyId.world0); if (world == null) return;
         Body body = world.GetBodyFullID(bodyId);
         if (body.setIndex == (int)_SetType.Disabled) return;
-        world.DestroyBodyContacts(body, true);
+        world.DestroyBodyContacts(body);
         SolverSet set = world.solverSets[body.setIndex];
         SolverSet disabledSet = world.solverSets[(int)_SetType.Disabled];
         int jointKey = body.headJointKey;
@@ -784,7 +803,8 @@ public unsafe static class BodyAPI
         world.ValidateSolverSets();
     }
 
-    ///<summary> Set the motion locks on this body.</summary>
+    ///<summary> Set the motion locks on this body. This causes mass properties to be recomputed because
+    ///fixed rotation sets the rotational inertia to zero.</summary>
     public static void SetMotionLocks(BodyID bodyId, MotionLocks locks)
     {
         World world = World.GetWorldLocked(bodyId.world0); if (world == null) return;
@@ -804,6 +824,7 @@ public unsafe static class BodyAPI
                 state->linearVelocity = new(locks.linearX ? 0 : state->linearVelocity.x, locks.linearY ? 0 : state->linearVelocity.y);
                 state->angularVelocity = locks.angularZ ? 0 : state->angularVelocity;
             }
+            world.UpdateBodyMassData(body);
         }
     }
 

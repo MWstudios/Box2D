@@ -79,7 +79,7 @@ public static class ShapeAPI
             return;
         }
         Body body = world.bodies[shape.bodyId];
-        world.DestroyShapeInternal(shape, body, true);
+        world.DestroyShapeInternal(shape, body);
         if (updateBodyMass) world.UpdateBodyMassData(body);
     }
 
@@ -190,7 +190,7 @@ public static class ShapeAPI
             filter.groupIndex == shape.filter.groupIndex) return;
         bool destroyProxy = filter.categoryBits != shape.filter.categoryBits;
         shape.filter = filter;
-        world.ResetProxy(shape, true, destroyProxy);
+        world.ResetProxy(shape, destroyProxy);
     }
 
     ///<summary>Enable sensor events for this shape.
@@ -317,7 +317,7 @@ public static class ShapeAPI
         Shape shape = world.GetShape(shapeId);
         shape.shape = circle; shape.type = ShapeType.Circle;
         shape.aabbMargin = shape.ComputeMargin();
-        world.ResetProxy(shape, true, true);
+        world.ResetProxy(shape, true);
     }
 
     ///<summary>Allows you to change a shape to be a capsule or update the current capsule.
@@ -330,7 +330,7 @@ public static class ShapeAPI
         Shape shape = world.GetShape(shapeId);
         shape.shape = capsule; shape.type = ShapeType.Capsule;
         shape.aabbMargin = shape.ComputeMargin();
-        world.ResetProxy(shape, true, true);
+        world.ResetProxy(shape, true);
     }
 
     ///<summary> Allows you to change a shape to be a segment or update the current segment.</summary>
@@ -340,7 +340,7 @@ public static class ShapeAPI
         Shape shape = world.GetShape(shapeId);
         shape.shape = segment; shape.type = ShapeType.Segment;
         shape.aabbMargin = shape.ComputeMargin();
-        world.ResetProxy(shape, true, true);
+        world.ResetProxy(shape, true);
     }
 
     ///<summary>Allows you to change a shape to be a polygon or update the current polygon.
@@ -352,7 +352,7 @@ public static class ShapeAPI
         Shape shape = world.GetShape(shapeId);
         shape.shape = polygon; shape.type = ShapeType.Polygon;
         shape.aabbMargin = shape.ComputeMargin();
-        world.ResetProxy(shape, true, true);
+        world.ResetProxy(shape, true);
     }
 
     /// <summary>Allows you to change a shape to be an orphaned chain segment or update the current chain
@@ -374,7 +374,7 @@ public static class ShapeAPI
         shape.shape = chainSegment with { chainId = -1, segment = chainSegment.segment with { } };
         shape.type = ShapeType.ChainSegment;
         shape.aabbMargin = shape.ComputeMargin();
-        world.ResetProxy(shape, true, true);
+        world.ResetProxy(shape, true);
     }
 
     ///<summary>Get the parent chain id if the shape type is a chain segment, otherwise
