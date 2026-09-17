@@ -64,9 +64,6 @@ public interface IJoint
     public void Draw(DebugDraw draw, JointSim jointSim, WorldTransform transformA, WorldTransform transformB,
         Position pA, Position pB, float drawSize, HexColor color)
     {
-        draw.DrawLineFcn(transformA.p, pA, color, draw.context);
-        draw.DrawLineFcn(pA, pB, color, draw.context);
-        draw.DrawLineFcn(transformB.p, pB, color, draw.context);
     }
     public void HashStateDeep(ref ulong hash);
     public IJoint Copy();

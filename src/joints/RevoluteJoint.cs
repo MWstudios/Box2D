@@ -261,9 +261,12 @@ public unsafe record class RevoluteJoint : IJoint
             Rotation q = frameA.q * new Rotation(targetAngle);
             draw.DrawLineFcn(frameB.p, frameB.p + q * rx, HexColor.Violet, draw.context);
         }
-        draw.DrawLineFcn(transformA.p, frameA.p, HexColor.Gold, draw.context);
         draw.DrawLineFcn(frameA.p, frameB.p, HexColor.Gold, draw.context);
-        draw.DrawLineFcn(transformB.p, frameB.p, HexColor.Gold, draw.context);
+        if (draw.drawJointExtras)
+        {
+            draw.DrawLineFcn(transformA.p, frameA.p, HexColor.Gold, draw.context);
+            draw.DrawLineFcn(transformB.p, frameB.p, HexColor.Gold, draw.context);
+        }
     }
     public void HashStateDeep(ref ulong hash)
     {

@@ -220,6 +220,7 @@ public unsafe record class MotorJoint : IJoint
     {
         draw.DrawPointFcn(pA, 8, HexColor.YellowGreen, draw.context);
         draw.DrawPointFcn(pB, 8, HexColor.Plum, draw.context);
+        if (draw.drawJointExtras) draw.DrawLineFcn(pA, pB, HexColor.LightGray, draw.context);
     }
     public void HashStateDeep(ref ulong hash)
     {

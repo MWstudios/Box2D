@@ -15,5 +15,12 @@ public record class FilterJoint : IJoint
         return new() { index1 = pair.jointSim.jointId + 1, world0 = world, generation = pair.joint.generation };
     }
     public void HashStateDeep(ref ulong hash) { }
+    public void Draw(DebugDraw draw, JointSim jointSim, WorldTransform transformA, WorldTransform transformB,
+        Position pA, Position pB, float drawScale, HexColor color)
+    {
+        draw.DrawPointFcn(pA, 8, HexColor.LightSkyBlue, draw.context);
+        draw.DrawPointFcn(pB, 8, HexColor.LightSkyBlue, draw.context);
+        if (draw.drawJointExtras) draw.DrawLineFcn(pA, pB, HexColor.Gold, draw.context);
+    }
     public IJoint Copy() => new FilterJoint(this);
 }
