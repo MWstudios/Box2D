@@ -182,9 +182,7 @@ public partial class World
     public bool enableSleep;
     public bool locked = false;
     public bool enableWarmStarting = true;
-    public bool enableContactSoftening;
     public bool enableContinuous;
-    public bool enableSpeculative = true;
     public bool inUse = true;
 
     public List<Particle.ParticleSystem> particleSystemList = new();
@@ -239,7 +237,6 @@ public partial class World
         if (def.frictionCallback != null) frictionCallback = def.frictionCallback;
         if (def.restitutionCallback != null) restitutionCallback = def.restitutionCallback;
         enableSleep = def.enableSleep;
-        enableContactSoftening = def.enableContactSoftening;
         enableContinuous = def.enableContinuous;
         userData = def.userData;
         if (def.WorkerCount > 0 && def.enqueueTask != null && def.finishTask != null)
@@ -295,7 +292,7 @@ public partial class World
         stack.Destroy();
         generation++;
     }
-    public static void CollideTask(int startIndex, int endIndex, int threadIndex, object context)
+    public static unsafe void CollideTask(int startIndex, int endIndex, int threadIndex, object context)
     {
         StepContext stepContext = (StepContext)context;
         World world = stepContext.world;
@@ -303,6 +300,7 @@ public partial class World
         var contactSims = stepContext.contactSims;
         List<Shape> shapes = world.shapes;
         List<Body> bodies = world.bodies;
+        BodyState* states = world.solverSets[(int)SetType.Awake].bodyStates.Data;
         Debug.Assert(startIndex < endIndex);
         float speculativeDistance = Box2D.SpeculativeDistance;
         float recycleDistanceNonTouching = Math.Min(world.contactRecycleDistance, speculativeDistance);
@@ -357,6 +355,22 @@ public partial class World
                             Vector2 rB = dqB * mp.anchorB;
                             Vector2 dp = dc + (rB - rA);
                             mp.separation = mp.baseSeparation + Vector2.Dot(dp, normal);
+                            mp.restitutionVelocity = mp.totalNormalImpulse > 0 && mp.normalVelocity < -world.restitutionThreshold ? -contactSim.restitution * mp.normalVelocity : 0;
+                            int indexA = contactSim.bodySimIndexA;
+                            Vector2 vrA = Vector2.Zero;
+                            if (indexA != -1)
+                            {
+                                ref BodyState stateA = ref states[indexA];
+                                vrA = stateA.linearVelocity + Vector2.CrossSV(stateA.angularVelocity, mp.anchorA);
+                            }
+                            int indexB = contactSim.bodySimIndexB;
+                            Vector2 vrB = Vector2.Zero;
+                            if (indexB != -1)
+                            {
+                                ref BodyState stateB = ref states[indexB];
+                                vrB = stateB.linearVelocity + Vector2.CrossSV(stateB.angularVelocity, mp.anchorB);
+                            }
+                            mp.normalVelocity = Vector2.Dot(contactSim.manifold.normal, vrB - vrA);
                             mp.persisted = true;
                             if (contactSim.manifold.pointCount > 1)
                             {
@@ -365,6 +379,22 @@ public partial class World
                                 rB = dqB * mp.anchorB;
                                 dp = dc + (rB - rA);
                                 mp.separation = mp.baseSeparation + Vector2.Dot(dp, normal);
+                                mp.restitutionVelocity = mp.totalNormalImpulse > 0 && mp.normalVelocity < -world.restitutionThreshold ? -contactSim.restitution * mp.normalVelocity : 0;
+                                indexA = contactSim.bodySimIndexA;
+                                vrA = Vector2.Zero;
+                                if (indexA != -1)
+                                {
+                                    ref BodyState stateA = ref states[indexA];
+                                    vrA = stateA.linearVelocity + Vector2.CrossSV(stateA.angularVelocity, mp.anchorA);
+                                }
+                                indexB = contactSim.bodySimIndexB;
+                                vrB = Vector2.Zero;
+                                if (indexB != -1)
+                                {
+                                    ref BodyState stateB = ref states[indexB];
+                                    vrB = stateB.linearVelocity + Vector2.CrossSV(stateB.angularVelocity, mp.anchorB);
+                                }
+                                mp.normalVelocity = Vector2.Dot(contactSim.manifold.normal, vrB - vrA);
                                 mp.persisted = true;
                             }
                         }
@@ -389,11 +419,45 @@ public partial class World
                     contactSim.simFlags |= ContactFlags.SimStoppedTouching;
                     taskContext.contactStateBitSet.SetBit(contactId);
                 }
-                if (contactSim.manifold.pointCount > 0)
+                if (touching) if (contactSim.manifold.pointCount > 0)
                 {
-                    contactSim.manifold.point0.baseSeparation = contactSim.manifold.point0.separation;
+                    ref ManifoldPoint mp = ref contactSim.manifold.point0;
+                    mp.baseSeparation = mp.separation;
+                    int indexA = contactSim.bodySimIndexA;
+                    Vector2 vrA = Vector2.Zero;
+                    if (indexA != -1)
+                    {
+                        ref BodyState stateA = ref states[indexA];
+                        vrA = stateA.linearVelocity + Vector2.CrossSV(stateA.angularVelocity, mp.anchorA);
+                    }
+                    int indexB = contactSim.bodySimIndexB;
+                    Vector2 vrB = Vector2.Zero;
+                    if (indexB != -1)
+                    {
+                        ref BodyState stateB = ref states[indexB];
+                        vrB = stateB.linearVelocity + Vector2.CrossSV(stateB.angularVelocity, mp.anchorB);
+                    }
+                    mp.normalVelocity = Vector2.Dot(contactSim.manifold.normal, vrB - vrA);
                     if (contactSim.manifold.pointCount > 1)
-                        contactSim.manifold.point1.baseSeparation = contactSim.manifold.point1.separation;
+                    {
+                        mp = ref contactSim.manifold.point1;
+                        mp.baseSeparation = mp.separation;
+                        indexA = contactSim.bodySimIndexA;
+                        vrA = Vector2.Zero;
+                        if (indexA != -1)
+                        {
+                            ref BodyState stateA = ref states[indexA];
+                            vrA = stateA.linearVelocity + Vector2.CrossSV(stateA.angularVelocity, mp.anchorA);
+                        }
+                        indexB = contactSim.bodySimIndexB;
+                        vrB = Vector2.Zero;
+                        if (indexB != -1)
+                        {
+                            ref BodyState stateB = ref states[indexB];
+                            vrB = stateB.linearVelocity + Vector2.CrossSV(stateB.angularVelocity, mp.anchorB);
+                        }
+                        mp.normalVelocity = Vector2.Dot(contactSim.manifold.normal, vrB - vrA);
+                    }
                 }
             }
         }

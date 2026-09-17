@@ -102,8 +102,6 @@ public struct WorldDef
     public bool enableSleep = true;
     /// <summary>Enable continuous collision</summary>
     public bool enableContinuous = true;
-    /// <summary>Contact softening when mass ratios are large. Experimental.</summary>
-    public bool enableContactSoftening = false;
     /// <summary>Number of workers for multithreading. Box2D performs best when using performance cores and
     /// accessing a single L3 cache (uniform memory). Efficiency cores and SMT provide
     /// little benefit and may even harm performance.</summary>
@@ -400,7 +398,6 @@ public class Profile
     public float solveImpulses;
     public float integratePositions;
     public float relaxImpulses;
-    public float applyRestitution;
     public float storeImpulses;
     public float splitIslands;
     public float transforms;

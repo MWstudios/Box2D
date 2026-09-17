@@ -1,6 +1,6 @@
 # Box2D 3 + LiquidFun in C#
 
-This is a near complete port of [Box2D 3](https://github.com/erincatto/box2d) (as of commit [617d32a](https://github.com/erincatto/box2d/commit/617d32ab02570930625bbcb8479f54be9bf8d045))
+This is a near complete port of [Box2D 3](https://github.com/erincatto/box2d) (as of commit [0217969](https://github.com/erincatto/box2d/commit/02179697fd8a9e84b613020eb6ec56441408ae8d))
 and [LiquidFun](https://github.com/google/liquidfun) into C#. Testing macros such as B2_VALIDATE, samples and other benchmarks are not included.
 
 This port also does not mean that porting to other languages (Java, Python) is now easier. Not everything could be replicated in purely managed environment; some pointer logic from C and native memory management is still left in the code.
@@ -23,4 +23,4 @@ There is also a bug where particles can get stuck in bodies and not move. I'm no
 
 # Building
 
-This project requires .NET 9 and [HPCSharp](https://github.com/DragonSpit/HPCSharp) on NuGet. If you do not want HPCSharp to be included, go to particle/ParticleSystem.cs and replace all sorting methods with normal sorting.
+This project requires .NET 10 and [HPCSharp](https://github.com/DragonSpit/HPCSharp) on NuGet. If you do not want HPCSharp to be included, go to particle/ParticleSystem.cs and replace all sorting methods with normal sorting.

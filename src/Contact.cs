@@ -124,6 +124,7 @@ public record class ContactSim
     public ContactFlags simFlags;
 
     public SimplexCache cache;
+    public static readonly ContactSim Zero = new();
 }
 public partial class World
 {
@@ -378,55 +379,43 @@ public partial class World
             preSolveFcn(shapeIdA, shapeIdB, ref contactSim.manifold, preSolveContext);
             touching = contactSim.manifold.pointCount > 0;
         }
-        if (!enableSpeculative && pointCount == 2)
-        {
-            if (contactSim.manifold.point0.separation > 1.5f * Box2D.LinearSlop)
-            {
-                contactSim.manifold.point0 = contactSim.manifold.point1;
-                contactSim.manifold.pointCount = 1;
-            }
-            else if (contactSim.manifold.point1.separation > 1.5f * Box2D.LinearSlop)
-            {
-                contactSim.manifold.pointCount = 1;
-            }
-            pointCount = contactSim.manifold.pointCount;
-        }
         if (touching && (shapeA.enableHitEvents || shapeB.enableHitEvents))
         {
             contactSim.simFlags |= ContactFlags.SimEnableHitEvent;
         }
         else contactSim.simFlags &= ~ContactFlags.SimEnableHitEvent;
         if (pointCount > 0)
-            contactSim.manifold.rollingImpulse = oldManifold.rollingImpulse;
-
-        int unmatchedCount = 0;
-        for (int i = 0; i < pointCount; i++)
         {
-            ref ManifoldPoint mp2 = ref contactSim.manifold.point0;
-            if (i == 1) mp2 = ref contactSim.manifold.point1;
-            mp2.anchorA -= centerOffsetA;
-            mp2.anchorB -= centerOffsetB;
-            mp2.tangentImpulse = 0;
-            mp2.normalImpulse = 0;
-            mp2.totalNormalImpulse = 0;
-            mp2.normalVelocity = 0;
-            mp2.persisted = false;
-            ushort id2 = mp2.id;
-            for (int j = 0; j < oldManifold.pointCount; j++)
+            contactSim.manifold.rollingImpulse = oldManifold.rollingImpulse;
+            int unmatchedCount = 0;
+            for (int i = 0; i < pointCount; i++)
             {
-                ref ManifoldPoint mp1 = ref oldManifold.point0;
-                if (j == 1) mp1 = ref oldManifold.point1;
-                if (mp1.id == id2)
+                ref ManifoldPoint mp2 = ref contactSim.manifold.point0;
+                if (i == 1) mp2 = ref contactSim.manifold.point1;
+                mp2.anchorA -= centerOffsetA;
+                mp2.anchorB -= centerOffsetB;
+                mp2.tangentImpulse = 0;
+                mp2.normalImpulse = 0;
+                mp2.totalNormalImpulse = 0;
+                mp2.normalVelocity = 0;
+                mp2.persisted = false;
+                ushort id2 = mp2.id;
+                for (int j = 0; j < oldManifold.pointCount; j++)
                 {
-                    mp2.normalImpulse = mp1.normalImpulse;
-                    mp2.tangentImpulse = mp1.tangentImpulse;
-                    mp2.persisted = true;
-                    mp1.normalImpulse = 0;
-                    mp1.tangentImpulse = 0;
-                    break;
+                    ref ManifoldPoint mp1 = ref oldManifold.point0;
+                    if (j == 1) mp1 = ref oldManifold.point1;
+                    if (mp1.id == id2)
+                    {
+                        mp2.normalImpulse = mp1.normalImpulse;
+                        mp2.tangentImpulse = mp1.tangentImpulse;
+                        if (mp1.totalNormalImpulse > 0 && mp1.normalVelocity < -restitutionThreshold)
+                            mp2.restitutionVelocity = -contactSim.restitution * mp1.normalVelocity;
+                        mp2.persisted = true;
+                        break;
+                    }
                 }
+                unmatchedCount += mp2.persisted ? 0 : 1;
             }
-            unmatchedCount += mp2.persisted ? 0 : 1;
         }
         if (touching) contactSim.simFlags |= ContactFlags.SimTouching;
         else contactSim.simFlags &= ~ContactFlags.SimTouching;

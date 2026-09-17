@@ -29,7 +29,7 @@ public struct Softness
 public enum SolverStageType
 {
     PrepareJoints, PrepareContacts, IntegrateVelocities,
-    WarmStart, Solve, IntegratePositions, Relax, Restitution, StoreImpulses
+    WarmStart, Solve, IntegratePositions, Relax, StoreImpulses
 }
 public enum SolverBlockType : byte
 {
@@ -350,7 +350,7 @@ public unsafe partial class World
         }
         return true;
     }
-    public void SolveContinuous(int bodySimIndex, TaskContext taskContext)
+    public void SolveContinuous(int bodySimIndex, TaskContext taskContext, float dt)
     {
         SolverSet awakeSet = solverSets[(int)SetType.Awake];
         BodySim fastBodySim = awakeSet.bodySims[bodySimIndex];
@@ -394,6 +394,8 @@ public unsafe partial class World
             fastBodySim.center = base_ + c;
             fastBodySim.rotation0 = q;
             fastBodySim.center0 = fastBodySim.center;
+            ref BodyState fastBodyState = ref awakeSet.bodyStates.Data[bodySimIndex];
+            fastBodyState.linearVelocity -= (1 - context.fraction) * dt * fastBodySim.gravityScale * gravity;
             ref BodyMoveEvent event_ = ref System.Runtime.InteropServices.CollectionsMarshal.AsSpan(bodyMoveEvents)[bodySimIndex];
             event_.transform = fastBodySim.transform;
             shapeId = fastBody.headShapeId;
@@ -484,7 +486,7 @@ public unsafe partial class World
                     body.flags |= BodyFlags.IsFast;
                     if (sim.flags.HasFlag(BodyFlags.IsBullet))
                         stepContext.bulletBodies[Interlocked.Increment(ref stepContext.bulletBodyCount) - 1] = simIndex;
-                    else world.SolveContinuous(simIndex, taskContext);
+                    else world.SolveContinuous(simIndex, taskContext, stepContext.dt);
                 }
                 else
                 {
@@ -599,31 +601,28 @@ public unsafe partial class World
                 PrepareJointsTask(ref block, context);
                 break;
             case SolverStageType.PrepareContacts:
-                contactSolver.PrepareContactsTask(ref block, context);
+                contactSolver.PrepareContacts_Wide(ref block, context);
                 break;
             case SolverStageType.IntegrateVelocities:
                 IntegrateVelocitiesTask(ref block, context);
                 break;
             case SolverStageType.WarmStart:
-                if (block.blockType == SolverBlockType.GraphContact) contactSolver.WarmStartContactsTask(ref block, context);
+                if (block.blockType == SolverBlockType.GraphContact) contactSolver.WarmStartContacts_Wide(ref block, context);
                 else if (block.blockType == SolverBlockType.GraphJoint) WarmStartJointsTask(ref block, context, stage.colorIndex);
                 break;
             case SolverStageType.Solve:
-                if (block.blockType == SolverBlockType.GraphContact) contactSolver.SolveContactsTask(ref block, context, true);
+                if (block.blockType == SolverBlockType.GraphContact) contactSolver.PushContacts_Wide(ref block, context);
                 else if (block.blockType == SolverBlockType.GraphJoint) SolveJointsTask(ref block, context, stage.colorIndex, true, workerIndex);
                 break;
             case SolverStageType.IntegratePositions:
                 IntegratePositionsTask(ref block, context);
                 break;
             case SolverStageType.Relax:
-                if (block.blockType == SolverBlockType.GraphContact) contactSolver.SolveContactsTask(ref block, context, false);
+                if (block.blockType == SolverBlockType.GraphContact) contactSolver.SolveContacts_Wide(ref block, context);
                 else if (block.blockType == SolverBlockType.GraphJoint) SolveJointsTask(ref block, context, stage.colorIndex, false, workerIndex);
                 break;
-            case SolverStageType.Restitution:
-                if (block.blockType == SolverBlockType.GraphContact) contactSolver.ApplyRestitutionTask(ref block, context);
-                break;
             case SolverStageType.StoreImpulses:
-                contactSolver.StoreImpulsesTask(ref block, context, workerIndex);
+                contactSolver.StoreImpulses_Wide(ref block, context, workerIndex);
                 break;
             default:
                 break;
@@ -763,19 +762,6 @@ public unsafe partial class World
                 ticks.Restart();
             }
             stageIndex += 1 + context.activeColorCount + ITERATIONS * context.activeColorCount + 1 + RELAX_ITERATIONS * context.activeColorCount;
-            {
-                context.ApplyRestitution_Overflow();
-                int iterStageIndex = stageIndex;
-                for (int colorIndex = 0; colorIndex < context.activeColorCount; colorIndex++)
-                {
-                    syncBits = ((uint)graphSyncIndex << 16) | (uint)iterStageIndex;
-                    Debug.Assert(stages[iterStageIndex].type == SolverStageType.Restitution);
-                    ExecuteMainStage(stages[iterStageIndex], context, syncBits);
-                    iterStageIndex++;
-                }
-                stageIndex += context.activeColorCount;
-            }
-            profile.applyRestitution += (float)ticks.Elapsed.TotalMilliseconds;
             ticks.Restart();
             context.StoreImpulses_Overflow();
             syncBits = (contactSyncIndex << 16) | (uint)stageIndex;
@@ -815,7 +801,7 @@ public unsafe partial class World
         for (int i = startIndex; i < endIndex; i++)
         {
             int simIndex = stepContext.bulletBodies[i];
-            stepContext.world.SolveContinuous(simIndex, taskContext);
+            stepContext.world.SolveContinuous(simIndex, taskContext, stepContext.dt);
         }
     }
 
@@ -935,7 +921,6 @@ public unsafe partial class World
             stageCount += ITERATIONS * activeColorCount; // b2_stageSolve
             stageCount += 1; // b2_stageIntegratePositions
             stageCount += RELAX_ITERATIONS * activeColorCount;  // b2_stageRelax
-            stageCount += activeColorCount; // b2_stageRestitution
             stageCount += 1; // b2_stageStoreImpulses
             SolverStage[] stages = new SolverStage[stageCount];
             SyncBlock* bodyBlocks = (SyncBlock*)stack.Alloc(bodyDim.count * sizeof(SyncBlock), "body blocks"),
@@ -978,7 +963,6 @@ public unsafe partial class World
             InitColorStages(stages, ref stageIndex, SolverStageType.Solve, ITERATIONS, activeColorCount, solve_graphColorBlocks, solve_graphBlockCounts, solve_activeColorIndices);
             InitStage(stages, ref stageIndex, SolverStageType.IntegratePositions, bodyBlocks, bodyDim.count, byte.MaxValue);
             InitColorStages(stages, ref stageIndex, SolverStageType.Relax, RELAX_ITERATIONS, activeColorCount, solve_graphColorBlocks, solve_graphBlockCounts, solve_activeColorIndices);
-            InitColorStages(stages, ref stageIndex, SolverStageType.Restitution, 1, activeColorCount, solve_graphColorBlocks, solve_graphBlockCounts, solve_activeColorIndices);
             InitStage(stages, ref stageIndex, SolverStageType.StoreImpulses, contactBlocks, contactPrepareDim.count, byte.MaxValue);
             Debug.Assert(stageIndex == stageCount);
             Debug.Assert(workerCount <= Box2D.MaxWorkers);

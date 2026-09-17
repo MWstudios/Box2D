@@ -1013,5 +1013,14 @@ public unsafe static class BodyAPI
         while (shape.nextShapeId != -1) aabb = AABB.Union(aabb, world.shapes[shape.nextShapeId].aabb);
         return aabb;
     }
-
+    /// <summary>The minimum distance from any point on the body shapes to the center of mass.</summary>
+    public static float GetMinExtent(BodyID bodyId) => bodyId.world0.GetBodySim(bodyId.world0.GetBodyFullID(bodyId)).minExtent;
+    /// <summary>The maximum distance from any point on the body shapes to the center of mass.</summary>
+    public static float GetMaxExtent(BodyID bodyId) => bodyId.world0.GetBodySim(bodyId.world0.GetBodyFullID(bodyId)).maxExtent;
+    /// <summary>The maximum distance from any point on the body shapes to the body origin. Conservative.</summary>
+    public static float GetMaxExtentOrigin(BodyID bodyId)
+    {
+        BodySim bodySim = bodyId.world0.GetBodySim(bodyId.world0.GetBodyFullID(bodyId));
+        return bodySim.maxExtent + bodySim.localCenter.Length();
+    }
 }

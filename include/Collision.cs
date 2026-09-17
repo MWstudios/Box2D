@@ -957,12 +957,12 @@ public struct ManifoldPoint
     public Vector2 anchorB;
     /// <summary>The separation of the contact point, negative if penetrating</summary>
     public float separation;
-    /// <summary>Cached separation used for contact recycling</summary>
-    public float baseSeparation;
     /// <summary>The impulse along the manifold normal vector.</summary>
     public float normalImpulse;
     /// <summary>The friction impulse</summary>
     public float tangentImpulse;
+    /// <summary>Velocity for restitution. From the last time step.</summary>
+    public float restitutionVelocity;
     /// <summary>The total normal impulse applied across sub-stepping and restitution. This is important
     /// to identify speculative contact points that had an interaction in the time step.
     /// This includes the warm starting impulse, the sub-step delta impulse, and the restitution impulse.</summary>
@@ -970,6 +970,8 @@ public struct ManifoldPoint
     /// <summary>Relative normal velocity pre-solve. Used for hit events. If the normal impulse is
     /// zero then there was no hit. Negative means shapes are approaching.</summary>
     public float normalVelocity;
+    /// <summary>Cached separation used for contact recycling</summary>
+    public float baseSeparation;
     /// <summary>Uniquely identifies a contact point between two shapes</summary>
     public ushort id;
     /// <summary>Did this contact point exist the previous step?</summary>

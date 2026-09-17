@@ -1029,9 +1029,6 @@ public static class WorldAPI
         World world = worldId.index1; Debug.Assert(!world.locked); if (world.locked) return;
         world.broadPhase.trees[(int)SetType.Static].Rebuild(true);
     }
-
-    ///<summary> This is for internal testing</summary>
-    public static void EnableSpeculative(WorldID worldId, bool flag) => worldId.index1.enableSpeculative = flag;
     /// <summary>Compute a deterministic hash of the simulation state: body transforms and velocities, contact and
     /// joint impulses, and the index bookkeeping that drives the solve. Reproduces exactly across worker
     /// counts and ignores struct padding and free slots, so two worlds that simulate identically always
