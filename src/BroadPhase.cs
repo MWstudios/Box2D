@@ -260,6 +260,20 @@ public partial class World
         trees[(int)BodyType.Dynamic].Rebuild(false);
         trees[(int)BodyType.Kinematic].Rebuild(false);
     }
+    public void EnqueueTreeUpdate()
+    {
+        if (taskCount < Box2D.MaxTasks)
+        {
+            userTreeTask = enqueueTaskFcn(UpdateTreesTask, this, userTaskContext);
+            taskCount++;
+            activeTaskCount += userTreeTask == null ? 0 : 1;
+        }
+        else
+        {
+            userTreeTask = null;
+            UpdateTreesTask(this);
+        }
+    }
     public void UpdateBroadPhasePairs()
     {
         BroadPhase bp = broadPhase;
@@ -273,17 +287,7 @@ public partial class World
         Interlocked.Exchange(ref bp.movePairIndex, 0);
         int minRange = 64;
         ParallelFor(FindPairsTask, moveCount, minRange, this);
-        if (taskCount < Box2D.MaxTasks)
-        {
-            userTreeTask = enqueueTaskFcn(UpdateTreesTask, this, userTaskContext);
-            taskCount++;
-            activeTaskCount += userTreeTask == null ? 0 : 1;
-        }
-        else
-        {
-            userTreeTask = null;
-            UpdateTreesTask(this);
-        }
+        EnqueueTreeUpdate();
         for (int i = 0; i < moveCount; i++)
         {
             MoveResult result = bp.moveResults[i];
