@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Diagnostics;
 using System.Collections.Generic;
-using System.IO;
 
 namespace Box2D.API;
 
@@ -401,8 +400,7 @@ public static class WorldAPI
         {
             proxyA = worldContext.proxy,
             proxyB = shape.MakeDistanceProxy(),
-            transformA = Transform.Identity,
-            transformB = transform,
+            transform = transform,
             useRadii = true
         };
         SimplexCache cache = new();

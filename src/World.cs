@@ -284,7 +284,6 @@ public partial class World
             else
             {
                 Debug.Assert(chain.shapeIndices == null);
-                Debug.Assert(chain.materials == null);
             }
         }
         int setCapacity = solverSets.Count;

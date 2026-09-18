@@ -11,8 +11,9 @@ public static class ChainAPI
     public static ChainID CreateChain(BodyID bodyId, ref ChainDef def)
     {
         Debug.Assert(def.internalValue == Box2D.SECRET_COOKIE);
-        Debug.Assert(def.points.Length >= 4);
-        Debug.Assert(def.materials.Length == 1 || def.materials.Length == def.points.Length);
+        Debug.Assert(def.isLoop ? def.points.Length >= 3 : def.points.Length >= 2);
+        int segmentCount = def.isLoop ? def.points.Length : def.points.Length - 1;
+        Debug.Assert(def.materials.Length == 1 || def.materials.Length == segmentCount);
         World world = World.GetWorldLocked(bodyId.world0);
         if (world == null) return new();
         Body body = world.GetBodyFullID(bodyId);
@@ -24,18 +25,9 @@ public static class ChainAPI
         chainShape.id = chainId;
         chainShape.bodyId = body.id;
         chainShape.nextChainId = body.headChainId;
+        chainShape.segmentCount = segmentCount;
         chainShape.generation++;
         int materialCount = def.materials.Length;
-        chainShape.materials = new SurfaceMaterial[materialCount];
-        for (int i = 0; i < materialCount; i++)
-        {
-            ref SurfaceMaterial material = ref def.materials[i];
-            Debug.Assert(float.IsFinite(material.friction) && material.friction >= 0);
-            Debug.Assert(float.IsFinite(material.restitution) && material.restitution >= 0);
-            Debug.Assert(float.IsFinite(material.rollingResistance) && material.rollingResistance >= 0);
-            Debug.Assert(float.IsFinite(material.tangentSpeed));
-            chainShape.materials[i] = material;
-        }
         body.headChainId = chainId;
         ShapeDef shapeDef = new()
         {
@@ -46,57 +38,45 @@ public static class ChainAPI
             enableHitEvents = false
         };
         Vector2[] points = def.points;
-        int n = def.points.Length;
+        int n = segmentCount;
+        chainShape.shapeIndices = new int[n];
+        float tolSqr = Box2D.LinearSlop * Box2D.LinearSlop;
         if (def.isLoop)
         {
-            chainShape.shapeIndices = new int[n];
-            ChainSegment chainSegment = new();
-            for (int i = 0, prevIndex = n - 1; i < n - 2; prevIndex = i++)
+            for (int i = 0, prevIndex = n - 1; i < n; prevIndex = i++)
             {
+                ChainSegment chainSegment = new();
                 chainSegment.ghost1 = points[prevIndex];
                 chainSegment.segment.point1 = points[i];
-                chainSegment.segment.point2 = points[i + 1];
-                chainSegment.ghost1 = points[i + 2];
+                chainSegment.segment.point2 = points[(i + 1) % n];
+                chainSegment.ghost2 = points[(i + 2) % n];
+                Debug.Assert(Vector2.DistanceSquared(chainSegment.ghost1, chainSegment.segment.point1) > tolSqr);
+                Debug.Assert(Vector2.DistanceSquared(chainSegment.segment.point1, chainSegment.segment.point2) > tolSqr);
                 chainSegment.chainId = chainId;
                 int materialIndex = materialCount == 1 ? 0 : i;
                 shapeDef.material = def.materials[materialIndex];
                 Shape shape = world.CreateShapeInternal(body, transform, ref shapeDef, chainSegment, ShapeType.ChainSegment);
                 chainShape.shapeIndices[i] = shape.id;
             }
-            {
-                chainSegment.ghost1 = points[n - 3];
-                chainSegment.segment.point1 = points[n - 2];
-                chainSegment.segment.point2 = points[n - 1];
-                chainSegment.ghost2 = points[0];
-                chainSegment.chainId = chainId;
-                int materialIndex = materialCount == 1 ? 0 : n - 2;
-                shapeDef.material = def.materials[materialIndex];
-                Shape shape = world.CreateShapeInternal(body, transform, ref shapeDef, chainSegment, ShapeType.ChainSegment);
-                chainShape.shapeIndices[n - 2] = shape.id;
-            }
-            {
-                chainSegment.ghost1 = points[n - 2];
-                chainSegment.segment.point1 = points[n - 1];
-                chainSegment.segment.point2 = points[0];
-                chainSegment.ghost2 = points[1];
-                chainSegment.chainId = chainId;
-                int materialIndex = materialCount == 1 ? 0 : n - 1;
-                shapeDef.material = def.materials[materialIndex];
-                Shape shape = world.CreateShapeInternal(body, transform, ref shapeDef, chainSegment, ShapeType.ChainSegment);
-            }
         }
         else
         {
-            chainShape.shapeIndices = new int[n - 3];
-            ChainSegment chainSegment = new();
-            for (int i = 0; i < n - 3; i++)
+            Debug.Assert(def.ghost1.IsValid());
+            Debug.Assert(def.ghost2.IsValid());
+            for (int i = 0; i < n; i++)
             {
-                chainSegment.ghost1 = points[i];
-                chainSegment.segment.point1 = points[i + 1];
-                chainSegment.segment.point2 = points[i + 2];
-                chainSegment.ghost2 = points[i + 3];
+                ChainSegment chainSegment = new();
+                Debug.Assert(i + 1 < def.points.Length);
+                chainSegment.ghost1 = i == 0 ? def.ghost1 : points[i - 1];
+                chainSegment.segment.point1 = points[i + 0];
+                chainSegment.segment.point2 = points[i + 1];
+                chainSegment.ghost2 = i == n - 1 ? def.ghost2 : points[i + 2];
+                Debug.Assert(Vector2.DistanceSquared(chainSegment.ghost1, chainSegment.segment.point1) > tolSqr);
+                Debug.Assert(Vector2.DistanceSquared(chainSegment.segment.point1, chainSegment.segment.point2) > tolSqr);
+                Debug.Assert(Vector2.DistanceSquared(chainSegment.segment.point2, chainSegment.ghost2) > tolSqr);
                 chainSegment.chainId = chainId;
-                int materialIndex = materialCount == 1 ? 0 : i + 1;
+                int materialIndex = materialCount == 1 ? 0 : i;
+                def.materials[materialIndex].Validate();
                 shapeDef.material = def.materials[materialIndex];
                 Shape shape = world.CreateShapeInternal(body, transform, ref shapeDef, chainSegment, ShapeType.ChainSegment);
                 chainShape.shapeIndices[i] = shape.id;
@@ -158,26 +138,24 @@ public static class ChainAPI
         return count;
     }
 
-    /// <summary>Get the number of materials used on this chain. Must be 1 or the number of segments.</summary>
-    public static int GetSurfaceMaterialCount(ChainID chainId) => chainId.world0.GetChainShape(chainId).materialCount;
-
-    /// <summary>Set a chain material. If the chain has only one material, this material is applied to all
-    /// segments. Otherwise it is applied to a single segment. </summary>
-    public static void SetSurfaceMaterial(ChainID chainId, ref SurfaceMaterial material, int materialIndex)
+    /// <summary>Set the chain material on all segments.</summary>
+    public static void SetAllSurfaceMaterials(ChainID chainId, ref SurfaceMaterial material)
     {
+        material.Validate();
         World world = World.GetWorldLocked(chainId.world0); if (world == null) return;
         ChainShape chainShape = world.GetChainShape(chainId);
-        Debug.Assert(0 <= materialIndex && materialIndex < chainShape.materialCount);
-        chainShape.materials[materialIndex] = material;
-        Debug.Assert(chainShape.materials.Length == 1 || chainShape.materials.Length == chainShape.shapeIndices.Length);
-        int count = chainShape.shapeIndices.Length;
-        if (chainShape.materials.Length == 1)
-            for (int i = 0; i < count; i++)
-                world.shapes[chainShape.shapeIndices[i]].material = material;
-        else
-        {
-            world.shapes[chainShape.shapeIndices[materialIndex]].material = material;
-        }
+        for (int i = 0; i < chainShape.segmentCount; i++)
+            world.shapes[chainShape.shapeIndices[i]].material = material;
+    }
+
+    /// <summary>Set a chain material by segment index.</summary>
+    public static void SetSurfaceMaterial(ChainID chainId, ref SurfaceMaterial material, int segmentIndex)
+    {
+        material.Validate();
+        World world = World.GetWorldLocked(chainId.world0); if (world == null) return;
+        ChainShape chainShape = world.GetChainShape(chainId);
+        Debug.Assert(0 <= segmentIndex && segmentIndex < chainShape.segmentCount);
+        world.shapes[chainShape.shapeIndices[segmentIndex]].material = material;
     }
 
     /// <summary>Get a chain material by index.</summary>
@@ -185,7 +163,7 @@ public static class ChainAPI
     {
         ChainShape chainShape = chainId.world0.GetChainShape(chainId);
         Debug.Assert(0 <= segmentIndex && segmentIndex < chainShape.shapeIndices.Length);
-        return chainShape.materials[segmentIndex];
+        return chainId.world0.shapes[chainShape.shapeIndices[segmentIndex]].material;
     }
 
     ///<summary> Chain identifier validation. Provides validation for up to 64K allocations.</summary>

@@ -631,10 +631,9 @@ public static class Collision
         }
         DistanceInput input = new()
         {
-            proxyA = Distance.MakeProxy([segmentA.segment.point1], 0),
+            proxyA = Distance.MakeProxy([segmentA.segment.point1, segmentA.segment.point2], 0),
             proxyB = Distance.MakeProxy(vertices, 0),
-            transformA = Transform.Identity,
-            transformB = Transform.Identity,
+            transform = Transform.Identity,
             useRadii = false
         };
         DistanceOutput output = input.ShapeDistance(ref cache, null);
@@ -741,7 +740,7 @@ public static class Collision
                 if (type != NormalType.Admit) continue;
                 Vector2 p = vertices[i];
                 float s = Math.Min(Vector2.Dot(n, p2 - p), Vector2.Dot(n, p1 - p));
-                if (s > polygonSeparation) { polygonSeparation = s; incidentIndex = i; }
+                if (s > polygonSeparation) { polygonSeparation = s; referenceIndex = i; }
             }
             if (polygonSeparation > edgeSeparation)
             {

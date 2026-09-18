@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -303,6 +304,13 @@ public struct SurfaceMaterial
     /// <summary>Custom debug draw color.</summary>
     public uint customColor = 0;
     public SurfaceMaterial() { }
+    public void Validate()
+    {
+        Debug.Assert(float.IsFinite(friction) && friction >= 0);
+        Debug.Assert(float.IsFinite(restitution) && restitution >= 0);
+        Debug.Assert(float.IsFinite(rollingResistance) && rollingResistance >= 0);
+        Debug.Assert(float.IsFinite(tangentSpeed));
+    }
 }
 /// <summary>Used to create a shape.
 /// This is a temporary object used to bundle shape creation parameters. You may use
@@ -358,8 +366,8 @@ public struct ShapeDef
 /// - a chain must have at least 4 points<br/>
 /// - the distance between any two points must be greater than B2_LINEAR_SLOP<br/>
 /// - a chain shape should not self intersect (this is not validated)<br/>
-/// - an open chain shape has NO COLLISION on the first and final edge<br/>
-/// - you may overlap two open chains on their first three and/or last three points to get smooth collision<br/>
+/// - an open chain shape needs a leading and trailing ghost point.<br/>
+/// - you may overlap two open chains using the ghost points to get smooth collision<br/>
 /// - a chain shape creates multiple line segment shapes on the body<br/>
 /// https://en.wikipedia.org/wiki/Polygonal_chain<br/>
 /// Must be initialized using b2DefaultChainDef().<br/>
@@ -368,14 +376,20 @@ public struct ChainDef
 {
     /// <summary>Use this to store application specific shape data.</summary>
     public object userData = null;
-    /// <summary>An array of at least 4 points. These are cloned and may be temporary.</summary>
+    /// <summary>The point count. At least 2 for an open chain and at least 3 for a loop.
+    /// segmentCount = isLoop ? pointCount : pointCount - 1</summary>
     public Vector2[] points = null;
-    /// <summary>Surface materials for each segment. These are cloned. For open
-    /// chains, the material on the ghost segments are place holders.</summary>
+    /// <summary>Leading ghost point for an open chain. Distance from first point must be greater
+    /// than B2_LINEAR_SLOP. Ignored for loops.</summary>
+    public Vector2 ghost1 = new(float.PositiveInfinity, float.PositiveInfinity);
+    /// <summary>Ending ghost point for an open chain. Distance from last point must be greater
+    /// than B2_LINEAR_SLOP. Ignored for loops.</summary>
+    public Vector2 ghost2 = new(float.PositiveInfinity, float.PositiveInfinity);
+    /// <summary>One material for the whole chain or one for each segment. Cloned.</summary>
     public SurfaceMaterial[] materials = [new()];
     /// <summary>Contact filtering data.</summary>
     public Filter filter = new();
-    /// <summary>Indicates a closed chain formed by connecting the first and last points</summary>
+    /// <summary>Indicates a closed chain formed by connecting the first and last point.</summary>
     public bool isLoop = false;
     /// <summary>Enable sensors to detect this chain. False by default.</summary>
     public bool enableSensorEvents = false;

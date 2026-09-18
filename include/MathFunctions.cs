@@ -65,7 +65,7 @@ public struct Vector2
     public Vector2 Normalize()
     {
         float lengthSquared = x * x + y * y;
-        if (lengthSquared > 1000 * Box2D.FLT_EPSILON)
+        if (lengthSquared > 0)
         {
             float s = 1 / MathF.Sqrt(lengthSquared);
             return new(x * s, y * s);
@@ -79,7 +79,7 @@ public struct Vector2
     public Vector2 GetLengthAndNormalize(out float length)
     {
         float lengthSquared = x * x + y * y;
-        if (lengthSquared > 1000 * Box2D.FLT_EPSILON)
+        if (lengthSquared > 0)
         {
             length = MathF.Sqrt(lengthSquared);
             float s = 1 / length;

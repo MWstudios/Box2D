@@ -59,8 +59,7 @@ unsafe class ParticleBodyContactRemovePredicate
                 {
                     proxyA = contact.fixture.MakeDistanceProxy(),
                     proxyB = new Circle { center = pos, radius = 0 }.MakeProxy(),
-                    transformA = new(t.p, t.q),
-                    transformB = Transform.Identity,
+                    transform = Transform.InvMulTransforms(new(t.p, t.q), Transform.Identity),
                 };
                 SimplexCache cache = new();
                 var distance = input.ShapeDistance(ref cache, null);
@@ -1453,8 +1452,7 @@ public class ParticleSystem
                 {
                     proxyA = f.MakeDistanceProxy(),
                     proxyB = new Circle { center = ap }.MakeProxy(),
-                    transformA = new(sim.transform.p, sim.transform.q),
-                    transformB = Transform.Identity,
+                    transform = Transform.InvMulTransforms(new(sim.transform.p, sim.transform.q), Transform.Identity),
                 };
                 SimplexCache cache = new();
                 DistanceOutput output = input.ShapeDistance(ref cache, null);

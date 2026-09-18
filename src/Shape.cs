@@ -134,11 +134,9 @@ public class ChainShape
     public int id;
     public int bodyId;
     public int nextChainId;
-    public int materialCount;
-    public int[] shapeIndices;
-    public SurfaceMaterial[] materials;
+    public int segmentCount;
     public ushort generation;
-
+    public int[] shapeIndices;
 }
 public struct ShapeExtent
 {

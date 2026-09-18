@@ -169,8 +169,7 @@ public record Circle : IShape
         {
             proxyA = Distance.MakeProxy([center], 0),
             proxyB = Distance.MakeProxy([mover.center1, mover.center2], 2),
-            transformA = Transform.Identity,
-            transformB = Transform.Identity,
+            transform = Transform.Identity,
             useRadii = false,
         };
         float totalRadius = mover.radius + radius;
@@ -341,8 +340,7 @@ public record Capsule : IShape
         {
             proxyA = Distance.MakeProxy([center1, center2], 0),
             proxyB = Distance.MakeProxy([center1, center2], mover.radius),
-            transformA = Transform.Identity,
-            transformB = Transform.Identity,
+            transform = Transform.Identity,
             useRadii = false,
         };
         float totalRadius = mover.radius + radius;
@@ -603,8 +601,7 @@ public record Polygon : IShape
         {
             proxyA = Distance.MakeProxy(vertices, radius),
             proxyB = Distance.MakeProxy([mover.center1, mover.center2], mover.radius),
-            transformA = Transform.Identity,
-            transformB = Transform.Identity,
+            transform = Transform.Identity,
             useRadii = false,
         };
         float totalRadius = mover.radius + radius;
@@ -732,8 +729,7 @@ public record Segment : IShape
         {
             proxyA = Distance.MakeProxy([point1, point2], 0),
             proxyB = Distance.MakeProxy([mover.center1, mover.center2], mover.radius),
-            transformA = Transform.Identity,
-            transformB = Transform.Identity,
+            transform = Transform.Identity,
             useRadii = false,
         };
         float totalRadius = mover.radius;
@@ -756,7 +752,7 @@ public record ChainSegment : IShape
     /// <summary>The tail ghost vertex</summary>
     public Vector2 ghost1;
     /// <summary>The line segment</summary>
-    public Segment segment;
+    public Segment segment = new();
     /// <summary>The head ghost vertex</summary>
     public Vector2 ghost2;
     /// <summary>The owning chain shape index (internal usage only)</summary>
@@ -825,10 +821,6 @@ public struct DistanceInput
     public ShapeProxy proxyA;
     /// <summary>The proxy for shape B</summary>
     public ShapeProxy proxyB;
-    /// <summary>The world transform for shape A</summary>
-    public Transform transformA;
-    /// <summary>The world transform for shape B</summary>
-    public Transform transformB;
     /// <summary>Transform of shape B in shape A's frame, the relative pose B in A
     /// (b2InvMulTransforms( worldA, worldB )). The query is origin independent and runs in frame A.</summary>
     public Transform transform;
