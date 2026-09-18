@@ -586,9 +586,13 @@ public unsafe static class BodyAPI
         body.mass = massData.mass;
         body.inertia = massData.rotationalInertia;
         bodySim.localCenter = massData.center;
-        Vector2 center = bodySim.transform.TransformWorldPoint(massData.center);
+        Position oldCenter = bodySim.center;
+        Position center = bodySim.transform.TransformWorldPoint(massData.center);
         bodySim.center = center;
         bodySim.center0 = center;
+        BodyState* state = world.GetBodyState(body);
+        if (state != null)
+            state->linearVelocity += Vector2.CrossSV(state->angularVelocity, bodySim.center - oldCenter);
         bodySim.invMass = body.mass > 0 ? 1 / body.mass : 0;
         bodySim.invInertia = body.inertia > 0 ? 1 / body.inertia : 0;
         bodySim.minExtent = Box2D.Huge;
@@ -601,6 +605,15 @@ public unsafe static class BodyAPI
             bodySim.minExtent = Math.Min(bodySim.minExtent, extent.minExtent);
             bodySim.maxExtent = Math.Max(bodySim.maxExtent, extent.maxExtent);
             shapeId = s.nextShapeId;
+        }
+        int edgeKey = body.headContactKey;
+        while (edgeKey != -1)
+        {
+            int contactId = edgeKey >> 1;
+            int edgeIndex = edgeKey & 1;
+            Contact contact = world.contacts[contactId];
+            world.GetContactSim(contact).simFlags &= ~ContactFlags.SimRelativeTransformValid;
+            edgeKey = edgeIndex == 1 ? contact.edge1.nextKey : contact.edge0.nextKey;
         }
         if (body.flags.HasFlag(BodyFlags.FixedRotation))
         {

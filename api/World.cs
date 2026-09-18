@@ -478,7 +478,7 @@ public static class WorldAPI
         WorldRayCastContext worldContext = new() { world = world, fcn = fcn, filter = filter, fraction = 1, origin = origin, userContext = context };
         for (int i = 0; i < 3; i++)
         {
-            TreeStats treeResult = world.broadPhase.trees[i].RayCast(ref input, filter.maskBits, RayCastCallback, worldContext);
+            TreeStats treeResult = world.broadPhase.trees[i].CastRay(ref input, filter.maskBits, RayCastCallback, worldContext);
             treeStats.nodeVisits += treeResult.nodeVisits;
             treeStats.leafVisits += treeResult.leafVisits;
             if (worldContext.fraction == 0) return treeStats;
@@ -514,7 +514,7 @@ public static class WorldAPI
         WorldRayCastContext worldContext = new() { world = world, fcn = RayCastClosestFcn, filter = filter, fraction = 1, origin = origin, userContext = result };
         for (int i = 0; i < 3; i++)
         {
-            TreeStats treeResult = world.broadPhase.trees[i].RayCast(ref input, filter.maskBits, RayCastCallback, worldContext);
+            TreeStats treeResult = world.broadPhase.trees[i].CastRay(ref input, filter.maskBits, RayCastCallback, worldContext);
             result.nodeVisits += treeResult.nodeVisits;
             result.leafVisits += treeResult.leafVisits;
             if (worldContext.fraction == 0) return result;
@@ -572,7 +572,7 @@ public static class WorldAPI
         BoxCastInput treeInput = new() { box = box, translation = translation, maxFraction = 1 };
         for (int i = 0; i < 3; i++)
         {
-            TreeStats treeResult = world.broadPhase.trees[i].BoxCast(ref treeInput, filter.maskBits, ShapeCastCallback, worldContext);
+            TreeStats treeResult = world.broadPhase.trees[i].CastBox(ref treeInput, filter.maskBits, ShapeCastCallback, worldContext);
             treeStats.nodeVisits += treeResult.nodeVisits;
             treeStats.leafVisits += treeResult.leafVisits;
             if (worldContext.fraction == 0) return treeStats;
@@ -626,7 +626,7 @@ public static class WorldAPI
         BoxCastInput treeInput = new() { box = box, translation = translation, maxFraction = 1 };
         for (int i = 0; i < 3; i++)
         {
-            world.broadPhase.trees[i].BoxCast(ref treeInput, filter.maskBits, MoverCastCallback, worldContext);
+            world.broadPhase.trees[i].CastBox(ref treeInput, filter.maskBits, MoverCastCallback, worldContext);
             if (worldContext.fraction == 0) return 0;
             treeInput.maxFraction = worldContext.fraction;
         }
@@ -974,11 +974,6 @@ public static class WorldAPI
         file.WriteLine($"static tree: {world.broadPhase.trees[(int)BodyType.Static].GetByteCount()}");
         file.WriteLine($"kinematic tree: {world.broadPhase.trees[(int)BodyType.Kinematic].GetByteCount()}");
         file.WriteLine($"dynamic tree: {world.broadPhase.trees[(int)BodyType.Dynamic].GetByteCount()}");
-        int movedBytes = 0;
-        for (int i = 0; i < world.broadPhase.movedProxies.Length; i++)
-            movedBytes += world.broadPhase.movedProxies[i].GetBitSetBytes();
-        file.WriteLine($"movedProxies: {movedBytes})");
-        file.WriteLine($"moveArray: {world.broadPhase.moveArray.Count * 4}");
         HashSet<ulong> pairSet = world.broadPhase.pairSet;
         file.WriteLine($"pairSet: {pairSet.Count * 28} ({pairSet.Count} {pairSet.Count})");
         file.WriteLine();
@@ -1027,7 +1022,20 @@ public static class WorldAPI
     public static void RebuildStaticTree(WorldID worldId)
     {
         World world = worldId.index1; Debug.Assert(!world.locked); if (world.locked) return;
-        world.broadPhase.trees[(int)SetType.Static].Rebuild(true);
+        DynamicTree staticTree = world.broadPhase.trees[(int)SetType.Static];
+        int movedCount = 0;
+        int[] movedProxies = null;
+        int proxyCount = staticTree.GetProxyCount();
+        if (staticTree.HasTreeMoved())
+        {
+            movedProxies = new int[proxyCount];
+            movedCount = staticTree.GatherMovedProxies(movedProxies);
+        }
+        staticTree.Rebuild(true);
+        for (int i = 0; i < movedCount; i++)
+        {
+            staticTree.MarkProxyMovedSerial(movedProxies![i]);
+        }
     }
     /// <summary>Compute a deterministic hash of the simulation state: body transforms and velocities, contact and
     /// joint impulses, and the index bookkeeping that drives the solve. Reproduces exactly across worker

@@ -63,12 +63,14 @@ public static class JointAPI
         Body bodyA = world.bodies[joint.edge0.bodyId], bodyB = world.bodies[joint.edge1.bodyId];
         if (shouldCollide)
         {
-            int shapeCountA = bodyA.shapeCount, shapeCountB = bodyB.shapeCount;
-            int shapeId = shapeCountA < shapeCountB ? bodyA.headShapeId : bodyB.headShapeId;
+            int shapeId = -1;
+            if (bodyA.type == BodyType.Dynamic && bodyB.type == BodyType.Dynamic) shapeId = bodyA.shapeCount < bodyB.shapeCount ? bodyA.headShapeId : bodyB.headShapeId;
+            else if (bodyA.type == BodyType.Dynamic) shapeId = bodyA.headShapeId;
+            else if (bodyB.type == BodyType.Dynamic) shapeId = bodyB.headShapeId; 
             while (shapeId != -1)
             {
                 Shape shape = world.shapes[shapeId];
-                if (shape.proxyKey != -1) world.broadPhase.BufferMove(shape.proxyKey);
+                if (shape.proxyKey != -1) world.broadPhase.MarkProxyMovedSerial(shape.proxyKey);
                 shapeId = shape.nextShapeId;
             }
         }

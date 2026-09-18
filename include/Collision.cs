@@ -1016,18 +1016,27 @@ public struct LocalManifold
 /// It is placed here for performance reasons.</summary>
 public partial class DynamicTree
 {
-    /// <summary>The tree nodes</summary>
+    /// <summary>Array of nodes. The root is at index zero and index 1 is empty.
+    /// Otherwise siblings are paired at even indices. Has holes for free node pairs.</summary>
     public TreeNode[] nodes;
-    /// <summary>The root index</summary>
-    public int root;
-    /// <summary>The number of nodes</summary>
-    public int nodeCount;
-    /// <summary>Node free list</summary>
-    public int freeList;
+    /// <summary>Parent index per node. The free list is interweaved.</summary>
+    public int[] parents;
+    /// <summary>Proxy data split from node array as cold data.</summary>
+    public TreeProxy[] proxies;
+    /// <summary>Every allocated node has a lower index than this.</summary>
+    public int nodeEnd;
+    /// <summary>Free pairs below nodeEnd</summary>
+    public int pairFreeList;
     /// <summary>Number of proxies created</summary>
     public int proxyCount;
+    /// <summary>Proxy free list</summary>
+    public int proxyFreeList;
+    /// <summary>Array of nodes for rebuild.</summary>
+    public TreeNode[] swapNodes;
     /// <summary>Leaf indices for rebuild</summary>
     public int[] leafIndices;
+    /// <summary>Leaves for the rebuild. May represent a proxy or a retained subtree.</summary>
+    public TreeNode[] leafNodes;
     /// <summary>Leaf bounding boxes for rebuild</summary>
     public AABB[] leafBoxes;
     /// <summary>Leaf bounding box centers for rebuild</summary>
@@ -1036,6 +1045,9 @@ public partial class DynamicTree
     public int[] binIndices;
     /// <summary>Allocated space for rebuilding</summary>
     public int rebuildCapacity;
+    /// <summary>Rebuild orders the nodes so the children follow parents. Cache friendly for queries
+    /// and refitting. The order can be disrupted by proxy creation.</summary>
+    public bool dfsOrdered;
 }
 /// <summary>These are performance results returned by dynamic tree queries.</summary>
 public struct TreeStats

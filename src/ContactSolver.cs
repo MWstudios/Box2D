@@ -983,30 +983,15 @@ public class ContactSolverNeon : IContactSolverW
     }
     static Vector128<float> NegW(Vector128<float> a) => AdvSimd.Negate(a);
     static Vector128<float> SymClampW(Vector128<float> a, Vector128<float> b) => AdvSimd.Max(AdvSimd.Negate(b), Sse.Min(a, b));
-    static bool AllZeroW(Vector128<float> a)
-    {
-        Vector128<float> cmp_result = AdvSimd.CompareEqual(a, Vector128<float>.Zero);
-        return AdvSimd.Arm64.IsSupported ? AdvSimd.Arm64.MinAcross(cmp_result).GetElement(0) != 0
-            : AdvSimd.Extract(cmp_result, 0) != 0 && AdvSimd.Extract(cmp_result, 1) != 0 && AdvSimd.Extract(cmp_result, 2) != 0 && AdvSimd.Extract(cmp_result, 3) != 0;
-    }
+    static bool AllZeroW(Vector128<float> a) => AdvSimd.Arm64.MinAcross(AdvSimd.CompareEqual(a, Vector128<float>.Zero)).GetElement(0) != 0;
     static Vector2W RightPerpW(Vector2W a) => new() { X = a.Y, Y = -a.X };
     static Vector128<float> DotW(Vector2W a, Vector2W b) => AdvSimd.Add(AdvSimd.Multiply(a.X, b.X), AdvSimd.Multiply(a.Y, b.Y));
     static Vector128<float> CrossW(Vector2W a, Vector2W b) => AdvSimd.Subtract(AdvSimd.Multiply(a.X, b.Y), AdvSimd.Multiply(a.Y, b.X));
     static Vector2W RotateVectorW(RotationW q, Vector2W v) =>
         new() { X = AdvSimd.Subtract(AdvSimd.Multiply(q.C, v.X), AdvSimd.Multiply(q.S, v.Y)), Y = AdvSimd.Add(AdvSimd.Multiply(q.S, v.X), AdvSimd.Multiply(q.C, v.Y)) };
     static Vector128<float> BlendW(Vector128<float> a, Vector128<float> b, Vector128<float> mask) => AdvSimd.BitwiseSelect(mask, b, a);
-    static Vector128<float> UnpackLoW(Vector128<float> a, Vector128<float> b)
-    {
-        if (AdvSimd.Arm64.IsSupported) return AdvSimd.Arm64.ZipLow(a, b);
-        Vector64<float> a1 = a.GetLower(), b1 = b.GetLower();
-        return Vector128.Create(a1, b1);
-    }
-    static Vector128<float> UnpackHiW(Vector128<float> a, Vector128<float> b)
-    {
-        if (AdvSimd.Arm64.IsSupported) return AdvSimd.Arm64.ZipHigh(a, b);
-        Vector64<float> a1 = a.GetUpper(), b1 = b.GetUpper();
-        return Vector128.Create(a1, b1);
-    }
+    static Vector128<float> UnpackLoW(Vector128<float> a, Vector128<float> b) => AdvSimd.Arm64.ZipLow(a, b);
+    static Vector128<float> UnpackHiW(Vector128<float> a, Vector128<float> b) => AdvSimd.Arm64.ZipHigh(a, b);
     static Vector128<float> SoftMaskW(Vector128<int> a, Vector128<int> b) => AdvSimd.Or(AdvSimd.CompareEqual(a, Vector128<int>.Zero), AdvSimd.CompareEqual(b, Vector128<int>.Zero)).AsSingle();
     public struct ContactConstraintWide
     {

@@ -408,8 +408,8 @@ public unsafe partial class World
                     float margin = shape.aabbMargin;
                     shape.fatAABB = new(new(aabb.lowerBound.x - margin, aabb.lowerBound.y - margin),
                         new(aabb.upperBound.x + margin, aabb.upperBound.y + margin));
-                    shape.enlargedAABB = true;
                     fastBodySim.flags |= BodyFlags.EnlargeBounds;
+                    if (!isBullet) broadPhase.MarkProxyMoved(shape.proxyKey, shape.fatAABB);
                 }
                 shapeId = shape.nextShapeId;
             }
@@ -427,8 +427,8 @@ public unsafe partial class World
                     float margin = shape.aabbMargin;
                     shape.fatAABB = new(new(shape.aabb.lowerBound.x - margin, shape.aabb.lowerBound.y - margin),
                         new(shape.aabb.upperBound.x + margin, shape.aabb.upperBound.y + margin));
-                    shape.enlargedAABB = true;
                     fastBodySim.flags |= BodyFlags.EnlargeBounds;
+                    if (!isBullet) broadPhase.MarkProxyMoved(shape.proxyKey, shape.fatAABB);
                 }
                 shapeId = shape.nextShapeId;
             }
@@ -521,13 +521,12 @@ public unsafe partial class World
                 {
                     AABB aabb = shape.ComputeFatAABB(transform, Box2D.SpeculativeDistance);
                     shape.aabb = aabb;
-                    Debug.Assert(!shape.enlargedAABB);
                     if (!shape.fatAABB.Contains(aabb))
                     {
                         float margin = shape.aabbMargin;
                         shape.fatAABB = new(new(aabb.lowerBound.x - margin, aabb.lowerBound.y - margin),
                             new(aabb.upperBound.x + margin, aabb.upperBound.y + margin));
-                        shape.enlargedAABB = true;
+                        world.broadPhase.MarkProxyMoved(shape.proxyKey, shape.fatAABB);
                         enlargedSimBitSet.SetBit(simIndex);
                     }
                 }
@@ -1029,6 +1028,13 @@ public unsafe partial class World
                 taskContext.splitIslandId = -1;
                 taskContext.splitSleepTime = 0;
             }
+            if (userTreeTask != null)
+            {
+                finishTaskFcn(userTreeTask, userTaskContext);
+                userTreeTask = null;
+                activeTaskCount--;
+            }
+            broadPhase.ValidateNoEnlarged();
             ParallelFor(FinalizeBodiesTask, awakeBodyCount, 64, stepContext);
             stack.Free(graphBlocks);
             stack.Free(jointBlocks);
@@ -1139,47 +1145,8 @@ public unsafe partial class World
         }
         {
             Stopwatch refitTicks = new(); refitTicks.Start();
-            if (userTreeTask != null)
-            {
-                finishTaskFcn(userTreeTask, userTaskContext);
-                userTreeTask = null;
-                activeTaskCount--;
-            }
-            broadPhase.ValidateNoEnlarged();
-            BitSet enlargedBodyBitSet = taskContexts[0].enlargedSimBitSet;
-            for (int i = 1; i < workerCount; i++) enlargedBodyBitSet.InPlaceUnion(taskContexts[i].enlargedSimBitSet);
-            for (uint k = 0; k < enlargedBodyBitSet.blockCount; k++)
-            {
-                ulong word = enlargedBodyBitSet.bits[k];
-                while (word != 0)
-                {
-                    uint ctz = CTZ.CTZ64(word);
-                    int bodySimIndex = (int)(64 * k + ctz);
-                    BodySim bodySim = awakeSet.bodySims[bodySimIndex];
-                    Body body = bodies[bodySim.bodyId];
-                    int shapeId = body.headShapeId;
-                    if ((body.flags & (BodyFlags.IsBullet | BodyFlags.IsFast)) == (BodyFlags.IsBullet | BodyFlags.IsFast))
-                    {
-                        while (shapeId != -1)
-                        {
-                            Shape shape = shapes[shapeId];
-                            broadPhase.BufferMove(shape.proxyKey);
-                            shapeId = shape.nextShapeId;
-                        }
-                    }
-                    else
-                    {
-                        while (shapeId != -1)
-                        {
-                            Shape shape = shapes[shapeId];
-                            if (shape.enlargedAABB)
-                            { broadPhase.EnlargeProxy(shape.proxyKey, shape.fatAABB); shape.enlargedAABB = false; }
-                            shapeId = shape.nextShapeId;
-                        }
-                    }
-                    word &= word - 1;
-                }
-            }
+            broadPhase.trees[(int)BodyType.Kinematic].Refit();
+            broadPhase.trees[(int)BodyType.Dynamic].Refit();
             broadPhase.ValidateBroadphase();
             profile.refit = (float)refitTicks.Elapsed.TotalMilliseconds;
             refitTicks.Stop();
@@ -1204,13 +1171,12 @@ public unsafe partial class World
                 while (shapeId != -1)
                 {
                     Shape shape = shapes[shapeId];
-                    if (!shape.enlargedAABB) { shapeId = shape.nextShapeId; continue; }
-                    shape.enlargedAABB = false;
                     int proxyKey = shape.proxyKey;
                     int proxyId = B2_PROXY_ID(proxyKey);
                     Debug.Assert(B2_PROXY_TYPE(proxyKey) == BodyType.Dynamic);
-                    Debug.Assert(broadPhase.movedProxies[(int)BodyType.Dynamic].GetBit(proxyId));
-                    dynamicTree.EnlargeProxy(proxyKey, shape.fatAABB);
+                    AABB treeAABB = dynamicTree.GetAABB(proxyId);
+                    if (!treeAABB.Contains(shape.fatAABB))
+                        dynamicTree.EnlargeProxy(proxyKey, shape.fatAABB);
                     shapeId = shape.nextShapeId;
                 }
             }

@@ -22,27 +22,27 @@ public unsafe class B2Stack
     public List<StackEntry> entries = new(32);
     public B2Stack(int capacity)
     {
-        data = NativeMemory.AlignedAlloc((nuint)(this.capacity = capacity), 32);
+        data = NativeMemory.AlignedAlloc((nuint)(this.capacity = capacity), 64);
     }
     public void Destroy() { NativeMemory.AlignedFree(data); }
     public void* Alloc(int size, string name)
     {
-        int size32 = ((size - 1) | 0x1F) + 1;
-        StackEntry entry = new() { size = size32, name = name };
-        if (index + size32 > capacity)
+        int alignedSize = ((size - 1) | 0x3F) + 1;
+        StackEntry entry = new() { size = alignedSize, name = name };
+        if (index + alignedSize > capacity)
         {
-            entry.data = NativeMemory.AlignedAlloc((nuint)size32, 32);
+            entry.data = NativeMemory.AlignedAlloc((nuint)alignedSize, 64);
             entry.usedMalloc = true;
-            Debug.Assert(((nint)entry.data & 0x1F) == 0);
+            Debug.Assert(((nint)entry.data & 0x3F) == 0);
         }
         else
         {
             entry.data = (void*)((nint)data + index);
             entry.usedMalloc = false;
-            index += size32;
-            Debug.Assert(((nint)data & 0x1F) == 0);
+            index += alignedSize;
+            Debug.Assert(((nint)data & 0x3F) == 0);
         }
-        allocation += size32;
+        allocation += alignedSize;
         if (allocation > maxAllocation) maxAllocation = allocation;
         entries.Add(entry);
         return entry.data;
@@ -65,7 +65,7 @@ public unsafe class B2Stack
         {
             NativeMemory.AlignedFree(data);
             capacity = maxAllocation + maxAllocation / 2;
-            data = NativeMemory.AlignedAlloc((nuint)capacity, 32);
+            data = NativeMemory.AlignedAlloc((nuint)capacity, 64);
         }
     }
     public int GetCapacity() => capacity;

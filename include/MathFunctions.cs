@@ -1,5 +1,8 @@
 ﻿using System;
 using System.Diagnostics;
+using System.Runtime.Intrinsics;
+using System.Runtime.Intrinsics.Arm;
+using System.Runtime.Intrinsics.X86;
 
 namespace Box2D;
 /// <summary>2D vector<br/>
@@ -391,6 +394,11 @@ public struct AABB
     public AABB Offset(Position origin) => new(new(RoundDownFloat(origin.x + (double)lowerBound.x), RoundDownFloat(origin.y + (double)lowerBound.y)),
         new(RoundUpFloat(origin.x + (double)upperBound.x), RoundUpFloat(origin.y + (double)upperBound.y)));
     public override string ToString() => $"[{lowerBound}, {upperBound}]";
+    public unsafe AABBV LoadAABBV()
+    {
+        fixed (float* aabb = &lowerBound.x)
+            return new() { aabb = AdvSimd.IsSupported ? AdvSimd.LoadVector128(aabb) : Sse.IsSupported ? Sse.LoadVector128(aabb) : Vector128.Load(aabb) };
+    }
 }
 /// <summary>separation = dot(normal, point) - offset</summary>
 public struct Plane

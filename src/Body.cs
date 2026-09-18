@@ -372,6 +372,15 @@ public unsafe partial class World
                 bodySim.maxExtent = Math.Max(bodySim.maxExtent, extent.maxExtent);
                 shapeId = s.nextShapeId;
             }
+            int edgeKey = body.headContactKey;
+            while (edgeKey != -1)
+            {
+                int contactId = edgeKey >> 1;
+                int edgeIndex = edgeKey & 1;
+                Contact contact = contacts[contactId];
+                GetContactSim(contact).simFlags &= ~ContactFlags.SimRelativeTransformValid;
+                edgeKey = edgeIndex == 1 ? contact.edge1.nextKey : contact.edge0.nextKey;
+            }
         }
     }
     public bool ShouldBodiesCollide(Body bodyA, Body bodyB)

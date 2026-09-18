@@ -18,6 +18,9 @@ public class TaskContext
     ///<summary> Collect per thread sensor continuous hit events.</summary>
     public List<SensorHit> sensorHits = new();
 
+    /// <summary>Broad-phase pairs.</summary>
+    public List<ulong> pairKeys = new();
+
     ///<summary> These bits align with the contact id capacity and signal a change in contact status</summary>
     public BitSet contactStateBitSet;
 
@@ -205,6 +208,7 @@ public partial class World
             taskContexts.Add(new()
             {
                 sensorHits = new(8),
+                pairKeys = new(),
                 contactStateBitSet = new(1024),
                 hitEventBitSet = new(1024),
                 jointStateBitSet = new(1024),

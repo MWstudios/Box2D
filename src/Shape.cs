@@ -50,7 +50,6 @@ public class Shape
     public bool enableCustomFiltering;
     public bool enableHitEvents;
     public bool enablePreSolveEvents;
-    public bool enlargedAABB;
     static BodyType B2_PROXY_TYPE(int KEY) => (BodyType)((KEY) & 3);
     static int B2_PROXY_ID(int KEY) => KEY >> 2;
     static int B2_PROXY_KEY(int ID, int TYPE) => (ID << 2) | TYPE;
@@ -181,7 +180,6 @@ public partial class World
         shape.material = def.material;
         shape.filter = def.filter;
         shape.userData = def.userData;
-        shape.enlargedAABB = false;
         shape.enableSensorEvents = def.enableSensorEvents;
         shape.enableContactEvents = def.enableContactEvents;
         shape.enableCustomFiltering = def.enableCustomFiltering;
