@@ -99,6 +99,7 @@ public partial class World
 
     ///<summary> These are sparse arrays that point into the pools above</summary>
     public List<Shape> shapes = new(16);
+    public List<AABB> fatAABBs = new(4);
     public List<ChainShape> chainShapes = new(4);
 
     ///<summary> This is a dense array of sensor data.</summary>
@@ -295,24 +296,44 @@ public partial class World
         stack.Destroy();
         generation++;
     }
+    unsafe BodySim ResolveContactBodySim(List<BodySim> awakeSims, List<BodySim> staticSims, int encodedIndex, int bodyId)
+    {
+        if (encodedIndex >= 0) return awakeSims[encodedIndex];
+        if (Body.IsStaticSimIndex(encodedIndex)) return staticSims[-encodedIndex - 2];
+        return GetBodySim(bodies[bodyId]);
+    }
     public static unsafe void CollideTask(int startIndex, int endIndex, int threadIndex, object context)
     {
         StepContext stepContext = (StepContext)context;
         World world = stepContext.world;
         TaskContext taskContext = world.taskContexts[threadIndex];
-        var contactSims = stepContext.contactSims;
+        var spans = stepContext.collideSpans;
         List<Shape> shapes = world.shapes;
-        List<Body> bodies = world.bodies;
-        BodyState* states = world.solverSets[(int)SetType.Awake].bodyStates.Data;
+        var fatAABBs = System.Runtime.InteropServices.CollectionsMarshal.AsSpan(world.fatAABBs);
+        var awakeSims = world.solverSets[(int)SetType.Awake].bodySims;
+        var staticSims = world.solverSets[(int)SetType.Static].bodySims;
+        var states = world.solverSets[(int)SetType.Awake].bodyStates.Data;
         Debug.Assert(startIndex < endIndex);
+        int spanIndex = 0;
+        while (spans[spanIndex + 1].start <= startIndex)
+            spanIndex++;
+        int spanStart = spans[spanIndex].start;
+        int spanEnd = spans[spanIndex + 1].start;
+        List<ContactSim> spanBase = spans[spanIndex].contacts;
         float speculativeDistance = Box2D.SpeculativeDistance;
         float recycleDistanceNonTouching = Math.Min(world.contactRecycleDistance, speculativeDistance);
         for (int contactIndex = startIndex; contactIndex < endIndex; contactIndex++)
         {
-            ContactSim contactSim = contactSims[contactIndex];
+            if (contactIndex == spanEnd)
+            {
+                spanIndex++;
+                spanStart = spans[spanIndex].start;
+                spanEnd = spans[spanIndex + 1].start;
+                spanBase = spans[spanIndex].contacts;
+            }
+            ContactSim contactSim = spanBase[contactIndex - spanStart];
             int contactId = contactSim.contactId;
-            Shape shapeA = shapes[contactSim.shapeIdA], shapeB = shapes[contactSim.shapeIdB];
-            bool overlap = AABB.Overlaps(shapeA.fatAABB, shapeB.fatAABB);
+            bool overlap = AABBV.OverlapV(ref fatAABBs[contactSim.shapeIdA], ref fatAABBs[contactSim.shapeIdB]);
             if (!overlap)
             {
                 contactSim.simFlags |= ContactFlags.SimDisjoint;
@@ -321,17 +342,17 @@ public partial class World
             }
             else
             {
+                Shape shapeA = shapes[contactSim.shapeIdA], shapeB = shapes[contactSim.shapeIdB];
                 bool wasTouching = contactSim.simFlags.HasFlag(ContactFlags.SimTouching);
-                Body bodyA = bodies[shapeA.bodyId], bodyB = bodies[shapeB.bodyId];
-                BodySim bodySimA = world.GetBodySim(bodyA), bodySimB = world.GetBodySim(bodyB);
+                int encodedA = contactSim.encodedBodySimA, encodedB = contactSim.encodedBodySimB;
+                BodySim bodySimA = world.ResolveContactBodySim(awakeSims, staticSims, encodedA, shapeA.bodyId),
+                    bodySimB = world.ResolveContactBodySim(awakeSims, staticSims, encodedB, shapeB.bodyId);
                 WorldTransform transformA = bodySimA.transform, transformB = bodySimB.transform;
-                contactSim.bodySimIndexA = bodyA.setIndex == (int)SetType.Awake ? bodyA.localIndex : -1;
                 contactSim.invMassA = bodySimA.invMass;
                 contactSim.invIA = bodySimA.invInertia;
-                contactSim.bodySimIndexB = bodyB.setIndex == (int)SetType.Awake ? bodyB.localIndex : -1;
                 contactSim.invMassB = bodySimB.invMass;
                 contactSim.invIB = bodySimB.invInertia;
-                bool isFast = bodyA.flags.HasFlag(BodyFlags.IsFast) || bodyB.flags.HasFlag(BodyFlags.IsFast);
+                bool isFast = ((bodySimA.flags | bodySimB.flags) & BodyFlags.IsFast) != 0;
                 if (!isFast && world.contactRecycleDistance > 0 && contactSim.simFlags.HasFlag(ContactFlags.SimRelativeTransformValid) && contactSim.simFlags.HasFlag(ContactFlags.Recycle))
                 {
                     Rotation cachedQA = contactSim.cachedRotationA, cachedQB = contactSim.cachedRotationB;
@@ -339,8 +360,8 @@ public partial class World
                     float cosA = Rotation.RelativeCos(transformA.q, cachedQA);
                     float cosB = Rotation.RelativeCos(transformB.q, cachedQB);
                     float minCos = Math.Min(cosA, cosB);
-                    float maxExtentA = bodyA.type == BodyType.Static ? 0 : bodySimA.maxExtent;
-                    float maxExtentB = bodyB.type == BodyType.Static ? 0 : bodySimB.maxExtent;
+                    float maxExtentA = Body.IsStaticSimIndex(encodedA) ? 0 : bodySimA.maxExtent;
+                    float maxExtentB = Body.IsStaticSimIndex(encodedB) ? 0 : bodySimB.maxExtent;
                     float maxExtent = Math.Max(maxExtentA, maxExtentB);
                     float distance = Vector2.Distance(xf.p, xfc.p);
                     Rotation qr = Rotation.InvMulRot(xf.q, xfc.q);
@@ -359,14 +380,14 @@ public partial class World
                             Vector2 dp = dc + (rB - rA);
                             mp.separation = mp.baseSeparation + Vector2.Dot(dp, normal);
                             mp.restitutionVelocity = mp.totalNormalImpulse > 0 && mp.normalVelocity < -world.restitutionThreshold ? -contactSim.restitution * mp.normalVelocity : 0;
-                            int indexA = contactSim.bodySimIndexA;
+                            int indexA = Body.DecodeAwakeIndex(encodedA);
                             Vector2 vrA = Vector2.Zero;
                             if (indexA != -1)
                             {
                                 ref BodyState stateA = ref states[indexA];
                                 vrA = stateA.linearVelocity + Vector2.CrossSV(stateA.angularVelocity, mp.anchorA);
                             }
-                            int indexB = contactSim.bodySimIndexB;
+                            int indexB = Body.DecodeAwakeIndex(encodedB);
                             Vector2 vrB = Vector2.Zero;
                             if (indexB != -1)
                             {
@@ -383,14 +404,14 @@ public partial class World
                                 dp = dc + (rB - rA);
                                 mp.separation = mp.baseSeparation + Vector2.Dot(dp, normal);
                                 mp.restitutionVelocity = mp.totalNormalImpulse > 0 && mp.normalVelocity < -world.restitutionThreshold ? -contactSim.restitution * mp.normalVelocity : 0;
-                                indexA = contactSim.bodySimIndexA;
+                                indexA = Body.DecodeAwakeIndex(encodedA);
                                 vrA = Vector2.Zero;
                                 if (indexA != -1)
                                 {
                                     ref BodyState stateA = ref states[indexA];
                                     vrA = stateA.linearVelocity + Vector2.CrossSV(stateA.angularVelocity, mp.anchorA);
                                 }
-                                indexB = contactSim.bodySimIndexB;
+                                indexB = Body.DecodeAwakeIndex(encodedB);
                                 vrB = Vector2.Zero;
                                 if (indexB != -1)
                                 {
@@ -426,14 +447,14 @@ public partial class World
                 {
                     ref ManifoldPoint mp = ref contactSim.manifold.point0;
                     mp.baseSeparation = mp.separation;
-                    int indexA = contactSim.bodySimIndexA;
+                    int indexA = contactSim.encodedBodySimA;
                     Vector2 vrA = Vector2.Zero;
                     if (indexA != -1)
                     {
                         ref BodyState stateA = ref states[indexA];
                         vrA = stateA.linearVelocity + Vector2.CrossSV(stateA.angularVelocity, mp.anchorA);
                     }
-                    int indexB = contactSim.bodySimIndexB;
+                    int indexB = contactSim.encodedBodySimB;
                     Vector2 vrB = Vector2.Zero;
                     if (indexB != -1)
                     {
@@ -445,14 +466,14 @@ public partial class World
                     {
                         mp = ref contactSim.manifold.point1;
                         mp.baseSeparation = mp.separation;
-                        indexA = contactSim.bodySimIndexA;
+                        indexA = contactSim.encodedBodySimA;
                         vrA = Vector2.Zero;
                         if (indexA != -1)
                         {
                             ref BodyState stateA = ref states[indexA];
                             vrA = stateA.linearVelocity + Vector2.CrossSV(stateA.angularVelocity, mp.anchorA);
                         }
-                        indexB = contactSim.bodySimIndexB;
+                        indexB = contactSim.encodedBodySimB;
                         vrB = Vector2.Zero;
                         if (indexB != -1)
                         {
@@ -498,22 +519,33 @@ public partial class World
         int nonTouchingCount = world.solverSets[(int)SetType.Awake].contactSims.Count;
         contactCount += nonTouchingCount;
         if (contactCount == 0) return;
-        ContactSim[] contactSims = new ContactSim[contactCount];
+        ContactCollideSpan collideSpans = new();
+        int spanCount = 0;
         int contactIndex = 0;
         for (int i = 0; i < Box2D.GraphColorCount; i++)
         {
             GraphColor color = graphColors[i];
             int count = color.contactSims.Count;
-            for (int j = 0; j < count; j++)
-                contactSims[contactIndex++] = color.contactSims[j];
+            if (count > 0)
+            {
+                collideSpans[spanCount].start = contactIndex;
+                collideSpans[spanCount].contacts = color.contactSims;
+                spanCount++;
+                contactIndex += count;
+            }
         }
+        if (nonTouchingCount > 0)
         {
-            var base_ = world.solverSets[(int)SetType.Awake].contactSims;
-            for (int i = 0; i < nonTouchingCount; i++)
-                contactSims[contactIndex++] = base_[i];
+            collideSpans[spanCount].start = contactIndex;
+            collideSpans[spanCount].contacts = world.solverSets[(int)SetType.Awake].contactSims;
+            spanCount++;
+            contactIndex += nonTouchingCount;
         }
         Debug.Assert(contactIndex == contactCount);
-        context.contactSims = contactSims;
+        Debug.Assert(spanCount <= Box2D.GraphColorCount + 1);
+        collideSpans[spanCount].start = contactCount;
+        collideSpans[spanCount].contacts = null;
+        context.collideSpans = collideSpans;
         int contactIdCapacity = world.contactIdPool.GetIdCapacity();
         for (int i = 0; i < world.workerCount; i++)
         {
@@ -522,8 +554,7 @@ public partial class World
         }
         int minRange = 64;
         world.ParallelFor(CollideTask, contactCount, minRange, context);
-        context.contactSims = null;
-        contactSims = null;
+        context.collideSpans = new();
         ref BitSet bitSet = ref world.taskContexts[0].contactStateBitSet;
         for (int i = 1; i < world.workerCount; i++)
             bitSet.InPlaceUnion(world.taskContexts[i].contactStateBitSet);
@@ -548,11 +579,6 @@ public partial class World
                     contactSim = graphColors[colorIndex].contactSims[localIndex];
                 }
                 else contactSim = awakeSet.contactSims[localIndex];
-                Shape shapeA = shapes[contact.shapeIdA];
-                Shape shapeB = shapes[contact.shapeIdB];
-                ShapeID shapeIdA = new() { index1 = shapeA.id + 1, world0 = world, generation = shapeA.generation };
-                ShapeID shapeIdB = new() { index1 = shapeB.id + 1, world0 = world, generation = shapeB.generation };
-                ContactID contactFullId = new() { index1 = contactId + 1, world0 = world, generation = contact.generation };
                 ContactFlags flags = contact.flags;
                 ContactFlags simFlags = contactSim.simFlags;
                 if (simFlags.HasFlag(ContactFlags.SimDisjoint))
@@ -566,6 +592,11 @@ public partial class World
                     Debug.Assert(contact.islandId == -1);
                     if (flags.HasFlag(ContactFlags.EnableContactEvents))
                     {
+                        Shape shapeA = shapes[contact.shapeIdA];
+                        Shape shapeB = shapes[contact.shapeIdB];
+                        ShapeID shapeIdA = new() { index1 = shapeA.id + 1, world0 = world, generation = shapeA.generation };
+                        ShapeID shapeIdB = new() { index1 = shapeB.id + 1, world0 = world, generation = shapeB.generation };
+                        ContactID contactFullId = new() { index1 = contactId + 1, world0 = world, generation = contact.generation };
                         world.contactBeginEvents.Add(new() { shapeIdA = shapeIdA, shapeIdB = shapeIdB, contactId = contactFullId });
                     }
                     Debug.Assert(contactSim.manifold.pointCount > 0);
@@ -585,6 +616,11 @@ public partial class World
                     contact.flags &= ~ContactFlags.Touching;
                     if (contact.flags.HasFlag(ContactFlags.EnableContactEvents))
                     {
+                        Shape shapeA = shapes[contact.shapeIdA];
+                        Shape shapeB = shapes[contact.shapeIdB];
+                        ShapeID shapeIdA = new() { index1 = shapeA.id + 1, world0 = world, generation = shapeA.generation };
+                        ShapeID shapeIdB = new() { index1 = shapeB.id + 1, world0 = world, generation = shapeB.generation };
+                        ContactID contactFullId = new() { index1 = contactId + 1, world0 = world, generation = contact.generation };
                         if (endEventArrayIndex == 1) world.contactEndEvents1.Add(new() { shapeIdA = shapeIdA, shapeIdB = shapeIdB, contactId = contactFullId });
                         else world.contactEndEvents0.Add(new() { shapeIdA = shapeIdA, shapeIdB = shapeIdB, contactId = contactFullId });
                     }
@@ -711,6 +747,7 @@ public partial class World
                         Debug.Assert(body.localIndex == i);
                         var syncedFlags = body.flags & ~BodyFlags.TransientFlags;
                         Debug.Assert((body.flags & syncedFlags) == syncedFlags);
+                        Debug.Assert(bodySim.flags.HasFlag(BodyFlags.IsFast) == bodySim.flags.HasFlag(BodyFlags.IsFast));
                         BodyState* bodyState = GetBodyState(body);
                         if (bodyState != null) Debug.Assert((bodyState->flags & syncedFlags) == syncedFlags);
                         if (body.type == BodyType.Dynamic) Debug.Assert(body.flags.HasFlag(BodyFlags.Dynamic));
@@ -783,6 +820,8 @@ public partial class World
                         Debug.Assert(contact.setIndex == setIndex);
                         Debug.Assert(contact.colorIndex == -1);
                         Debug.Assert(contact.localIndex == i);
+                        Debug.Assert(contactSim.encodedBodySimA == bodies[contact.edge0.bodyId].EncodeBodySimIndex());
+                        Debug.Assert(contactSim.encodedBodySimB == bodies[contact.edge1.bodyId].EncodeBodySimIndex());
                     }
                 }
                 {
@@ -839,13 +878,15 @@ public partial class World
                     Debug.Assert(contact.colorIndex == colorIndex);
                     Debug.Assert(contact.localIndex == i);
                     int bodyIdA = contact.edge0.bodyId, bodyIdB = contact.edge1.bodyId;
+                    Body edgeBodyA = bodies[bodyIdA], edgeBodyB = bodies[bodyIdB];
+                    Debug.Assert(contactSim.encodedBodySimA == edgeBodyA.EncodeBodySimIndex());
+                    Debug.Assert(contactSim.encodedBodySimB == edgeBodyB.EncodeBodySimIndex());
                     if (colorIndex < Box2D.GraphColorCount - 1)
                     {
-                        Body bodyA = bodies[bodyIdA], bodyB = bodies[bodyIdB];
-                        Debug.Assert(color.bodySet.GetBit(bodyIdA) == (bodyA.type == BodyType.Dynamic));
-                        Debug.Assert(color.bodySet.GetBit(bodyIdB) == (bodyB.type == BodyType.Dynamic));
-                        bitCount += bodyA.type == BodyType.Dynamic ? 1 : 0;
-                        bitCount += bodyB.type == BodyType.Dynamic ? 1 : 0;
+                        Debug.Assert(color.bodySet.GetBit(bodyIdA) == (edgeBodyA.type == BodyType.Dynamic));
+                        Debug.Assert(color.bodySet.GetBit(bodyIdB) == (edgeBodyB.type == BodyType.Dynamic));
+                        bitCount += edgeBodyA.type == BodyType.Dynamic ? 1 : 0;
+                        bitCount += edgeBodyB.type == BodyType.Dynamic ? 1 : 0;
                     }
                 }
                 Debug.Assert(color.jointSims.Count >= 0);
@@ -1083,7 +1124,7 @@ public partial class DebugDraw
         }
         if (draw.drawBounds)
         {
-            draw.DrawBoundsFcn(shape.fatAABB, HexColor.Gold, draw.context);
+            draw.DrawBoundsFcn(world.fatAABBs[shapeId], HexColor.Gold, draw.context);
         }
         return true;
     }

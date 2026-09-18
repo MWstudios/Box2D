@@ -142,7 +142,8 @@ public unsafe static class BodyAPI
         }
         world.RemoveBodyFromIsland(body);
         SolverSet set = world.solverSets[body.setIndex];
-        World.RemoveBodySim(set.bodySims, world.bodies, body.localIndex);
+        Body movedBody = world.RemoveBodySim(set, body.localIndex);
+        if (movedBody != null) world.RefreshBodyContactIndices(movedBody);
         if (body.setIndex == (int)_SetType.Awake) set.bodyStates.RemoveSwap(body.localIndex);
         else if (set.setIndex >= (int)_SetType.FirstSleeping && set.bodySims.Count == 0)
             world.DestroySolverSet(set.setIndex);
@@ -235,7 +236,7 @@ public unsafe static class BodyAPI
             Shape shape = world.shapes[shapeId];
             shapeId = shape.nextShapeId;
             shape.DestroyProxy(world.broadPhase);
-            shape.CreateProxy(world.broadPhase, type, transform, true);
+            world.CreateShapeProxy(shape, type, transform, true);
         }
         jointKey = body.headJointKey;
         while (jointKey != -1)
@@ -300,11 +301,11 @@ public unsafe static class BodyAPI
             Shape shape = world.shapes[shapeId];
             AABB aabb = shape.ComputeFatAABB(transform, Box2D.SpeculativeDistance);
             shape.aabb = aabb;
-            if (!shape.fatAABB.Contains(aabb))
+            if (!world.fatAABBs[shapeId].Contains(aabb))
             {
                 AABB fatAABB = new(new(aabb.lowerBound.x - shape.aabbMargin, aabb.lowerBound.y - shape.aabbMargin),
                     new(aabb.upperBound.x + shape.aabbMargin, aabb.upperBound.y + shape.aabbMargin));
-                shape.fatAABB = fatAABB;
+                world.fatAABBs[shapeId] = fatAABB;
                 if (shape.proxyKey != -1) broadPhase.MoveProxy(shape.proxyKey, fatAABB);
             }
             shapeId = shape.nextShapeId;
@@ -802,7 +803,7 @@ public unsafe static class BodyAPI
         {
             Shape shape = world.shapes[shapeId];
             shapeId = shape.nextShapeId;
-            shape.CreateProxy(world.broadPhase, body.type, transform, true);
+            world.CreateShapeProxy(shape, body.type, transform, true);
         }
         if (setId != (int)_SetType.Static) world.CreateIslandForBody(setId, body);
         int jointKey = body.headJointKey;

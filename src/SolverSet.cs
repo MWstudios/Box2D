@@ -66,6 +66,7 @@ public partial class World
             BodySim simDst = simSrc with { };
             awakeSet.bodySims.Add(simDst);
             awakeSet.bodyStates.Add(new() { flags = body.flags });
+            int encodedBodySimIndex = body.localIndex;
             int contactKey = body.headContactKey;
             while (contactKey != -1)
             {
@@ -76,6 +77,13 @@ public partial class World
                 if (contact.setIndex != (int)SetType.Disabled)
                 {
                     Debug.Assert(contact.setIndex == (int)SetType.Awake || contact.setIndex == setIndex);
+                    if (contact.setIndex == (int)SetType.Awake)
+                    {
+                        Debug.Assert(contact.colorIndex == -1);
+                        ContactSim awakeContactSim = awakeSet.contactSims[contact.localIndex];
+                        if (edgeIndex == 0) awakeContactSim.encodedBodySimA = encodedBodySimIndex;
+                        else awakeContactSim.encodedBodySimB = encodedBodySimIndex;
+                    }
                     continue;
                 }
                 int localIndex = contact.localIndex;
@@ -83,8 +91,12 @@ public partial class World
                 Debug.Assert(!contact.flags.HasFlag(ContactFlags.Touching) && contactSim.manifold.pointCount == 0);
                 contact.setIndex = (int)SetType.Awake;
                 contact.localIndex = awakeSet.contactSims.Count;
-                ContactSim awakeContactSim = contactSim with { };
-                awakeSet.contactSims.Add(awakeContactSim);
+                {
+                    ContactSim awakeContactSim = contactSim with { };
+                    awakeSet.contactSims.Add(awakeContactSim);
+                    if (edgeIndex == 0) awakeContactSim.encodedBodySimA = encodedBodySimIndex;
+                    else awakeContactSim.encodedBodySimB = encodedBodySimIndex;
+                }
                 int movedLocalIndex = disabledSet.contactSims.RemoveSwap(localIndex);
                 if (movedLocalIndex != -1)
                 {
@@ -157,6 +169,7 @@ public partial class World
                 Debug.Assert(body.setIndex == (int)SetType.Awake);
                 Debug.Assert(body.islandId == islandId);
                 Debug.Assert(body.islandIndex == i);
+                body.flags &= ~BodyFlags.TransientFlags;
                 if (body.bodyMoveIndex != -1)
                 {
                     ref BodyMoveEvent moveEvent = ref System.Runtime.InteropServices.CollectionsMarshal.AsSpan(bodyMoveEvents)[body.bodyMoveIndex];
@@ -167,10 +180,12 @@ public partial class World
                 }
                 int awakeBodyIndex = body.localIndex;
                 BodySim awakeSim = awakeSet.bodySims[awakeBodyIndex];
+                awakeSim.flags &= ~BodyFlags.TransientFlags;
                 int sleepBodyIndex = sleepSet.bodySims.Count;
                 BodySim sleepBodySim = awakeSim with { };
                 sleepSet.bodySims.Add(sleepBodySim);
-                RemoveBodySim(awakeSet.bodySims, bodies, awakeBodyIndex);
+                Body movedBody = RemoveBodySim(awakeSet, awakeBodyIndex);
+                if (movedBody != null && movedBody.islandId != islandId) RefreshBodyContactIndices(movedBody);
                 awakeSet.bodyStates.RemoveSwap(awakeBodyIndex);
                 body.setIndex = sleepSetId;
                 body.localIndex = sleepBodyIndex;
@@ -180,20 +195,21 @@ public partial class World
                     int contactId = contactKey >> 1;
                     int edgeIndex = contactKey & 1;
                     Contact contact = contacts[contactId];
-                    Debug.Assert(contact.setIndex == (int)SetType.Awake || contact.setIndex == (int)SetType.Disabled);
+                    Debug.Assert(contact.setIndex == (int)SetType.Awake);
                     contactKey = edgeIndex == 1 ? contact.edge1.nextKey : contact.edge0.nextKey;
-                    if (contact.setIndex == (int)SetType.Disabled) continue;
                     if (contact.colorIndex != -1)
                     {
                         Debug.Assert(contact.flags.HasFlag(ContactFlags.Touching));
                         continue;
                     }
+                    int localIndex = contact.localIndex;
+                    ContactSim contactSim = awakeSet.contactSims[localIndex];
+                    if (edgeIndex == 0) contactSim.encodedBodySimA = -1;
+                    else contactSim.encodedBodySimB = -1;
                     int otherEdgeIndex = edgeIndex ^ 1;
                     int otherBodyId = otherEdgeIndex == 1 ? contact.edge1.bodyId : contact.edge0.bodyId;
                     Body otherBody = bodies[otherBodyId];
                     if (otherBody.setIndex == (int)SetType.Awake) continue;
-                    int localIndex = contact.localIndex;
-                    ContactSim contactSim = awakeSet.contactSims[localIndex];
                     Debug.Assert(contactSim.manifold.pointCount == 0);
                     Debug.Assert(!contact.flags.HasFlag(ContactFlags.Touching));
                     contact.setIndex = (int)SetType.Disabled;
@@ -231,6 +247,8 @@ public partial class World
                 int sleepContactIndex = sleepSet.contactSims.Count;
                 ContactSim sleepContactSim = awakeContactSim with { };
                 sleepSet.contactSims.Add(sleepContactSim);
+                sleepContactSim.encodedBodySimA = Body.SleepBodySimIndex(sleepContactSim.encodedBodySimA);
+                sleepContactSim.encodedBodySimB = Body.SleepBodySimIndex(sleepContactSim.encodedBodySimB);
                 int movedLocalIndex = color.contactSims.RemoveSwap(localIndex);
                 if (movedLocalIndex != -1)
                 {
@@ -343,16 +361,35 @@ public partial class World
         DestroySolverSet(setId2);
         ValidateSolverSets();
     }
+    public Body RemoveBodySim(SolverSet set, int localIndex)
+    {
+        var bodySims = set.bodySims;
+        Debug.Assert(0 <= localIndex && localIndex < bodySims.Count);
+        int lastIndex = bodySims.Count - 1;
+        if (localIndex == lastIndex)
+        {
+            bodySims.RemoveAt(lastIndex);
+            return null;
+        }
+        bodySims[localIndex] = bodySims[lastIndex];
+        bodySims.RemoveAt(lastIndex);
+        Body movedBody = bodies[bodySims[localIndex].bodyId];
+        Debug.Assert(movedBody.localIndex == lastIndex);
+        movedBody.localIndex = localIndex;
+        return movedBody;
+    }
     public void TransferBody(SolverSet targetSet, SolverSet sourceSet, Body body)
     {
         if (targetSet == sourceSet) return;
+        Debug.Assert(body.headContactKey == -1);
         int sourceIndex = body.localIndex;
         BodySim sourceSim = sourceSet.bodySims[sourceIndex];
         int targetIndex = targetSet.bodySims.Count;
         BodySim targetSim = sourceSim with { }; targetSet.bodySims.Add(targetSim);
         body.flags &= ~BodyFlags.TransientFlags;
         targetSim.flags &= ~BodyFlags.TransientFlags;
-        RemoveBodySim(sourceSet.bodySims, bodies, sourceIndex);
+        Body movedBody = RemoveBodySim(sourceSet, sourceIndex);
+        if (movedBody != null) RefreshBodyContactIndices(movedBody);
         if (sourceSet.setIndex == (int)SetType.Awake) sourceSet.bodyStates.RemoveSwap(sourceIndex);
         else if (targetSet.setIndex == (int)SetType.Awake)
             targetSet.bodyStates.Add(new() { flags = body.flags });

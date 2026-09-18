@@ -112,6 +112,11 @@ public struct ContactPrepareSpan
     public int start, count;
     public List<ContactSim> contacts;
 }
+[System.Runtime.CompilerServices.InlineArray(Box2D.GraphColorCount + 1)]
+public struct ContactCollideSpan
+{
+    public (int start, List<ContactSim> contacts) b;
+}
 /// <summary>Similar for joints</summary>
 public struct JointPrepareSpan
 {
@@ -154,9 +159,8 @@ public partial class StepContext
     public int[] bulletBodies;
     public int bulletBodyCount;
 
-    /// <summary>contact pointers for simplified parallel-for access.<br/>
-    /// - parallel-for collide with no gaps, includes touching and non-touching</summary>
-    public ContactSim[] contactSims;
+    /// <summary>Graph color spans for the narrow-phase, includes non-touching contacts as well.</summary>
+    public ContactCollideSpan collideSpans;
 
     /// <summary>Flat view of the wide contact constraint array used by prepare and store.
     /// prepareSpans has activeColorCount + 1 entries, the last being a sentinel
@@ -344,7 +348,6 @@ public unsafe partial class World
                     continuousContext.base_ + output.point, output.normal, world.preSolveContext);
             if (didHit)
             {
-                continuousContext.fastBodySim.flags |= BodyFlags.HadTimeOfImpact;
                 continuousContext.fraction = hitFraction;
             }
         }
@@ -398,18 +401,21 @@ public unsafe partial class World
             fastBodyState.linearVelocity -= (1 - context.fraction) * dt * fastBodySim.gravityScale * gravity;
             ref BodyMoveEvent event_ = ref System.Runtime.InteropServices.CollectionsMarshal.AsSpan(bodyMoveEvents)[bodySimIndex];
             event_.transform = fastBodySim.transform;
+            fastBody.flags |= BodyFlags.HadTimeOfImpact;
             shapeId = fastBody.headShapeId;
             while (shapeId != -1)
             {
                 Shape shape = shapes[shapeId];
                 AABB aabb = shape.ComputeFatAABB(fastBodySim.transform, Box2D.SpeculativeDistance);
-                if (!shape.fatAABB.Contains(aabb))
+                if (!fatAABBs[shapeId].Contains(aabb))
                 {
                     float margin = shape.aabbMargin;
-                    shape.fatAABB = new(new(aabb.lowerBound.x - margin, aabb.lowerBound.y - margin),
+                    AABB fatAABB = new(new(aabb.lowerBound.x - margin, aabb.lowerBound.y - margin),
                         new(aabb.upperBound.x + margin, aabb.upperBound.y + margin));
-                    fastBodySim.flags |= BodyFlags.EnlargeBounds;
-                    if (!isBullet) broadPhase.MarkProxyMoved(shape.proxyKey, shape.fatAABB);
+                    fatAABBs[shapeId] = fatAABB;
+                    fastBodySim.flags |= BodyFlags.EnlargeBulletBounds;
+                    if (!isBullet) broadPhase.MarkProxyMoved(shape.proxyKey, fatAABB);
+                    else fastBodySim.flags |= BodyFlags.EnlargeBulletBounds;
                 }
                 shapeId = shape.nextShapeId;
             }
@@ -422,13 +428,14 @@ public unsafe partial class World
             while (shapeId != -1)
             {
                 Shape shape = shapes[shapeId];
-                if (!shape.fatAABB.Contains(shape.aabb))
+                if (!fatAABBs[shapeId].Contains(shape.aabb))
                 {
                     float margin = shape.aabbMargin;
-                    shape.fatAABB = new(new(shape.aabb.lowerBound.x - margin, shape.aabb.lowerBound.y - margin),
+                    AABB fatAABB = new(new(shape.aabb.lowerBound.x - margin, shape.aabb.lowerBound.y - margin),
                         new(shape.aabb.upperBound.x + margin, shape.aabb.upperBound.y + margin));
-                    fastBodySim.flags |= BodyFlags.EnlargeBounds;
-                    if (!isBullet) broadPhase.MarkProxyMoved(shape.proxyKey, shape.fatAABB);
+                    fatAABBs[shapeId] = fatAABB;
+                    if (!isBullet) broadPhase.MarkProxyMoved(shape.proxyKey, fatAABB);
+                    else fastBodySim.flags |= BodyFlags.EnlargeBulletBounds;
                 }
                 shapeId = shape.nextShapeId;
             }
@@ -474,9 +481,8 @@ public unsafe partial class World
             sim.torque = 0;
             Debug.Assert(!body.flags.HasFlag(BodyFlags.DirtyMass));
             body.flags &= ~BodyFlags.TransientFlags;
-            body.flags |= sim.flags & (BodyFlags.IsSpeedCapped | BodyFlags.HadTimeOfImpact);
-            body.flags |= state->flags & (BodyFlags.IsSpeedCapped | BodyFlags.HadTimeOfImpact);
             sim.flags &= ~BodyFlags.TransientFlags;
+            body.flags |= state->flags & BodyFlags.IsSpeedCapped;
             state->flags &= ~BodyFlags.TransientFlags;
             if (!world.enableSleep || !body.flags.HasFlag(BodyFlags.EnableSleep) || sleepVelocity > body.sleepThreshold)
             {
@@ -484,6 +490,7 @@ public unsafe partial class World
                 if (body.type == BodyType.Dynamic && world.enableContinuous && Math.Max(maxDeltaPosition, maxVelocity * stepContext.dt) > body.safetyFactor * sim.minExtent)
                 {
                     body.flags |= BodyFlags.IsFast;
+                    sim.flags |= BodyFlags.IsFast;
                     if (sim.flags.HasFlag(BodyFlags.IsBullet))
                         stepContext.bulletBodies[Interlocked.Increment(ref stepContext.bulletBodyCount) - 1] = simIndex;
                     else world.SolveContinuous(simIndex, taskContext, stepContext.dt);
@@ -521,12 +528,13 @@ public unsafe partial class World
                 {
                     AABB aabb = shape.ComputeFatAABB(transform, Box2D.SpeculativeDistance);
                     shape.aabb = aabb;
-                    if (!shape.fatAABB.Contains(aabb))
+                    if (!world.fatAABBs[shapeId].Contains(aabb))
                     {
                         float margin = shape.aabbMargin;
-                        shape.fatAABB = new(new(aabb.lowerBound.x - margin, aabb.lowerBound.y - margin),
+                        AABB fatAABB = new(new(aabb.lowerBound.x - margin, aabb.lowerBound.y - margin),
                             new(aabb.upperBound.x + margin, aabb.upperBound.y + margin));
-                        world.broadPhase.MarkProxyMoved(shape.proxyKey, shape.fatAABB);
+                        world.fatAABBs[shapeId] = fatAABB;
+                        world.broadPhase.MarkProxyMoved(shape.proxyKey, fatAABB);
                         enlargedSimBitSet.SetBit(simIndex);
                     }
                 }
@@ -803,7 +811,6 @@ public unsafe partial class World
             stepContext.world.SolveContinuous(simIndex, taskContext, stepContext.dt);
         }
     }
-
     int[] solve_activeColorIndices = new int[Box2D.GraphColorCount],
         solve_colorContactCounts = new int[Box2D.GraphColorCount],
         solve_colorJointCounts = new int[Box2D.GraphColorCount];
@@ -1162,8 +1169,8 @@ public unsafe partial class World
             for (int i = 0; i < bulletBodyCount; i++)
             {
                 BodySim bulletBodySim = awakeSet.bodySims[bulletBodySimIndices[i]];
-                if (!bulletBodySim.flags.HasFlag(BodyFlags.EnlargeBounds)) continue;
-                bulletBodySim.flags &= ~BodyFlags.EnlargeBounds;
+                if (!bulletBodySim.flags.HasFlag(BodyFlags.EnlargeBulletBounds)) continue;
+                bulletBodySim.flags &= ~BodyFlags.EnlargeBulletBounds;
                 int bodyId = bulletBodySim.bodyId;
                 Debug.Assert(0 <= bodyId && bodyId < bodies.Count);
                 Body bulletBody = bodies[bodyId];
@@ -1175,8 +1182,9 @@ public unsafe partial class World
                     int proxyId = B2_PROXY_ID(proxyKey);
                     Debug.Assert(B2_PROXY_TYPE(proxyKey) == BodyType.Dynamic);
                     AABB treeAABB = dynamicTree.GetAABB(proxyId);
-                    if (!treeAABB.Contains(shape.fatAABB))
-                        dynamicTree.EnlargeProxy(proxyKey, shape.fatAABB);
+                    AABB shapeFatAABB = fatAABBs[shapeId];
+                    if (!treeAABB.Contains(shapeFatAABB))
+                        dynamicTree.EnlargeProxy(proxyKey, shapeFatAABB);
                     shapeId = shape.nextShapeId;
                 }
             }

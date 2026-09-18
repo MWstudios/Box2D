@@ -102,7 +102,7 @@ public record class ContactSim
     public int bodyIdA, bodyIdB;
 #endif
 
-    public int bodySimIndexA, bodySimIndexB;
+    public int encodedBodySimA, encodedBodySimB;
 
     public int shapeIdA, shapeIdB;
 
@@ -213,8 +213,8 @@ public partial class World
         contactSim.bodyIdA = shapeA.bodyId;
         contactSim.bodyIdB = shapeB.bodyId;
 #endif
-        contactSim.bodySimIndexA = -1;
-        contactSim.bodySimIndexB = -1;
+        contactSim.encodedBodySimA = bodyA.EncodeBodySimIndex();
+        contactSim.encodedBodySimB = bodyB.EncodeBodySimIndex();
         contactSim.invMassA = 0;
         contactSim.invIA = 0;
         contactSim.invMassB = 0;

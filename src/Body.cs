@@ -23,7 +23,7 @@ public enum BodyFlags
     /// <summary>This body has no limit on angular velocity</summary>
     AllowFastRotation = 0x80,
     /// <summary>This body need's to have its AABB increased</summary>
-    EnlargeBounds = 0x100,
+    EnlargeBulletBounds = 0x100,
     /// <summary>This body is dynamic so the solver should write to it.
     /// This prevents writing to kinematic bodies that causes a multithreaded sharing
     /// cache coherence problem even when the values are not changing.
@@ -96,6 +96,13 @@ public class Body
     ///<summary>This is monotonically advanced when a body is allocated in this slot<br/>
     /// Used to check for invalid BodyId</summary>
     public ushort generation;
+    public int EncodeBodySimIndex() => setIndex == (int)SetType.Awake ? localIndex : setIndex == (int)SetType.Static ? -(localIndex + 2) : -1;
+    public static bool IsStaticSimIndex(int encodedBodySimIndex) => encodedBodySimIndex < -1;
+    /// <summary>In the contact solver a static body sim is expected to have null index.</summary>
+    public static int DecodeAwakeIndex(int encodedBodySimIndex) => encodedBodySimIndex >= 0 ? encodedBodySimIndex : -1;
+    /// <summary>When a body goes to sleep the contact sim has a null index for it. This
+    /// also handles the case where the body is static and has an encoded sim index of -2 or less.</summary>
+    public static int SleepBodySimIndex(int encodedIndex) => encodedIndex >= 0 ? -1 : encodedIndex;
 }
 /// <summary>Body State<br/>
 /// The body state is designed for fast conversion to and from SIMD via scatter-gather.
@@ -189,10 +196,9 @@ public unsafe partial class World
 {
     public void SyncBodyFlags(Body body)
     {
-        var flags = body.flags & ~BodyFlags.TransientFlags;
-        GetBodySim(body).flags = flags;
+        GetBodySim(body).flags = body.flags & ~(BodyFlags.IsSpeedCapped | BodyFlags.HadTimeOfImpact);
         BodyState* bodyState = GetBodyState(body);
-        if (bodyState != null) bodyState->flags = flags;
+        if (bodyState != null) bodyState->flags = body.flags & ~BodyFlags.TransientFlags;
     }
     public Body GetBodyFullID(BodyID bodyID)
     {
@@ -204,15 +210,20 @@ public unsafe partial class World
     public BodyID MakeBodyID(int bodyId) => new() { index1 = bodyId + 1, world0 = this, generation = bodies[bodyId].generation };
     public BodySim GetBodySim(Body body) => solverSets[body.setIndex].bodySims[body.localIndex];
     public BodyState* GetBodyState(Body body) => body.setIndex == (int)SetType.Awake ? solverSets[(int)SetType.Awake].bodyStates.Data + body.localIndex : (BodyState*)null;
-    public static void RemoveBodySim(System.Collections.Generic.List<BodySim> bodySims, System.Collections.Generic.List<Body> bodies, int localIndex)
+    public void RefreshBodyContactIndices(Body body)
     {
-        Debug.Assert(0 <= localIndex && localIndex < bodySims.Count);
-        int lastIndex = bodySims.Count - 1;
-        bodySims[localIndex] = bodySims[lastIndex];
-        Body movedBody = bodies[bodySims[localIndex].bodyId];
-        Debug.Assert(movedBody.localIndex == lastIndex);
-        movedBody.localIndex = localIndex;
-        bodySims.RemoveAt(bodySims.Count - 1);
+        int encodedIndex = body.EncodeBodySimIndex();
+        int contactKey = body.headContactKey;
+        while (contactKey != -1)
+        {
+            int contactId = contactKey >> 1;
+            int edgeIndex = contactKey & 1;
+            Contact contact = contacts[contactId];
+            ContactSim contactSim = GetContactSim(contact);
+            if (edgeIndex == 0) contactSim.encodedBodySimA = encodedIndex;
+            else contactSim.encodedBodySimB = encodedIndex;
+            contactKey = edgeIndex == 1 ? contact.edge1.nextKey : contact.edge0.nextKey;
+        }
     }
     public void CreateIslandForBody(int setIndex, Body body)
     {

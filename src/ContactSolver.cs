@@ -51,7 +51,7 @@ public unsafe partial class StepContext
             ref Manifold manifold = ref contactSim.manifold;
             int pointCount = manifold.pointCount;
             Debug.Assert(0 < pointCount && pointCount <= 2);
-            int indexA = contactSim.bodySimIndexA, indexB = contactSim.bodySimIndexB;
+            int indexA = Body.DecodeAwakeIndex(contactSim.encodedBodySimA), indexB = Body.DecodeAwakeIndex(contactSim.encodedBodySimB);
 
             ref ContactConstraint constraint = ref constraints[i];
             constraint.indexA = indexA + 1;
@@ -466,8 +466,8 @@ public class ContactSolverAVX : IContactSolverW
                     {
                         ContactSim c = contactSims[contactIndex];
                         contactLanes[laneIndex] = c;
-                        ((int*)&cw->indexA)[laneIndex] = c.bodySimIndexA + 1;
-                        ((int*)&cw->indexB)[laneIndex] = c.bodySimIndexB + 1;
+                        ((int*)&cw->indexA)[laneIndex] = Body.DecodeAwakeIndex(c.encodedBodySimA) + 1;
+                        ((int*)&cw->indexB)[laneIndex] = Body.DecodeAwakeIndex(c.encodedBodySimB) + 1;
 #if B2_VALIDATE
                         Body bodyA = world.bodies[c.bodyIdA];
                         int validIndexA = bodyA.setIndex == (int)SetType.Awake ? bodyA.localIndex : -1;
@@ -1120,8 +1120,8 @@ public class ContactSolverNeon : IContactSolverW
                     {
                         ContactSim c = contactSims[contactIndex];
                         contactLanes[laneIndex] = c;
-                        ((int*)&cw->indexA)[laneIndex] = c.bodySimIndexA + 1;
-                        ((int*)&cw->indexB)[laneIndex] = c.bodySimIndexB + 1;
+                        ((int*)&cw->indexA)[laneIndex] = Body.DecodeAwakeIndex(c.encodedBodySimA) + 1;
+                        ((int*)&cw->indexB)[laneIndex] = Body.DecodeAwakeIndex(c.encodedBodySimB) + 1;
 #if B2_VALIDATE
                         Body bodyA = world.bodies[c.bodyIdA];
                         int validIndexA = bodyA.setIndex == (int)SetType.Awake ? bodyA.localIndex : -1;
@@ -1726,8 +1726,8 @@ public class ContactSolverSSE : IContactSolverW
                     {
                         ContactSim c = contactSims[contactIndex];
                         contactLanes[laneIndex] = c;
-                        ((int*)&cw->indexA)[laneIndex] = c.bodySimIndexA + 1;
-                        ((int*)&cw->indexB)[laneIndex] = c.bodySimIndexB + 1;
+                        ((int*)&cw->indexA)[laneIndex] = Body.DecodeAwakeIndex(c.encodedBodySimA) + 1;
+                        ((int*)&cw->indexB)[laneIndex] = Body.DecodeAwakeIndex(c.encodedBodySimB) + 1;
 #if B2_VALIDATE
                         Body bodyA = world.bodies[c.bodyIdA];
                         int validIndexA = bodyA.setIndex == (int)SetType.Awake ? bodyA.localIndex : -1;
@@ -2377,8 +2377,8 @@ public class ContactSolverFloat : IContactSolverW
                     {
                         ContactSim c = contactSims[contactIndex];
                         contactLanes[laneIndex] = c;
-                        ((int*)&cw->indexA)[laneIndex] = c.bodySimIndexA + 1;
-                        ((int*)&cw->indexB)[laneIndex] = c.bodySimIndexB + 1;
+                        ((int*)&cw->indexA)[laneIndex] = Body.DecodeAwakeIndex(c.encodedBodySimA) + 1;
+                        ((int*)&cw->indexB)[laneIndex] = Body.DecodeAwakeIndex(c.encodedBodySimB) + 1;
 #if B2_VALIDATE
                         Body bodyA = world.bodies[c.bodyIdA];
                         int validIndexA = bodyA.setIndex == (int)SetType.Awake ? bodyA.localIndex : -1;

@@ -35,7 +35,7 @@ public static partial class Box2D
     /// <summary>Maximum number of colors in the constraint graph. Constraints that cannot
     /// find a color are added to the overflow set which are solved single-threaded.
     /// The compound barrel benchmark has minor overflow with 24 colors</summary>
-    public static int GraphColorCount = 24;
+    public const int GraphColorCount = 24;
     /// <summary>A small length used as a collision and constraint tolerance. Usually it is
     /// chosen to be numerically significant, but visually insignificant. In meters.
     /// Normally this is 0.5cm.</summary>
@@ -55,7 +55,11 @@ public static partial class Box2D
     public static float ContactRecycleCosAngle = 0.98f;
     /// <summary>This is used to fatten AABBs in the dynamic tree. This allows proxies
     /// to move by a small amount without triggering a tree adjustment. This is in meters.
-    /// Normally this is 5cm.</summary>
+    /// Normally this is 5cm.
+    /// This has been tuned on benchmarks and I found that keeping
+    /// the margin small improves performance by reducing the number of contacts. I used
+    /// to keep this larger in the past to avoid tree insert and remove churn. But the
+    /// broad-phase no longer works that way and now uses a two-phase refit and rebuild setup similar to Jolt.</summary>
     /// <remarks> modifying this can have a significant impact on performance</remarks>
     public static float MaxAABBMargin = 0.05f * LengthUnitsPerMeter;
     /// <summary>For small objects the margin is limited to this fraction times the maximum extent</summary>

@@ -282,7 +282,7 @@ public static class WorldAPI
                             while (shapeId != -1)
                             {
                                 Shape shape = world.shapes[shapeId];
-                                aabb = AABB.Union(aabb, shape.fatAABB);
+                                aabb = AABB.Union(aabb, world.fatAABBs[shapeId]);
                                 shapeCount++;
                                 shapeId = shape.nextShapeId;
                             }

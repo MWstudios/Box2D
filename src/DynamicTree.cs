@@ -18,12 +18,12 @@ namespace Box2D;
     [FieldOffset(16)] public ulong padding;
     /// <summary>bit 31 : 1 for leaf node<br/>bit 30 : 1 for moved flag<br/>bits 0-29 : index of the sibling pair node or the proxy id for a leaf</summary>
     [FieldOffset(24)] public uint flagIndex = DynamicTree.EmptyNode;
-    /// <summary>The total number of leaves below for an internal node. todo not used</summary>
-    [FieldOffset(28)] public int leafCount = 0;
+    /// <summary>The height of an internal node. A leaf has zero height.</summary>
+    [FieldOffset(28)] public int height = 0;
     /// <summary>The shape index for a leaf. Truncated from proxy user data.</summary>
     [FieldOffset(28)] public int shapeIndex;
     public TreeNode() { }
-    public int GetLeafCount() => IsLeaf() ? 1 : leafCount;
+    public int GetNodeHeight() => IsLeaf() ? 0 : height;
     public bool IsLeaf() => (flagIndex & DynamicTree.LeafNode) == DynamicTree.LeafNode;
     public bool IsMoved() => (flagIndex & DynamicTree.MovedNode) == DynamicTree.MovedNode;
     public bool IsEmpty() => flagIndex == DynamicTree.EmptyNode;
@@ -124,6 +124,22 @@ public struct AABBV
                 Sse.Store((float*)a, Sse.Or(Sse.And(mask, value.aabb), Sse.AndNot(mask, Sse.LoadVector128((float*)a))));
         }
         else if (condition) aabb = *(AABB*)&value.aabb;
+    }
+    public static unsafe bool OverlapV(ref AABB a, ref AABB b)
+    {
+        if (AdvSimd.IsSupported) fixed (AABB* _a = &a, _b = &b)
+        {
+            Vector128<float> av = AdvSimd.LoadVector128((float*)_a), bv = AdvSimd.LoadVector128((float*)_b);
+            Vector128<float> t1 = Vector128.Create(av.GetLower(), bv.GetLower()), t2 = Vector128.Create(bv.GetUpper(), av.GetUpper()); //???
+            return AdvSimd.Arm64.MinAcross(AdvSimd.CompareLessThanOrEqual(t1, t2).AsUInt32())[0] != 0;
+        }
+        if (Sse.IsSupported) fixed (AABB* _a = &a, _b = &b)
+        {
+            Vector128<float> av = Sse.LoadVector128((float*)_a), bv = Sse.LoadVector128((float*)_b);
+            Vector128<float> t1 = Sse.MoveLowToHigh(av, bv), t2 = Sse.MoveHighToLow(av, bv);
+            return Sse.MoveMask(Sse.CompareLessThanOrEqual(t1, t2)) == 0xF;
+        }
+        return a.lowerBound.x <= b.upperBound.x && a.lowerBound.y <= b.upperBound.y && b.lowerBound.x <= a.upperBound.x && b.lowerBound.y <= a.upperBound.y;
     }
 }
 public partial class DynamicTree
@@ -255,7 +271,7 @@ public partial class DynamicTree
         {
             aabb = AABB.Union(c1.aabb, c2.aabb),
             flagIndex = (uint)pair | ((c1.flagIndex | c1.flagIndex) & MovedNode),
-            leafCount = c1.GetLeafCount() + c2.GetLeafCount()
+            height = 1 + c1.GetNodeHeight() + c2.GetNodeHeight()
         };
     }
     TreeNode MakeLeafNode(AABB aabb, int proxyId, ulong userData, bool moved) => new()
@@ -778,31 +794,7 @@ public partial class DynamicTree
         }
         return result;
     }
-    ///<summary>The height is the maximum leaf depth, with the root children at depth one.
-    ///Siblings share a depth and child pairs sit one deeper. An explicit stack
-    ///keeps this off the call stack, like the query traversals.</summary>
-    public int GetHeight()
-    {
-        if (proxyCount == 0) return 0;
-        ref TreeNode root = ref nodes[RootNode];
-        if (root.IsLeaf()) return 0;
-        Stack<(int pair, int depth)> stack = new(1024);
-        stack.Push((root.GetLeftChild(), 1));
-        int height = 0;
-        while (stack.Count > 0)
-        {
-            (int pair, int depth) = stack.Pop();
-            height = Math.Max(height, depth);
-            for (int i = 0; i < 2; i++)
-            {
-                ref TreeNode node = ref nodes[pair + i];
-                if (node.IsLeaf()) continue;
-                int childPair = node.GetLeftChild();
-                stack.Push((childPair, depth + 1));
-            }
-        }
-        return height;
-    }
+    public int GetHeight() => nodes[RootNode].GetNodeHeight();
     ///<summary>The area ratio is the thing that SAH seeks to minimize. SAH
     ///cannot do anything about leaf boxes or the root box. It seeks
     ///to minimize the area of all non-root internal nodes. Divide this
@@ -821,7 +813,7 @@ public partial class DynamicTree
     }
     ///<summary> Get the bounding box that contains the entire tree</summary>
     public AABB GetRootBounds() => proxyCount == 0 ? new() : nodes[RootNode].aabb;
-    int ValidateSubtree(int nodeIndex)
+    int ValidateSubtree(int nodeIndex, ref int leafCount)
     {
         Debug.Assert(0 <= nodeIndex && nodeIndex < nodes.Length);
         ref TreeNode node = ref nodes[nodeIndex];
@@ -832,7 +824,8 @@ public partial class DynamicTree
             Debug.Assert(0 <= proxyId && proxyId < proxies.Length);
             Debug.Assert(proxies[proxyId].node == nodeIndex);
             Debug.Assert((int)proxies[proxyId].userData == node.shapeIndex);
-            return 1;
+            leafCount++;
+            return 0;
         }
         int pair = node.GetLeftChild();
         Debug.Assert((pair & 1) == 0 && 2 <= pair && pair < nodeEnd);
@@ -843,9 +836,9 @@ public partial class DynamicTree
         Debug.Assert(node.aabb.Contains(c1.aabb));
         Debug.Assert(node.aabb.Contains(c2.aabb));
         Debug.Assert(node.IsMoved() == (c1.IsMoved() || c2.IsMoved()));
-        int leafCount = ValidateSubtree(pair) + ValidateSubtree(pair + 1);
-        Debug.Assert(node.leafCount == leafCount);
-        return leafCount;
+        int height = 1 + ValidateSubtree(pair, ref leafCount) + ValidateSubtree(pair + 1, ref leafCount);
+        Debug.Assert(node.height == height);
+        return height;
     }
     ///<summary> Get the number of proxies created</summary>
     public int GetProxyCount() => proxyCount;
@@ -1254,7 +1247,8 @@ public partial class DynamicTree
             Debug.Assert(nodes[RootNode].IsEmpty());
             return;
         }
-        int leafCount = ValidateSubtree(RootNode);
+        int leafCount = 0;
+        ValidateSubtree(RootNode, ref leafCount);
         Debug.Assert(leafCount == proxyCount);
 #endif
     }

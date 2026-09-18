@@ -44,14 +44,14 @@ public partial class World
     /// up to world->workerCount tasks are enqueued, and each task loops, atomically
     /// claiming the next unclaimed block until the range is drained. Blocks the
     /// caller until all work is complete. minRange is the minimum block size; block
-    /// size grows once itemCount exceeds 4 * workerCount * minRange so block count
+    /// size grows once itemCount exceeds 8 * workerCount * minRange so block count
     /// stays bounded.</summary>
     public void ParallelFor(ParallelForCallback callback, int itemCount, int minRange, object context)
     {
         if (itemCount <= 0) return;
         Debug.Assert(minRange > 0);
         Debug.Assert(0 < workerCount && workerCount <= Box2D.MaxWorkers);
-        int blocksPerWorker = 4;
+        int blocksPerWorker = 8;
         int maxBlockCount = blocksPerWorker * workerCount;
         int blockSize = itemCount <= minRange * maxBlockCount ? minRange : (itemCount + maxBlockCount - 1) / maxBlockCount;
         int blockCount = (itemCount + blockSize - 1) / blockSize;

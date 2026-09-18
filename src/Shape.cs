@@ -35,7 +35,6 @@ public class Shape
     public float density;
     public float aabbMargin;
     public AABB aabb;
-    public AABB fatAABB;
     public Vector2 localCentroid;
     public int proxyKey;
 
@@ -62,7 +61,7 @@ public class Shape
     }
     public static bool ShouldQueryCollide(Filter shapeFilter, QueryFilter queryFilter) =>
         (shapeFilter.categoryBits & queryFilter.maskBits) != 0 && (shapeFilter.maskBits & queryFilter.categoryBits) != 0;
-    public void UpdateAABBs(WorldTransform transform, BodyType proxyType)
+    public void UpdateAABBs(out AABB fatAABB, WorldTransform transform, BodyType proxyType)
     {
         aabb = shape.ComputeFatAABB(transform, Box2D.SpeculativeDistance);
         float margin = proxyType == BodyType.Static ? Box2D.SpeculativeDistance : aabbMargin;
@@ -116,13 +115,6 @@ public class Shape
         result.plane.normal = transform.q * result.plane.normal;
         return result;
     }
-    public void CreateProxy(BroadPhase bp, BodyType type, WorldTransform transform, bool forcePairCreation)
-    {
-        Debug.Assert(proxyKey == -1);
-        UpdateAABBs(transform, type);
-        proxyKey = bp.CreateProxy(type, fatAABB, filter.categoryBits, id, forcePairCreation);
-        Debug.Assert((uint)B2_PROXY_TYPE(proxyKey) < 3);
-    }
     public void DestroyProxy(BroadPhase bp)
     {
         if (proxyKey != -1) { bp.DestroyProxy(proxyKey); proxyKey = -1; }
@@ -167,8 +159,9 @@ public partial class World
     public Shape CreateShapeInternal(Body body, WorldTransform transform, ref ShapeDef def, IShape geometry, ShapeType shapeType)
     {
         int shapeId = shapeIdPool.AllocId();
-        if (shapeId == shapes.Count) shapes.Add(new());
+        if (shapeId == shapes.Count) { shapes.Add(new()); fatAABBs.Add(new()); }
         else Debug.Assert(shapes[shapeId].id == -1);
+        Debug.Assert(fatAABBs.Count == shapes.Count);
         Shape shape = shapes[shapeId];
         shape.shape = geometry;
         shape.id = shapeId;
@@ -187,12 +180,12 @@ public partial class World
         shape.localCentroid = shape.GetCentroid();
         shape.aabbMargin = shape.ComputeMargin();
         shape.aabb = new();
-        shape.fatAABB = new();
         shape.generation++;
+        fatAABBs[shapeId] = new();
         if (body.setIndex != (int)SetType.Disabled)
         {
             BodyType proxyType = body.type;
-            shape.CreateProxy(broadPhase, proxyType, transform, def.invokeContactCreation || def.isSensor);
+            CreateShapeProxy(shape, proxyType, transform, def.invokeContactCreation || def.isSensor);
         }
         if (body.headShapeId != -1)
         {
@@ -266,6 +259,14 @@ public partial class World
         shape.id = -1;
         ValidateSolverSets();
     }
+    public void CreateShapeProxy(Shape shape, BodyType type, WorldTransform transform, bool forcePairCreation)
+    {
+        Debug.Assert(shape.proxyKey == -1);
+        ref AABB fatAABB = ref System.Runtime.InteropServices.CollectionsMarshal.AsSpan(fatAABBs)[shape.id];
+        shape.UpdateAABBs(out fatAABB, transform, type);
+        shape.proxyKey = broadPhase.CreateProxy(type, fatAABB, shape.filter.categoryBits, shape.id, forcePairCreation);
+        Debug.Assert((uint)B2_PROXY_TYPE(shape.proxyKey) < 3);
+    }
     public void ResetProxy(Shape shape, bool destroyProxy)
     {
         Body body = bodies[shape.bodyId];
@@ -284,15 +285,16 @@ public partial class World
         if (shape.proxyKey != -1)
         {
             BodyType proxyType = B2_PROXY_TYPE(shape.proxyKey);
-            shape.UpdateAABBs(transform, proxyType);
+            ref AABB fatAABB = ref System.Runtime.InteropServices.CollectionsMarshal.AsSpan(fatAABBs)[shapeId];
+            shape.UpdateAABBs(out fatAABB, transform, proxyType);
             if (destroyProxy)
             {
                 broadPhase.DestroyProxy(shape.proxyKey);
-                shape.proxyKey = broadPhase.CreateProxy(proxyType, shape.fatAABB, shape.filter.categoryBits, shapeId, true);
+                shape.proxyKey = broadPhase.CreateProxy(proxyType, fatAABB, shape.filter.categoryBits, shapeId, true);
             }
-            else broadPhase.MoveProxy(shape.proxyKey, shape.fatAABB);
+            else broadPhase.MoveProxy(shape.proxyKey, fatAABB);
         }
-        else shape.UpdateAABBs(transform, body.type);
+        else shape.UpdateAABBs(out System.Runtime.InteropServices.CollectionsMarshal.AsSpan(fatAABBs)[shapeId], transform, body.type);
         ValidateSolverSets();
     }
 }

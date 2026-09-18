@@ -148,7 +148,8 @@ public partial class World
         Debug.Assert(contact.flags.HasFlag(ContactFlags.Touching));
         int colorIndex = Box2D.GraphColorCount - 1;
         int bodyIdA = contact.edge0.bodyId, bodyIdB = contact.edge1.bodyId;
-        BodyType typeA = bodies[bodyIdA].type, typeB = bodies[bodyIdB].type;
+        Body bodyA = bodies[bodyIdA], bodyB = bodies[bodyIdB];
+        BodyType typeA = bodyA.type, typeB = bodyB.type;
         Debug.Assert(typeA == BodyType.Dynamic || typeB == BodyType.Dynamic);
 
         if (typeA == BodyType.Dynamic && typeB == BodyType.Dynamic)
@@ -195,32 +196,32 @@ public partial class World
             ContactSim newContact = color.contactSims[^1];
             if (typeA == BodyType.Static)
             {
-                newContact.bodySimIndexA = -1;
+                newContact.encodedBodySimA = bodyA.EncodeBodySimIndex();
                 newContact.invMassA = 0;
                 newContact.invIA = 0;
             }
             else
             {
-                Debug.Assert(bodies[bodyIdA].setIndex == (int)SetType.Awake);
+                Debug.Assert(bodyA.setIndex == (int)SetType.Awake);
                 SolverSet awakeSet = solverSets[(int)SetType.Awake];
-                int localIndex = bodies[bodyIdA].localIndex;
-                newContact.bodySimIndexA = localIndex;
+                int localIndex = bodyA.localIndex;
+                newContact.encodedBodySimA = localIndex;
                 BodySim bodySimA = awakeSet.bodySims[localIndex];
                 newContact.invMassA = bodySimA.invMass;
                 newContact.invIA = bodySimA.invInertia;
             }
             if (typeB == BodyType.Static)
             {
-                newContact.bodySimIndexB = -1;
+                newContact.encodedBodySimB = bodyB.EncodeBodySimIndex();
                 newContact.invMassB = 0;
                 newContact.invIB = 0;
             }
             else
             {
-                Debug.Assert(bodies[bodyIdB].setIndex == (int)SetType.Awake);
+                Debug.Assert(bodyB.setIndex == (int)SetType.Awake);
                 SolverSet awakeSet = solverSets[(int)SetType.Awake];
-                int localIndex = bodies[bodyIdB].localIndex;
-                newContact.bodySimIndexB = localIndex;
+                int localIndex = bodyB.localIndex;
+                newContact.encodedBodySimB = localIndex;
                 BodySim bodySimB = awakeSet.bodySims[localIndex];
                 newContact.invMassB = bodySimB.invMass;
                 newContact.invIB = bodySimB.invInertia;
