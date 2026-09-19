@@ -241,6 +241,13 @@ public static class JointAPI
     public static float DistanceJoint_GetSpringDampingRatio(JointID jointId) =>
         ((DistanceJoint)GetJointSimCheckType(jointId, JointType.Distance).joint).dampingRatio;
 
+    ///<summary> Get the current spring force.</summary>
+    public static float DistanceJoint_GetSpringForce(JointID jointId)
+    {
+        DistanceJoint joint = (DistanceJoint)GetJointSimCheckType(jointId, JointType.Distance).joint;
+        return joint.enableSpring ? joint.indexA * jointId.world0.inv_h : 0;
+    }
+
     ///<summary>Enable joint limit. The limit only works if the joint spring is enabled. Otherwise the joint is rigid
     /// and the limit has no effect.</summary>
     public static void DistanceJoint_EnableLimit(JointID jointId, bool enableLimit) =>

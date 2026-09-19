@@ -1,6 +1,6 @@
 # Box2D 3 + LiquidFun in C#
 
-This is a near complete port of [Box2D 3](https://github.com/erincatto/box2d) (as of commit [85ac053](https://github.com/erincatto/box2d/commit/85ac0538405cf3b7836ce5fe4072c1661175637b))
+This is a near complete port of [Box2D 3](https://github.com/erincatto/box2d) (as of commit [77619f4](https://github.com/erincatto/box2d/commit/77619f4f7baebe5117a2e3ddc3ac8c404e82d243))
 and [LiquidFun](https://github.com/google/liquidfun) into C#. Testing macros such as B2_VALIDATE, samples and other benchmarks are not included.
 
 This port also does not mean that porting to other languages (Java, Python) is now easier. Not everything could be replicated in purely managed environment; some pointer logic from C and native memory management is still left in the code.

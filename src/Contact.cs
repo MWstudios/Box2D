@@ -427,7 +427,29 @@ public struct ContactRegister
 {
     public ManifoldFcn fcn;
     public bool primary;
-    public static ContactRegister[][] s_registers;
+    public static readonly ContactRegister[][] s_registers =
+    [
+        [
+            new() { fcn = CircleManifold, primary = true }, new() { fcn = CapsuleAndCircleManifold, primary = false }, new() { fcn = SegmentAndCircleManifold, primary = false },
+            new() { fcn = PolygonAndCircleManifold, primary = false }, new() { fcn = ChainSegmentAndCircleManifold, primary = false }
+        ],
+        [
+            new() { fcn = CapsuleAndCircleManifold, primary = true }, new() { fcn = CapsuleManifold, primary = true }, new() { fcn = SegmentAndCapsuleManifold, primary = false },
+            new() { fcn = PolygonAndCapsuleManifold, primary = false }, new() { fcn = ChainSegmentAndCapsuleManifold, primary = false }
+        ],
+        [
+            new() { fcn = SegmentAndCircleManifold, primary = true }, new() { fcn = SegmentAndCapsuleManifold, primary = true }, new(),
+            new() { fcn = SegmentAndPolygonManifold, primary = true }, new()
+        ],
+        [
+            new() { fcn = PolygonAndCircleManifold, primary = true }, new() { fcn = PolygonAndCapsuleManifold, primary = true }, new() { fcn = SegmentAndPolygonManifold, primary = false },
+            new() { fcn = PolygonManifold, primary = false }, new() { fcn = ChainSegmentAndPolygonManifold, primary = false }
+        ],
+        [
+            new() { fcn = ChainSegmentAndCircleManifold, primary = true }, new() { fcn = ChainSegmentAndCapsuleManifold, primary = true }, new(),
+            new() { fcn = ChainSegmentAndPolygonManifold, primary = true }, new()
+        ]
+    ];
     static LocalManifold CircleManifold(Shape shapeA, Shape shapeB, Transform xf, ref SimplexCache cache) => Collision.CollideCircles((Circle)shapeA.shape, (Circle)shapeB.shape, xf);
     static LocalManifold CapsuleAndCircleManifold(Shape shapeA, Shape shapeB, Transform xf, ref SimplexCache cache) => Collision.CollideCapsuleAndCircle((Capsule)shapeA.shape, (Circle)shapeB.shape, xf);
     static LocalManifold CapsuleManifold(Shape shapeA, Shape shapeB, Transform xf, ref SimplexCache cache) => Collision.CollideCapsules((Capsule)shapeA.shape, (Capsule)shapeB.shape, xf);
@@ -440,36 +462,7 @@ public struct ContactRegister
     static LocalManifold ChainSegmentAndCircleManifold(Shape shapeA, Shape shapeB, Transform xf, ref SimplexCache cache) => Collision.CollideChainSegmentAndCircle((ChainSegment)shapeA.shape, (Circle)shapeB.shape, xf);
     static LocalManifold ChainSegmentAndCapsuleManifold(Shape shapeA, Shape shapeB, Transform xf, ref SimplexCache cache) => Collision.CollideChainSegmentAndCapsule((ChainSegment)shapeA.shape, (Capsule)shapeB.shape, xf, ref cache);
     static LocalManifold ChainSegmentAndPolygonManifold(Shape shapeA, Shape shapeB, Transform xf, ref SimplexCache cache) => Collision.CollideChainSegmentAndPolygon((ChainSegment)shapeA.shape, (Polygon)shapeB.shape, xf, ref cache);
-    public static void AddType(ManifoldFcn fcn, ShapeType type1, ShapeType type2)
-    {
-        Debug.Assert(0 <= type1 && (int)type1 <= s_registers.Length);
-        Debug.Assert(0 <= type2 && (int)type2 <= s_registers.Length);
-        s_registers[(int)type1][(int)type2].fcn = fcn;
-        s_registers[(int)type1][(int)type2].primary = true;
-        if (type1 != type2)
-        {
-            s_registers[(int)type2][(int)type1].fcn = fcn;
-            s_registers[(int)type2][(int)type1].primary = false;
-        }
-    }
     public static bool CanCollide(ShapeType typeA, ShapeType typeB) => s_registers[(int)typeA][(int)typeB].fcn != null;
-    static ContactRegister()
-    {
-        s_registers = new ContactRegister[Enum.GetValues<ShapeType>().Length][];
-        for (int i = 0; i < s_registers.Length; i++) s_registers[i] = new ContactRegister[s_registers.Length];
-        AddType(CircleManifold, ShapeType.Circle, ShapeType.Circle);
-        AddType(CapsuleAndCircleManifold, ShapeType.Capsule, ShapeType.Circle);
-        AddType(CapsuleManifold, ShapeType.Capsule, ShapeType.Capsule);
-        AddType(PolygonAndCircleManifold, ShapeType.Polygon, ShapeType.Circle);
-        AddType(PolygonAndCapsuleManifold, ShapeType.Polygon, ShapeType.Capsule);
-        AddType(PolygonManifold, ShapeType.Polygon, ShapeType.Polygon);
-        AddType(SegmentAndCircleManifold, ShapeType.Segment, ShapeType.Circle);
-        AddType(SegmentAndCapsuleManifold, ShapeType.Segment, ShapeType.Capsule);
-        AddType(SegmentAndPolygonManifold, ShapeType.Segment, ShapeType.Polygon);
-        AddType(ChainSegmentAndCircleManifold, ShapeType.ChainSegment, ShapeType.Circle);
-        AddType(ChainSegmentAndCapsuleManifold, ShapeType.ChainSegment, ShapeType.Capsule);
-        AddType(ChainSegmentAndPolygonManifold, ShapeType.ChainSegment, ShapeType.Polygon);
-    }
     public static LocalManifold ComputeManifold(Shape shapeA, Shape shapeB, Transform xf)
     {
         ManifoldFcn fcn = s_registers[(int)shapeA.type][(int)shapeB.type].fcn;
